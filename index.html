@@ -23,20 +23,9 @@
 }
 @media (prefers-color-scheme: dark){
   :root{
-    --bg:#15130E;
-    --surface:#1D1A13;
-    --surface-2:#242019;
-    --text:#F1EBDC;
-    --muted:#B0A48A;
-    --border:#332D20;
-    --accent:#E0AC55;
-    --accent-ink:#F7E4BC;
-    --felt:#3E9270;
-    --felt-ink:#CDEFDF;
-    --rust:#D98567;
-    --rust-ink:#FBE1D6;
-    --win:#4FAE78;
-    --loss:#E06C64;
+    --bg:#15130E; --surface:#1D1A13; --surface-2:#242019; --text:#F1EBDC; --muted:#B0A48A;
+    --border:#332D20; --accent:#E0AC55; --accent-ink:#F7E4BC; --felt:#3E9270; --felt-ink:#CDEFDF;
+    --rust:#D98567; --rust-ink:#FBE1D6; --win:#4FAE78; --loss:#E06C64;
     --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.35);
   }
 }
@@ -83,7 +72,7 @@ button{font-family:inherit;}
 .nav-spacer{flex:1;}
 .nav-foot{font-size:.72rem; color:var(--muted); padding:0 .35rem;}
 .main{flex:1; min-width:0; padding:1.6rem 2rem 4rem;}
-.main-inner{max-width:1080px; margin:0 auto; display:flex; flex-direction:column; gap:1.2rem;}
+.main-inner{max-width:1120px; margin:0 auto; display:flex; flex-direction:column; gap:1.2rem;}
 .page-head{display:flex; align-items:baseline; justify-content:space-between; gap:1rem; flex-wrap:wrap;}
 .page-head p.sub{color:var(--muted); margin:.15rem 0 0; font-size:.88rem;}
 .card{
@@ -125,6 +114,16 @@ button{font-family:inherit;}
 }
 .field input[type=number]{font-family:var(--font-num);}
 .form-row{display:flex; gap:.8rem; flex-wrap:wrap; align-items:end;}
+.radio-card-row{display:flex; gap:.7rem; flex-wrap:wrap;}
+.radio-card{
+  flex:1; min-width:240px; border:1px solid var(--border); border-radius:var(--radius); padding:.75rem .9rem;
+  cursor:pointer; display:flex; gap:.6rem; align-items:flex-start; background:var(--surface);
+}
+.radio-card:hover{border-color:var(--accent);}
+.radio-card input{margin-top:.2rem;}
+.radio-card .rc-title{font-weight:700; font-size:.92rem;}
+.radio-card .rc-desc{font-size:.78rem; color:var(--muted); margin-top:.15rem;}
+.radio-card.checked{border-color:var(--accent); background:color-mix(in srgb, var(--accent) 8%, var(--surface));}
 .table-wrap{overflow-x:auto; border:1px solid var(--border); border-radius:var(--radius);}
 table.data{border-collapse:collapse; width:100%; font-size:.88rem;}
 table.data th, table.data td{padding:.5rem .65rem; border-bottom:1px solid var(--border); text-align:left; white-space:nowrap;}
@@ -153,7 +152,6 @@ table.matrix td.neg input{color:var(--loss);}
 .pill.setup{color:var(--muted);}
 .pill.prelim{color:var(--accent-ink); border-color:var(--accent); background:color-mix(in srgb, var(--accent) 14%, transparent);}
 .pill.finals{color:var(--felt-ink); border-color:var(--felt); background:color-mix(in srgb, var(--felt) 16%, transparent);}
-.pill.in_progress{color:var(--felt-ink); border-color:var(--felt); background:color-mix(in srgb, var(--felt) 16%, transparent);}
 .pill.completed{color:var(--muted); background:var(--surface-2);}
 .delta-plus{color:var(--win); font-weight:700;}
 .delta-minus{color:var(--loss); font-weight:700;}
@@ -168,16 +166,6 @@ table.matrix td.neg input{color:var(--loss);}
 .match-vs{color:var(--muted); font-size:.78rem;}
 .match-result{font-size:.78rem; color:var(--muted); margin-left:auto;}
 .empty-note{color:var(--muted); font-size:.86rem; padding:.6rem 0;}
-.bracket{display:flex; gap:2.2rem; overflow-x:auto; padding:.4rem .1rem 1rem;}
-.bracket-round{display:flex; flex-direction:column; justify-content:space-around; gap:1.1rem; min-width:210px;}
-.round-label{font-size:.74rem; color:var(--muted); text-align:center; letter-spacing:.04em; margin-bottom:.2rem;}
-.bracket-match{border:1px solid var(--border); border-radius:8px; background:var(--surface); box-shadow:var(--shadow); overflow:hidden;}
-.bmatch-side{display:flex; align-items:center; gap:.4rem; padding:.4rem .55rem; border-bottom:1px solid var(--border); font-size:.84rem; cursor:pointer;}
-.bmatch-side:last-child{border-bottom:none;}
-.bmatch-side:hover{background:var(--surface-2);}
-.bmatch-side.winner{font-weight:700; background:color-mix(in srgb, var(--felt) 12%, transparent);}
-.bmatch-side.bye{color:var(--muted); font-style:italic; cursor:default;}
-.bmatch-side .pts{margin-left:auto; color:var(--muted); font-size:.76rem;}
 .result-banner{background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius); padding:1rem 1.1rem;}
 .result-banner h3{margin-bottom:.5rem;}
 .bonus-log{display:flex; flex-direction:column; gap:.25rem; font-size:.85rem;}
@@ -189,6 +177,50 @@ table.matrix td.neg input{color:var(--loss);}
 input[type=checkbox], input[type=radio]{accent-color:var(--accent); width:16px; height:16px;}
 select{padding:.45rem .55rem; border:1px solid var(--border); border-radius:8px; background:var(--bg); color:var(--text); font-family:inherit;}
 :focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+
+/* ---- connected bracket visual (finals / winners-side elimination) ---- */
+.bflow-wrap{overflow-x:auto; padding:.3rem .1rem 1rem;}
+.bflow{display:flex; align-items:stretch;}
+.bflow-round{display:flex; flex-direction:column; width:212px; flex:none; margin-right:34px;}
+.bflow-round:last-child{margin-right:0;}
+.bflow-round-label{flex:none; font-size:.74rem; color:var(--muted); text-align:center; letter-spacing:.03em; margin-bottom:.5rem;}
+.bflow-slots{flex:1; display:flex; flex-direction:column; justify-content:space-around; position:relative; min-height:220px;}
+.bflow-match{
+  flex:none; height:58px; margin:5px 0; border:1px solid var(--border); border-radius:8px; background:var(--surface);
+  box-shadow:var(--shadow); display:flex; flex-direction:column; overflow:hidden; position:relative; z-index:1;
+}
+.bflow-side{
+  display:flex; align-items:center; gap:.35rem; padding:0 .5rem; flex:1; font-size:.8rem; cursor:pointer;
+  white-space:nowrap; overflow:hidden;
+}
+.bflow-side + .bflow-side{border-top:1px solid var(--border);}
+.bflow-side:hover:not(.bye):not(.winner){background:var(--surface-2);}
+.bflow-side span.pname{overflow:hidden; text-overflow:ellipsis;}
+.bflow-side.winner{font-weight:700; background:color-mix(in srgb, var(--felt) 14%, transparent); cursor:default;}
+.bflow-side.bye{color:var(--muted); font-style:italic; cursor:default;}
+.bflow-side .pts{margin-left:auto; color:var(--muted); font-size:.72rem; flex:none;}
+.bflow-side.locked{cursor:default; opacity:.6;}
+.bflow-connector{
+  position:absolute; right:-34px; width:34px; border-top:2px solid var(--border); border-bottom:2px solid var(--border);
+  border-right:2px solid var(--border); box-sizing:border-box; pointer-events:none; z-index:0;
+}
+.bflow-match-undo{position:absolute; top:-11px; right:4px; z-index:2;}
+
+/* ---- simple round list (losers bracket) ---- */
+.simple-bracket{display:flex; gap:1.6rem; overflow-x:auto; padding:.3rem .1rem 1rem;}
+.simple-round{display:flex; flex-direction:column; justify-content:center; gap:.7rem; min-width:200px;}
+.simple-round-label{font-size:.72rem; color:var(--muted); text-align:center; letter-spacing:.03em;}
+.simple-match{border:1px solid var(--border); border-radius:8px; background:var(--surface); box-shadow:var(--shadow); overflow:hidden;}
+.simple-side{display:flex; align-items:center; gap:.35rem; padding:.35rem .5rem; border-bottom:1px solid var(--border); font-size:.78rem; cursor:pointer;}
+.simple-side:last-child{border-bottom:none;}
+.simple-side:hover:not(.bye):not(.winner){background:var(--surface-2);}
+.simple-side.winner{font-weight:700; background:color-mix(in srgb, var(--rust) 14%, transparent); cursor:default;}
+.simple-side.bye{color:var(--muted); font-style:italic; cursor:default;}
+.simple-side .pts{margin-left:auto; color:var(--muted); font-size:.72rem;}
+
+.prelim-status-row{display:flex; gap:.7rem; flex-wrap:wrap; align-items:center;}
+.prelim-alive-pill{font-family:var(--font-num); font-weight:700;}
+
 @media (max-width: 760px){
   .app-shell{flex-direction:column;}
   .sidenav{width:auto; flex:none; flex-direction:row; overflow-x:auto; align-items:center;}
@@ -304,7 +336,7 @@ function defaultState(){
   };
 }
 
-var STORAGE_KEY = "billiards_tourney_state_v1";
+var STORAGE_KEY = "billiards_tourney_state_v2";
 var state = null;
 
 function loadState(){
@@ -313,6 +345,15 @@ function loadState(){
     if(raw){
       var parsed = JSON.parse(raw);
       if(parsed && parsed.settings && parsed.players) return parsed;
+    }
+    var legacy = localStorage.getItem("billiards_tourney_state_v1");
+    if(legacy){
+      var parsedLegacy = JSON.parse(legacy);
+      if(parsedLegacy && parsedLegacy.settings && parsedLegacy.players){
+        parsedLegacy.tournaments = (parsedLegacy.tournaments||[]).filter(function(t){ return t.format==="blockPrelim" || t.format==="tournament"; });
+        parsedLegacy.tournaments.forEach(function(t){ if(t.format==="tournament") t.format="blockPrelim"; });
+        return parsedLegacy;
+      }
     }
   }catch(e){ console.warn("state load failed", e); }
   return defaultState();
@@ -358,7 +399,6 @@ var route = {screen:"roster"};
 function navigate(r){ route = r; render(); window.scrollTo(0,0); }
 
 // ---------- generic helpers ----------
-function el(html){ var d=document.createElement("div"); d.innerHTML=html.trim(); return d.firstElementChild; }
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]; }); }
 function fmtDelta(n){
   if(n===0 || n==null) return '<span class="hint">±0</span>';
@@ -408,31 +448,31 @@ function buildBracket(ids){
     var a=slots[i], b=slots[i+1];
     var bye = (!a || !b);
     round1.push({
-      id:"f_r1_m"+(i/2), round:1, a:a, b:b,
+      id:"r1_m"+(i/2), round:1, a:a, b:b,
       winner: bye ? (a || b) : null,
       deltas: null, bye: bye
     });
   }
   var totalRounds = Math.max(1, Math.round(Math.log2(size)));
-  var finals = {totalRounds:totalRounds, rounds:[round1], eliminatedRound:{}, entrants:sorted};
-  maybeAdvanceRounds(finals);
-  return finals;
+  var bracket = {totalRounds:totalRounds, rounds:[round1], eliminatedRound:{}, entrants:sorted};
+  maybeAdvanceRounds(bracket);
+  return bracket;
 }
-function maybeAdvanceRounds(finals){
+function maybeAdvanceRounds(bracket){
   while(true){
-    var last = finals.rounds[finals.rounds.length-1];
+    var last = bracket.rounds[bracket.rounds.length-1];
     var allDone = last.every(function(m){ return !!m.winner; });
     if(!allDone) break;
-    if(finals.rounds.length>=finals.totalRounds) break;
+    if(bracket.rounds.length>=bracket.totalRounds) break;
     var winners = last.map(function(m){ return m.winner; });
     var nextRound=[];
     for(var i=0;i<winners.length;i+=2){
       nextRound.push({
-        id:"f_r"+(finals.rounds.length+1)+"_m"+(i/2), round: finals.rounds.length+1,
+        id:"r"+(bracket.rounds.length+1)+"_m"+(i/2), round: bracket.rounds.length+1,
         a:winners[i], b:winners[i+1], winner:null, deltas:null, bye:false
       });
     }
-    finals.rounds.push(nextRound);
+    bracket.rounds.push(nextRound);
   }
 }
 function roundName(roundIdx, totalRounds){
@@ -468,6 +508,7 @@ function undoMatchDeltas(match){
   match.winner=null; match.deltas=null;
 }
 
+// ---------- ② block prelim elimination ----------
 function recomputeBlockElimination(block){
   var losses={};
   block.playerIds.forEach(function(id){ losses[id]=0; });
@@ -490,6 +531,161 @@ function recomputeBlockElimination(block){
     }
   });
   block.losses = losses;
+}
+function finalizeBlockPrelim(t){
+  var advancers=[];
+  t.blocks.forEach(function(block){
+    var ranked = block.playerIds.slice().sort(function(a,b){
+      var wa = block.matches.filter(function(m){ return m.winner===a; }).length;
+      var wb = block.matches.filter(function(m){ return m.winner===b; }).length;
+      if(wb!==wa) return wb-wa;
+      return pointsOf(b)-pointsOf(a);
+    });
+    var adv = ranked.slice(0, t.advancePerBlock);
+    block.advanced = adv;
+    advancers = advancers.concat(adv);
+  });
+  applyAdvanceBonusAndBuildFinals(t, advancers);
+}
+
+// ---------- ① single/double elimination prelim ----------
+function initElimPrelim(t, prelimType, advanceCount){
+  var wb = buildBracket(t.participantIds);
+  t.prelimType = prelimType;
+  t.advanceCount = advanceCount;
+  t.advanceBonusApplied = {};
+  t.prelim = {
+    type: prelimType,
+    wb: wb,
+    lb: prelimType==="double" ? {rounds:[]} : null,
+    losses: {}, eliminated:{}, penaltyDeltas:{},
+    threshold: prelimType==="double" ? 2 : 1,
+    aliveCount: t.participantIds.length
+  };
+  t.status = "prelim";
+  advanceElimPrelim(t);
+  recomputeElimPrelim(t);
+}
+function tallyLosses(roundsArr, losses){
+  roundsArr.forEach(function(round){
+    round.forEach(function(m){
+      if(m.winner && !m.bye){ var loserId = m.winner===m.a ? m.b : m.a; losses[loserId]=(losses[loserId]||0)+1; }
+    });
+  });
+}
+function recomputeElimPrelim(t){
+  var prelim = t.prelim;
+  var threshold = prelim.threshold;
+  var losses = {};
+  t.participantIds.forEach(function(id){ losses[id]=0; });
+  tallyLosses(prelim.wb.rounds, losses);
+  if(prelim.type==="double") tallyLosses(prelim.lb.rounds, losses);
+  prelim.eliminated = prelim.eliminated || {};
+  prelim.penaltyDeltas = prelim.penaltyDeltas || {};
+  t.participantIds.forEach(function(id){
+    var was = !!prelim.eliminated[id];
+    var now = losses[id] >= threshold;
+    if(now && !was){
+      prelim.eliminated[id] = true;
+      if(threshold===2){
+        var pen = state.settings.bonuses.prelimDoubleLossPenalty || 0;
+        if(pen){ var p=getPlayer(id); if(p) p.points += pen; prelim.penaltyDeltas[id]=pen; }
+      }
+    } else if(!now && was){
+      prelim.eliminated[id] = false;
+      var applied = prelim.penaltyDeltas[id];
+      if(applied){ var p2=getPlayer(id); if(p2) p2.points -= applied; delete prelim.penaltyDeltas[id]; }
+    }
+  });
+  prelim.losses = losses;
+  prelim.aliveCount = t.participantIds.filter(function(id){ return losses[id] < threshold; }).length;
+}
+function lbRoundSource(prelim, i){
+  if(i % 2 === 1){
+    if(i===1){
+      var wbR1 = prelim.wb.rounds[0];
+      if(!wbR1 || !wbR1.every(function(m){ return !!m.winner; })) return null;
+      return wbR1.filter(function(m){ return !m.bye; }).map(function(m){ return m.winner===m.a?m.b:m.a; });
+    }
+    var prevLB = prelim.lb.rounds[i-2];
+    if(!prevLB || !prevLB.every(function(m){ return !!m.winner; })) return null;
+    return prevLB.filter(function(m){ return !m.bye; }).map(function(m){ return m.winner; }).concat(
+      prevLB.filter(function(m){ return m.bye; }).map(function(m){ return m.winner; })
+    );
+  }
+  var prevLB2 = prelim.lb.rounds[i-2];
+  if(!prevLB2 || !prevLB2.every(function(m){ return !!m.winner; })) return null;
+  var wbRoundIdx = (i/2+1)-1;
+  var wbRound = prelim.wb.rounds[wbRoundIdx];
+  if(!wbRound || !wbRound.every(function(m){ return !!m.winner; })) return null;
+  var lbWinners = prevLB2.map(function(m){ return m.winner; });
+  var wbLosers = wbRound.filter(function(m){ return !m.bye; }).map(function(m){ return m.winner===m.a?m.b:m.a; });
+  return lbWinners.concat(wbLosers);
+}
+function advanceLB(prelim){
+  var guard=0;
+  while(guard<40){
+    guard++;
+    var nextIdx = prelim.lb.rounds.length+1;
+    var source = lbRoundSource(prelim, nextIdx);
+    if(!source) break;
+    if(source.length===0) break;
+    var matches=[];
+    for(var idx=0; idx<source.length; idx+=2){
+      var a=source[idx], b=source[idx+1];
+      if(b===undefined){
+        matches.push({id:"lb_r"+nextIdx+"_m"+(idx/2), round:nextIdx, a:a, b:null, winner:a, deltas:null, bye:true});
+      } else {
+        matches.push({id:"lb_r"+nextIdx+"_m"+(idx/2), round:nextIdx, a:a, b:b, winner:null, deltas:null, bye:false});
+      }
+    }
+    prelim.lb.rounds.push(matches);
+  }
+}
+function advanceElimPrelim(t){
+  var prelim = t.prelim;
+  maybeAdvanceRounds(prelim.wb);
+  if(prelim.type==="double") advanceLB(prelim);
+}
+function canUndoElimMatch(t, side, match){
+  if(!match.winner || match.bye) return false;
+  var prelim = t.prelim;
+  if(side==="wb"){
+    if(prelim.wb.rounds.length > match.round) return false;
+    if(prelim.type==="double"){
+      var dependentLbIdx = match.round===1 ? 1 : 2*(match.round-1);
+      if(prelim.lb.rounds.length >= dependentLbIdx) return false;
+    }
+    return true;
+  }
+  if(prelim.lb.rounds.length > match.round) return false;
+  return true;
+}
+function findElimMatch(t, side, mid){
+  var rounds = side==="wb" ? t.prelim.wb.rounds : t.prelim.lb.rounds;
+  var found=null;
+  rounds.forEach(function(r){ r.forEach(function(m){ if(m.id===mid) found=m; }); });
+  return found;
+}
+function finalizeElimPrelim(t){
+  var prelim = t.prelim;
+  var alive = t.participantIds.filter(function(id){ return prelim.losses[id] < prelim.threshold; });
+  var advancers = alive.slice().sort(function(a,b){ return pointsOf(b)-pointsOf(a); });
+  if(advancers.length > t.advanceCount) advancers = advancers.slice(0, t.advanceCount);
+  applyAdvanceBonusAndBuildFinals(t, advancers);
+}
+
+function applyAdvanceBonusAndBuildFinals(t, advancers){
+  var bonus = state.settings.bonuses.finalsAdvance || 0;
+  t.advanceBonusApplied = t.advanceBonusApplied || {};
+  advancers.forEach(function(id){
+    if(!t.advanceBonusApplied[id] && bonus){
+      var p=getPlayer(id); if(p){ p.points += bonus; t.advanceBonusApplied[id]=bonus; }
+    }
+  });
+  t.finalists = advancers;
+  t.finals = buildBracket(advancers);
+  t.status = "finals";
 }
 
 function finalizeTournamentResult(t){
@@ -542,10 +738,9 @@ function reverseFinalize(t){
 function canUndoBracketMatch(t, match){
   if(!match.winner || match.bye) return false;
   var finals=t.finals;
-  if(match.round===finals.totalRounds) return t.status==="finals"; // final match: allowed only before/without needing later rounds (final has none after it), completed handled separately
-  var nextRound = finals.rounds[match.round]; // rounds array is 0-indexed, match.round is 1-indexed -> next round index = match.round
+  if(match.round===finals.totalRounds) return t.status==="finals";
+  var nextRound = finals.rounds[match.round];
   if(!nextRound) return true;
-  var matchesInLast = finals.rounds[match.round-1].length;
   var slotIdx = finals.rounds[match.round-1].indexOf(match);
   var nextMatch = nextRound[Math.floor(slotIdx/2)];
   return !nextMatch || !nextMatch.winner;
@@ -567,11 +762,6 @@ function updatePlayerPoints(id, points){
   if(!isFinite(points)) return;
   p.points=points; saveState(); render();
 }
-function renamePlayer(id, name){
-  var p=getPlayer(id); if(!p) return;
-  name=(name||"").trim(); if(!name) return;
-  p.name=name; saveState(); render();
-}
 function deletePlayer(id){
   if(!confirm("この選手をロースターから削除しますか?過去の大会記録の名前表示は保持されます。")) return;
   state.players = state.players.filter(function(p){ return p.id!==id; });
@@ -580,30 +770,27 @@ function deletePlayer(id){
 
 function createTournament(opts){
   var id = "t_"+Date.now();
-  var base = {
+  var t = {
     id:id, name:opts.name, format:opts.format, createdAt:Date.now(),
-    participantIds: opts.participantIds.slice(), log:[]
+    participantIds: opts.participantIds.slice()
   };
-  if(opts.format==="league"){
-    base.status="in_progress";
-    base.matches = roundRobinPairs(base.participantIds).map(function(pair,i){
-      return {id:"m"+i, a:pair[0], b:pair[1], winner:null, deltas:null};
-    });
-  } else {
-    base.status="prelim";
-    base.blockCount = opts.blockCount;
-    base.advancePerBlock = opts.advancePerBlock;
-    base.advanceBonusApplied = {};
-    base.blocks = assignBlocks(base.participantIds, opts.blockCount).map(function(ids, bi){
+  if(opts.format==="blockPrelim"){
+    t.status="prelim";
+    t.blockCount = opts.blockCount;
+    t.advancePerBlock = opts.advancePerBlock;
+    t.advanceBonusApplied = {};
+    t.blocks = assignBlocks(t.participantIds, opts.blockCount).map(function(ids, bi){
       return {
         index:bi, playerIds:ids,
         matches: roundRobinPairs(ids).map(function(pair,i){ return {id:"b"+bi+"m"+i, a:pair[0], b:pair[1], winner:null, deltas:null}; }),
         eliminated:{}, losses:{}, penaltyDeltas:{}, advanced:[]
       };
     });
-    base.finals=null;
+    t.finals=null;
+  } else {
+    initElimPrelim(t, opts.prelimType, opts.advanceCount);
   }
-  state.tournaments.push(base);
+  state.tournaments.push(t);
   state.currentTournamentId = id;
   saveState();
   navigate({screen:"tournament", id:id});
@@ -613,31 +800,6 @@ function deleteTournament(id){
   state.tournaments = state.tournaments.filter(function(t){ return t.id!==id; });
   saveState();
   navigate({screen:"history"});
-}
-
-function finalizePrelim(t){
-  var advancers=[];
-  t.blocks.forEach(function(block){
-    var ranked = block.playerIds.slice().sort(function(a,b){
-      var wa = block.matches.filter(function(m){ return m.winner===a; }).length;
-      var wb = block.matches.filter(function(m){ return m.winner===b; }).length;
-      if(wb!==wa) return wb-wa;
-      return pointsOf(b)-pointsOf(a);
-    });
-    var adv = ranked.slice(0, t.advancePerBlock);
-    block.advanced = adv;
-    advancers = advancers.concat(adv);
-  });
-  var bonus = state.settings.bonuses.finalsAdvance || 0;
-  advancers.forEach(function(id){
-    if(!t.advanceBonusApplied[id] && bonus){
-      var p=getPlayer(id); if(p){ p.points += bonus; t.advanceBonusApplied[id]=bonus; }
-    }
-  });
-  t.finalists = advancers;
-  t.finals = buildBracket(advancers);
-  t.status = "finals";
-  saveState(); render();
 }
 
 // ---------- export / import ----------
@@ -831,25 +993,47 @@ function renderNewTournament(){
     return '<label class="check-row"><input type="checkbox" name="participant" value="'+p.id+'">'+
       '<span class="name">'+esc(p.name)+'</span>'+badge(classOf(p.points))+'<span class="num hint">'+p.points+'</span></label>';
   }).join("");
+  var topFormat = route.newTournamentFormat || "elimPrelim";
+  var prelimType = route.newTournamentPrelimType || "single";
+  function radioCard(name, value, checked, title, desc){
+    return '<label class="radio-card'+(checked?' checked':'')+'"><input type="radio" name="'+name+'" value="'+value+'"'+(checked?' checked':'')+' data-action="'+name+'-radio">'+
+      '<div><div class="rc-title">'+title+'</div><div class="rc-desc">'+desc+'</div></div></label>';
+  }
   return ''+
-  '<div class="page-head"><div><h1>大会を作成</h1><p class="sub">リーグ戦(総当たり)またはトーナメント戦(予選ブロック+決勝)を選べます</p></div></div>'+
+  '<div class="page-head"><div><h1>大会を作成</h1><p class="sub">試合形式と参加者を選んで大会を作成します</p></div></div>'+
   '<form data-form="create-tournament">'+
     '<div class="card">'+
       '<h3>基本情報</h3>'+
       '<div class="form-row">'+
         '<div class="field" style="flex:2;min-width:220px"><label>大会名</label><input type="text" name="name" placeholder="例: 2026年8月度月例大会" required></div>'+
-        '<div class="field"><label>形式</label>'+
-          '<select name="format" data-action="format-select">'+
-            '<option value="tournament">トーナメント戦(予選+決勝)</option>'+
-            '<option value="league">リーグ戦(総当たり)</option>'+
-          '</select>'+
+      '</div>'+
+    '</div>'+
+    '<div class="card">'+
+      '<h3>① 試合形式</h3>'+
+      '<div class="radio-card-row">'+
+        radioCard("topFormat","elimPrelim", topFormat==="elimPrelim",
+          "① トーナメント戦(予選+決勝)",
+          "予選をシングル/ダブルエリミネーションのトーナメント方式で行い、勝ち上がった選手が決勝トーナメントに進出します。")+
+        radioCard("topFormat","blockPrelim", topFormat==="blockPrelim",
+          "② 予選リーグ戦(ブロック総当たり)+決勝トーナメント",
+          "参加者をブロックに分けて総当たり戦を行い、各ブロック上位が決勝トーナメントに進出します。")+
+      '</div>'+
+      '<div id="elim-fields" style="'+(topFormat==="elimPrelim"?"":"display:none")+';margin-top:.9rem">'+
+        '<div class="radio-card-row">'+
+          radioCard("prelimType","single", prelimType==="single", "予選: シングルエリミネーション", "1敗で失格。通常のノックアウト方式です。")+
+          radioCard("prelimType","double", prelimType==="double", "予選: ダブルエリミネーション", "2敗で失格。1敗しても敗者復活ブロックで再挑戦できます。")+
+        '</div>'+
+        '<div class="form-row" style="margin-top:.8rem">'+
+          '<div class="field"><label>決勝進出人数</label><input type="number" name="advanceCount" value="4" min="2" style="width:6rem"></div>'+
+        '</div>'+
+        '<p class="hint">シングルエリミネーションは仕組み上、勝ち残り数が2の累乗単位(8→4→2など)で絞り込まれます。ダブルエリミネーションは1試合ごとに1名ずつ絞り込まれます。</p>'+
+      '</div>'+
+      '<div id="block-fields" style="'+(topFormat==="blockPrelim"?"":"display:none")+';margin-top:.9rem">'+
+        '<div class="form-row">'+
+          '<div class="field"><label>予選ブロック数</label><input type="number" name="blockCount" value="4" min="1" style="width:6rem"></div>'+
+          '<div class="field"><label>各ブロックからの決勝進出人数</label><input type="number" name="advancePerBlock" value="2" min="1" style="width:6rem"></div>'+
         '</div>'+
       '</div>'+
-      '<div class="form-row" id="tournament-only-fields">'+
-        '<div class="field"><label>予選ブロック数</label><input type="number" name="blockCount" value="4" min="1" style="width:6rem"></div>'+
-        '<div class="field"><label>各ブロックからの決勝進出人数</label><input type="number" name="advancePerBlock" value="2" min="1" style="width:6rem"></div>'+
-      '</div>'+
-      '<p class="hint" id="league-note" style="display:none">リーグ戦は総当たり戦の勝敗ポイントのみが加算されます(決勝進出・優勝ボーナスは適用されません)。</p>'+
     '</div>'+
     '<div class="card">'+
       '<h3>参加者を選択 <span class="hint" id="participant-count">(0名選択中)</span></h3>'+
@@ -862,9 +1046,14 @@ function renderNewTournament(){
 function renderHistory(){
   var list = state.tournaments.slice().sort(function(a,b){ return b.createdAt-a.createdAt; });
   if(!list.length) return '<div class="page-head"><h1>大会一覧</h1></div><p class="empty-note">まだ大会が作成されていません。「大会を作成」から新しい大会を開始してください。</p>';
-  var STATUS_LABEL = {setup:"準備中", prelim:"予選中", finals:"決勝トーナメント中", in_progress:"進行中", completed:"終了"};
+  var STATUS_LABEL = {prelim:"予選中", finals:"決勝トーナメント中", completed:"終了"};
+  var FORMAT_LABEL = {
+    elimPrelim: "①予選トーナメント",
+    blockPrelim: "②予選リーグ+決勝"
+  };
   var cards = list.map(function(t){
-    var fmt = t.format==="league" ? "リーグ戦" : "トーナメント戦";
+    var fmt = FORMAT_LABEL[t.format] || t.format;
+    if(t.format==="elimPrelim") fmt += t.prelimType==="double" ? "(ダブルエリミネーション)" : "(シングルエリミネーション)";
     return '<div class="tourn-card">'+
       '<div><h3 style="margin-bottom:.25rem">'+esc(t.name)+'</h3>'+
       '<span class="hint">'+fmt+' ・ 参加'+t.participantIds.length+'名 ・ '+dateStamp(t.createdAt)+'</span></div>'+
@@ -903,39 +1092,76 @@ function matchRow(match, tprefix, extraActionData){
 function renderTournamentScreen(id){
   var t = findTournament(id);
   if(!t) return '<p class="empty-note">大会が見つかりません。</p>';
-  if(t.format==="league") return renderLeagueTournament(t);
-  return renderBracketTournament(t);
+  if(t.format==="blockPrelim") return renderBlockPrelimTournament(t);
+  return renderElimPrelimTournament(t);
 }
 
-function renderLeagueTournament(t){
-  var standings = t.participantIds.slice().sort(function(a,b){
-    var wa = t.matches.filter(function(m){return m.winner===a;}).length;
-    var wb = t.matches.filter(function(m){return m.winner===b;}).length;
-    if(pointsOf(b)!==pointsOf(a)) return pointsOf(b)-pointsOf(a);
-    return wb-wa;
-  });
-  var rows = standings.map(function(id,i){
-    var w = t.matches.filter(function(m){return m.winner===id;}).length;
-    var l = t.matches.filter(function(m){return m.winner && m.winner!==id && (m.a===id||m.b===id);}).length;
-    return '<tr><td class="num">'+(i+1)+'</td><td>'+esc(playerName(id))+'</td><td>'+badge(classOf(pointsOf(id)))+'</td>'+
-      '<td class="num">'+pointsOf(id)+'</td><td class="num">'+w+'勝'+l+'敗</td></tr>';
+// ---------- connected bracket visual ----------
+function bflowSideHTML(m, playerId, opts){
+  if(!playerId) return '<div class="bflow-side bye">(不戦)</div>';
+  var isWinner = m.winner===playerId;
+  var resolved = !!m.winner;
+  var cls = "bflow-side"+(isWinner?" winner":"");
+  if(m.bye){
+    return '<div class="'+cls+' bye">'+esc(playerName(playerId))+' '+badge(classOf(pointsOf(playerId)))+'<span class="pts num">不戦勝</span></div>';
+  }
+  var canClick = !resolved && opts.resolvable;
+  var attrs = canClick ? ('data-action="'+opts.actionName+'" data-mid="'+m.id+'" data-winner="'+playerId+'" '+opts.extraAttrs) : "";
+  if(!canClick) cls += resolved ? "" : " locked";
+  return '<div class="'+cls+'" '+attrs+'><span class="pname">'+esc(playerName(playerId))+' '+badge(classOf(pointsOf(playerId)))+'</span><span class="pts num">'+pointsOf(playerId)+'</span></div>';
+}
+function renderBracketFlow(rounds, roundLabelFn, opts){
+  var html = rounds.map(function(roundMatches, ri){
+    var n = roundMatches.length;
+    var isLast = ri===rounds.length-1;
+    var connectors = "";
+    if(!isLast){
+      for(var p=0; p*2+1<n; p++){
+        var topA = ((p*2)+0.5)/n*100, topB = ((p*2+1)+0.5)/n*100;
+        connectors += '<div class="bflow-connector" style="top:'+topA.toFixed(3)+'%;height:'+(topB-topA).toFixed(3)+'%;"></div>';
+      }
+    }
+    var matches = roundMatches.map(function(m){
+      var undo = (m.winner && !m.bye && opts.canUndo && opts.canUndo(m)) ?
+        '<button class="btn btn-sm btn-ghost bflow-match-undo" data-action="'+opts.undoActionName+'" data-mid="'+m.id+'" '+opts.extraAttrs+'>取消</button>' : "";
+      return '<div class="bflow-match">'+undo+bflowSideHTML(m, m.a, opts)+bflowSideHTML(m, m.b, opts)+'</div>';
+    }).join("");
+    return '<div class="bflow-round"><div class="bflow-round-label">'+roundLabelFn(ri, rounds.length)+'</div>'+
+      '<div class="bflow-slots">'+connectors+matches+'</div></div>';
   }).join("");
-  var matches = t.matches.map(function(m){ return matchRow(m, "league", 'data-tid="'+t.id+'"'); }).join("");
-  return ''+
-  '<div class="page-head"><div><h1>'+esc(t.name)+'</h1><p class="sub">リーグ戦(総当たり) ・ <span class="pill in_progress">進行中</span></p></div>'+
-    '<button class="btn btn-sm" data-action="nav" data-screen="history">一覧へ戻る</button></div>'+
-  '<div class="card"><h3>順位表</h3><div class="table-wrap"><table class="data">'+
-    '<thead><tr><th>#</th><th>氏名</th><th>クラス</th><th>ポイント</th><th>戦績</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>'+
-  '<div class="card"><h3>試合結果を入力</h3><p class="hint">勝者のボタンを押すと自動でクラスポイントが加減算されます。</p>'+matches+'</div>';
+  return '<div class="bflow-wrap"><div class="bflow">'+html+'</div></div>';
+}
+function simpleSideHTML(m, playerId, opts){
+  if(!playerId) return '<div class="simple-side bye">(不戦)</div>';
+  var isWinner = m.winner===playerId;
+  var resolved = !!m.winner;
+  var cls = "simple-side"+(isWinner?" winner":"");
+  if(m.bye){
+    return '<div class="'+cls+' bye">'+esc(playerName(playerId))+' '+badge(classOf(pointsOf(playerId)))+'<span class="pts num">不戦勝</span></div>';
+  }
+  var canClick = !resolved && opts.resolvable;
+  var attrs = canClick ? ('data-action="'+opts.actionName+'" data-mid="'+m.id+'" data-winner="'+playerId+'" '+opts.extraAttrs) : "";
+  return '<div class="'+cls+'" '+attrs+'>'+esc(playerName(playerId))+' '+badge(classOf(pointsOf(playerId)))+'<span class="pts num">'+pointsOf(playerId)+'</span></div>';
+}
+function renderSimpleRounds(rounds, roundLabelFn, opts){
+  if(!rounds.length) return '<p class="empty-note">敗者復活ブロックの組み合わせはまだありません。</p>';
+  var html = rounds.map(function(roundMatches, ri){
+    var matches = roundMatches.map(function(m){
+      var undo = (m.winner && !m.bye && opts.canUndo && opts.canUndo(m)) ?
+        '<div style="text-align:right"><button class="btn btn-sm btn-ghost" data-action="'+opts.undoActionName+'" data-mid="'+m.id+'" '+opts.extraAttrs+'>取消</button></div>' : "";
+      return '<div class="simple-match">'+simpleSideHTML(m, m.a, opts)+simpleSideHTML(m, m.b, opts)+undo+'</div>';
+    }).join("");
+    return '<div class="simple-round"><div class="simple-round-label">敗者復活 '+(ri+1)+'回戦</div>'+matches+'</div>';
+  }).join("");
+  return '<div class="simple-bracket">'+html+'</div>';
 }
 
-function renderBracketTournament(t){
-  var header = '<div class="page-head"><div><h1>'+esc(t.name)+'</h1><p class="sub">トーナメント戦(予選+決勝) ・ '+
+// ---------- ② block prelim + finals screen ----------
+function renderBlockPrelimTournament(t){
+  var header = '<div class="page-head"><div><h1>'+esc(t.name)+'</h1><p class="sub">②予選リーグ+決勝トーナメント ・ '+
     '<span class="pill '+t.status+'">'+({prelim:"予選中",finals:"決勝トーナメント中",completed:"終了"}[t.status])+'</span></p></div>'+
     '<button class="btn btn-sm" data-action="nav" data-screen="history">一覧へ戻る</button></div>';
-
   var out = header;
-
   if(t.status==="prelim"){
     out += t.blocks.map(function(block){
       var standings = block.playerIds.slice().sort(function(a,b){
@@ -957,36 +1183,69 @@ function renderBracketTournament(t){
         '<div style="margin-top:.6rem">'+matches+'</div></div>';
     }).join("");
     out += '<div class="card"><h3>決勝進出者を確定</h3><p class="hint">各ブロック上位'+t.advancePerBlock+'名が決勝トーナメントに進出します(決勝進出ボーナス '+state.settings.bonuses.finalsAdvance+'pt が付与されます)。</p>'+
-      '<button class="btn btn-primary" data-action="finalize-prelim" data-tid="'+t.id+'">予選を締めて決勝進出者を確定する</button></div>';
+      '<button class="btn btn-primary" data-action="finalize-block-prelim" data-tid="'+t.id+'">予選を締めて決勝進出者を確定する</button></div>';
   } else {
-    out += renderBracketView(t);
-    if(t.status==="completed") out += renderResultBanner(t);
+    out += renderFinalsSection(t);
   }
   return out;
 }
 
-function renderBracketView(t){
-  var finals = t.finals;
-  var rounds = finals.rounds.map(function(roundMatches, ri){
-    var matches = roundMatches.map(function(m){
-      function side(id, isBye){
-        if(!id) return '<div class="bmatch-side bye">(不戦)</div>';
-        var isWinner = m.winner===id;
-        var resolved = !!m.winner;
-        var cls = "bmatch-side"+(isWinner?" winner":"")+(isBye?" bye":"");
-        if(m.bye){
-          return '<div class="'+cls+'">'+esc(playerName(id))+badge(classOf(pointsOf(id)))+'<span class="pts num">不戦勝</span></div>';
-        }
-        var attrs = resolved ? "" : 'data-action="resolve-bracket" data-tid="'+t.id+'" data-mid="'+m.id+'" data-winner="'+id+'"';
-        return '<div class="'+cls+'" '+attrs+'>'+esc(playerName(id))+' '+badge(classOf(pointsOf(id)))+'<span class="pts num">'+pointsOf(id)+'</span></div>';
-      }
-      var undo = (m.winner && !m.bye && canUndoBracketMatch(t,m)) ?
-        '<div style="text-align:right;padding:.2rem .4rem"><button class="btn btn-sm btn-ghost" data-action="undo-bracket" data-tid="'+t.id+'" data-mid="'+m.id+'">取消</button></div>' : '';
-      return '<div class="bracket-match">'+side(m.a)+side(m.b)+undo+'</div>';
-    }).join("");
-    return '<div class="bracket-round"><div class="round-label">'+roundName(ri+1, finals.totalRounds)+'</div>'+matches+'</div>';
-  }).join("");
-  return '<div class="card"><h3>決勝トーナメント</h3><div class="bracket">'+rounds+'</div></div>';
+// ---------- ① elimination prelim + finals screen ----------
+function renderElimPrelimTournament(t){
+  var typeLabel = t.prelimType==="double" ? "ダブルエリミネーション" : "シングルエリミネーション";
+  var header = '<div class="page-head"><div><h1>'+esc(t.name)+'</h1><p class="sub">①トーナメント戦(予選:'+typeLabel+') ・ '+
+    '<span class="pill '+t.status+'">'+({prelim:"予選中",finals:"決勝トーナメント中",completed:"終了"}[t.status])+'</span></p></div>'+
+    '<button class="btn btn-sm" data-action="nav" data-screen="history">一覧へ戻る</button></div>';
+  var out = header;
+  if(t.status==="prelim"){
+    var prelim = t.prelim;
+    var reached = prelim.aliveCount <= t.advanceCount;
+    out += '<div class="card"><div class="prelim-status-row">'+
+      '<span class="hint">決勝進出人数: <b class="num">'+t.advanceCount+'</b>名</span>'+
+      '<span class="hint">現在の勝ち残り: <span class="prelim-alive-pill num" style="color:'+(reached?'var(--win)':'var(--text)')+'">'+prelim.aliveCount+'</span>名</span>'+
+      (reached?'<span class="pill" style="color:var(--win);border-color:var(--win)">進出人数に到達</span>':'')+
+    '</div></div>';
+    out += '<div class="card"><h3>予選: 勝者側ブラケット</h3>'+
+      renderBracketFlow(prelim.wb.rounds, function(ri){ return "予選 "+(ri+1)+"回戦"; }, {
+        resolvable: !reached,
+        actionName: "resolve-elim-match",
+        undoActionName: "undo-elim-match",
+        extraAttrs: 'data-tid="'+t.id+'" data-side="wb"',
+        canUndo: function(m){ return canUndoElimMatch(t, "wb", m); }
+      })+
+    '</div>';
+    if(t.prelimType==="double"){
+      out += '<div class="card"><h3>予選: 敗者復活ブロック</h3><p class="hint">1敗した選手が入り、ここでもう1敗すると失格になります。</p>'+
+        renderSimpleRounds(prelim.lb.rounds, null, {
+          resolvable: !reached,
+          actionName: "resolve-elim-match",
+          undoActionName: "undo-elim-match",
+          extraAttrs: 'data-tid="'+t.id+'" data-side="lb"',
+          canUndo: function(m){ return canUndoElimMatch(t, "lb", m); }
+        })+
+      '</div>';
+    }
+    out += '<div class="card"><h3>決勝進出者を確定</h3>'+
+      '<p class="hint">現在勝ち残っている'+prelim.aliveCount+'名の中から、ポイント上位'+t.advanceCount+'名が決勝トーナメントに進出します(決勝進出ボーナス '+state.settings.bonuses.finalsAdvance+'pt が付与されます)。</p>'+
+      '<button class="btn btn-primary" data-action="finalize-elim-prelim" data-tid="'+t.id+'">予選を締めて決勝進出者を確定する</button></div>';
+  } else {
+    out += renderFinalsSection(t);
+  }
+  return out;
+}
+
+function renderFinalsSection(t){
+  var out = '<div class="card"><h3>決勝トーナメント</h3>'+
+    renderBracketFlow(t.finals.rounds, function(ri,total){ return roundName(ri+1,total); }, {
+      resolvable: t.status==="finals",
+      actionName: "resolve-bracket",
+      undoActionName: "undo-bracket",
+      extraAttrs: 'data-tid="'+t.id+'"',
+      canUndo: function(m){ return canUndoBracketMatch(t, m); }
+    })+
+  '</div>';
+  if(t.status==="completed") out += renderResultBanner(t);
+  return out;
 }
 function renderResultBanner(t){
   var log = t.finishDeltas.map(function(d){
@@ -996,7 +1255,7 @@ function renderResultBanner(t){
     '<h3>大会結果</h3>'+
     '<p>🏆 優勝: <strong>'+esc(playerName(t.championId))+'</strong> ・ 準優勝: <strong>'+esc(playerName(t.runnerUpId))+'</strong></p>'+
     '<div class="bonus-log">'+log+'</div>'+
-    '<div style="margin-top:.7rem"><button class="btn btn-sm btn-ghost" data-action="undo-bracket" data-tid="'+t.id+'" data-mid="final-reopen">結果を取り消してやり直す</button></div>'+
+    '<div style="margin-top:.7rem"><button class="btn btn-sm btn-ghost" data-action="undo-bracket" data-mid="final-reopen" data-tid="'+t.id+'">結果を取り消してやり直す</button></div>'+
   '</div>';
 }
 
@@ -1029,41 +1288,59 @@ document.addEventListener("click", function(e){
   }
   else if(action==="export-data"){ exportData(); }
   else if(action==="delete-tournament"){ deleteTournament(t.getAttribute("data-id")); }
-  else if(action==="finalize-prelim"){
+  else if(action==="topFormat-radio"){ route.newTournamentFormat = t.value; render(); }
+  else if(action==="prelimType-radio"){ route.newTournamentPrelimType = t.value; render(); }
+  else if(action==="finalize-block-prelim"){
     var tid = t.getAttribute("data-tid"); var tour = findTournament(tid);
-    if(tour) finalizePrelim(tour);
+    if(tour){ finalizeBlockPrelim(tour); saveState(); render(); }
+  }
+  else if(action==="finalize-elim-prelim"){
+    var tid0 = t.getAttribute("data-tid"); var tour0 = findTournament(tid0);
+    if(tour0){ finalizeElimPrelim(tour0); saveState(); render(); }
   }
   else if(action==="resolve-match"){
-    var scope = t.getAttribute("data-scope");
     var tid2 = t.getAttribute("data-tid"); var tour2 = findTournament(tid2);
     if(!tour2) return;
     var mid = t.getAttribute("data-mid"); var winner = t.getAttribute("data-winner");
-    if(scope==="league"){
-      var m = tour2.matches.find(function(x){return x.id===mid;});
-      if(m && !m.winner) resolveMatch(m, winner);
-    } else if(scope==="prelim"){
-      var bidx = Number(t.getAttribute("data-block"));
-      var block = tour2.blocks[bidx];
-      var m2 = block.matches.find(function(x){return x.id===mid;});
-      if(m2 && !m2.winner){ resolveMatch(m2, winner); recomputeBlockElimination(block); }
-    }
+    var bidx = Number(t.getAttribute("data-block"));
+    var block = tour2.blocks[bidx];
+    var m2 = block.matches.find(function(x){return x.id===mid;});
+    if(m2 && !m2.winner){ resolveMatch(m2, winner); recomputeBlockElimination(block); }
     saveState(); render();
   }
   else if(action==="undo-match"){
-    var scope2 = t.getAttribute("data-scope");
     var tid3 = t.getAttribute("data-tid"); var tour3 = findTournament(tid3);
     if(!tour3) return;
     var mid2 = t.getAttribute("data-mid");
-    if(scope2==="league"){
-      var mm = tour3.matches.find(function(x){return x.id===mid2;});
-      if(mm) undoMatchDeltas(mm);
-    } else if(scope2==="prelim"){
-      var bidx2 = Number(t.getAttribute("data-block"));
-      var block2 = tour3.blocks[bidx2];
-      var mm2 = block2.matches.find(function(x){return x.id===mid2;});
-      if(mm2){ undoMatchDeltas(mm2); recomputeBlockElimination(block2); }
-    }
+    var bidx2 = Number(t.getAttribute("data-block"));
+    var block2 = tour3.blocks[bidx2];
+    var mm2 = block2.matches.find(function(x){return x.id===mid2;});
+    if(mm2){ undoMatchDeltas(mm2); recomputeBlockElimination(block2); }
     saveState(); render();
+  }
+  else if(action==="resolve-elim-match"){
+    var tid6=t.getAttribute("data-tid"); var tour6=findTournament(tid6);
+    if(!tour6) return;
+    if(tour6.prelim.aliveCount <= tour6.advanceCount) return;
+    var side=t.getAttribute("data-side"); var mid5=t.getAttribute("data-mid"); var winner3=t.getAttribute("data-winner");
+    var match5 = findElimMatch(tour6, side, mid5);
+    if(match5 && !match5.winner && !match5.bye){
+      resolveMatch(match5, winner3);
+      advanceElimPrelim(tour6);
+      recomputeElimPrelim(tour6);
+      saveState(); render();
+    }
+  }
+  else if(action==="undo-elim-match"){
+    var tid7=t.getAttribute("data-tid"); var tour7=findTournament(tid7);
+    if(!tour7) return;
+    var side2=t.getAttribute("data-side"); var mid6=t.getAttribute("data-mid");
+    var match6 = findElimMatch(tour7, side2, mid6);
+    if(match6 && canUndoElimMatch(tour7, side2, match6)){
+      undoMatchDeltas(match6);
+      recomputeElimPrelim(tour7);
+      saveState(); render();
+    }
   }
   else if(action==="resolve-bracket"){
     var tid4=t.getAttribute("data-tid"); var tour4=findTournament(tid4);
@@ -1124,13 +1401,6 @@ document.addEventListener("change", function(e){
   else if(action==="update-prev-champion"){
     state.previousChampionId = t.value || null; saveState(); render();
   }
-  else if(action==="format-select"){
-    var isLeague = t.value==="league";
-    var extra = document.getElementById("tournament-only-fields");
-    var note = document.getElementById("league-note");
-    if(extra) extra.style.display = isLeague ? "none" : "flex";
-    if(note) note.style.display = isLeague ? "block" : "none";
-  }
   else if(action==="import-file"){
     if(t.files && t.files[0]) importDataFromFile(t.files[0]);
   }
@@ -1157,18 +1427,21 @@ document.addEventListener("submit", function(e){
     e.preventDefault();
     var fd2 = new FormData(form);
     var name = (fd2.get("name")||"").trim();
-    var format = fd2.get("format");
+    var topFormat = fd2.get("topFormat") || "elimPrelim";
     var participantIds = Array.from(form.querySelectorAll('[name="participant"]:checked')).map(function(cb){return cb.value;});
     if(!name){ alert("大会名を入力してください。"); return; }
-    if(format==="league"){
-      if(participantIds.length<2){ alert("2名以上の参加者を選択してください。"); return; }
-      createTournament({name:name, format:"league", participantIds:participantIds});
+    if(topFormat==="elimPrelim"){
+      var prelimType = fd2.get("prelimType") || "single";
+      var advanceCount = Math.max(2, Math.round(Number(fd2.get("advanceCount"))||2));
+      if(participantIds.length < 2){ alert("2名以上の参加者を選択してください。"); return; }
+      if(participantIds.length < advanceCount){ alert("決勝進出人数より参加人数が少なくなっています。"); return; }
+      createTournament({name:name, format:"elimPrelim", participantIds:participantIds, prelimType:prelimType, advanceCount:advanceCount});
     } else {
       var blockCount = Math.max(1, Math.round(Number(fd2.get("blockCount"))||1));
       var advancePerBlock = Math.max(1, Math.round(Number(fd2.get("advancePerBlock"))||1));
       if(participantIds.length < blockCount*2){ alert("参加人数がブロック数に対して少なすぎます。"); return; }
       if(participantIds.length < blockCount*advancePerBlock){ alert("進出人数の合計より参加人数が少なくなっています。"); return; }
-      createTournament({name:name, format:"tournament", participantIds:participantIds, blockCount:blockCount, advancePerBlock:advancePerBlock});
+      createTournament({name:name, format:"blockPrelim", participantIds:participantIds, blockCount:blockCount, advancePerBlock:advancePerBlock});
     }
   }
 }, false);
