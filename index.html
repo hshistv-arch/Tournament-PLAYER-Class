@@ -196,7 +196,7 @@ details[open] > summary:before{content:"▾ ";}
 .bflow-round-label{flex:none; font-size:.74rem; color:var(--muted); text-align:center; letter-spacing:.03em; margin-bottom:.5rem;}
 .bflow-slots{flex:1; display:flex; flex-direction:column; justify-content:space-around; position:relative; min-height:220px;}
 .bflow-match{
-  flex:none; height:62px; margin:5px 0; border:1px solid var(--border); border-radius:8px; background:var(--surface);
+  flex:none; height:84px; margin:5px 0; border:1px solid var(--border); border-radius:8px; background:var(--surface);
   box-shadow:var(--shadow); display:flex; flex-direction:column; overflow:hidden; position:relative; z-index:1;
 }
 .bflow-side{
@@ -214,7 +214,8 @@ details[open] > summary:before{content:"▾ ";}
   position:absolute; right:-34px; width:34px; border-top:2px solid var(--border); border-bottom:2px solid var(--border);
   border-right:2px solid var(--border); box-sizing:border-box; pointer-events:none; z-index:0;
 }
-.bflow-match-undo{position:absolute; top:-11px; right:4px; z-index:2;}
+.bflow-match-footer{flex:none; height:24px; display:flex; align-items:center; justify-content:flex-end; padding:0 .4rem; border-top:1px solid var(--border); background:var(--surface-2);}
+.bflow-match-footer .btn{padding:.05rem .4rem; font-size:.66rem;}
 
 /* ---- simple round list (losers bracket) ---- */
 .simple-bracket{display:flex; gap:1.6rem; overflow-x:auto; padding:.3rem .1rem 1rem;}
@@ -846,6 +847,18 @@ function groupOrBlockHasProgress(t, idx){
   var lbHas = g.lb && g.lb.rounds.some(function(r){ return r.some(function(m){ return m.winner && !m.bye; }); });
   return wbHas || !!lbHas;
 }
+function resizeGroupOrBlockSlots(t, idx, newSize){
+  var groups = t.format==="blockPrelim" ? t.blocks : t.groups;
+  var g = groups[idx];
+  var newLen = newSize;
+  if(t.format==="elimPrelim"){
+    newLen = 1; while(newLen < newSize) newLen *= 2;
+  }
+  var newSlots = g.slots.slice(0, newLen);
+  while(newSlots.length < newLen) newSlots.push(null);
+  g.slots = newSlots;
+  g.targetSize = newSize;
+}
 
 // ---------- roster mutation actions ----------
 function addPlayer(name, points){
@@ -1387,8 +1400,8 @@ function renderBracketFlow(rounds, roundLabelFn, opts){
     }
     var matches = roundMatches.map(function(m){
       var undo = (m.winner && !m.bye) ?
-        '<button class="btn btn-sm btn-ghost bflow-match-undo" data-action="'+opts.undoActionName+'" data-mid="'+m.id+'" '+opts.extraAttrs+'>取消</button>' : "";
-      return '<div class="bflow-match">'+undo+bflowSideHTML(m, m.a, opts)+bflowSideHTML(m, m.b, opts)+'</div>';
+        '<button class="btn btn-sm btn-ghost" data-action="'+opts.undoActionName+'" data-mid="'+m.id+'" '+opts.extraAttrs+'>取消</button>' : "";
+      return '<div class="bflow-match">'+bflowSideHTML(m, m.a, opts)+bflowSideHTML(m, m.b, opts)+'<div class="bflow-match-footer">'+undo+'</div></div>';
     }).join("");
     return '<div class="bflow-round"><div class="bflow-round-label">'+roundLabelFn(ri, rounds.length)+'</div>'+
       '<div class="bflow-slots">'+connectors+matches+'</div></div>';
@@ -1446,6 +1459,12 @@ function renderBlockPrelimTournament(t){
   if(t.finals){ out += renderFinalsSection(t); }
   return out;
 }
+function renderGroupControls(t, kind, idx, size, advanceLabel, advanceValue, advanceAction){
+  return '<div class="form-row" style="align-items:end;margin-bottom:.7rem">'+
+    '<div class="field" style="width:6rem"><label>人数</label><input type="number" class="num" min="1" value="'+size+'" data-action="resize-group" data-kind="'+kind+'" data-idx="'+idx+'" data-tid="'+t.id+'" style="width:5rem"></div>'+
+    '<div class="field" style="width:11rem"><label>'+advanceLabel+'</label><input type="number" class="num" min="1" value="'+advanceValue+'" data-action="'+advanceAction+'" data-tid="'+t.id+'" style="width:5rem"></div>'+
+  '</div>';
+}
 function renderOneBlock(t, block){
   var standings = block.playerIds.slice().sort(function(a,b){
     var wa = block.matches.filter(function(m){return m.winner===a;}).length;
@@ -1462,6 +1481,7 @@ function renderOneBlock(t, block){
   }).join("");
   var matches = block.matches.map(function(m){ return matchRow(m, "prelim", 'data-tid="'+t.id+'" data-block="'+block.index+'"'); }).join("");
   return '<div class="card"><h3>ブロック '+(block.index+1)+'</h3>'+
+    renderGroupControls(t, "block", block.index, block.targetSize, "各ブロックの決勝進出人数", t.advancePerBlock, "update-advance-per-block")+
     renderEditSlots(t, "block", block.index, block.slots, false)+
     '<div class="table-wrap"><table class="data"><thead><tr><th>氏名</th><th>クラス</th><th>ポイント</th><th>戦績</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
     '<div style="margin-top:.6rem">'+matches+'</div></div>';
@@ -1491,9 +1511,9 @@ function renderElimPrelimTournament(t){
 function renderOneGroup(t, g){
   var reached = g.aliveCount <= t.advancePerGroup;
   var sec = '<div class="card"><h3>グループ'+(g.index+1)+' ・ 勝者側ブラケット</h3>'+
+    renderGroupControls(t, "group", g.index, g.targetSize, "各グループの決勝進出人数", t.advancePerGroup, "update-advance-per-group")+
     renderEditSlots(t, "group", g.index, g.slots, true)+
     '<div class="prelim-status-row">'+
-    '<span class="hint">決勝進出人数: <b class="num">'+t.advancePerGroup+'</b>名</span>'+
     '<span class="hint">現在の勝ち残り: <span class="prelim-alive-pill num" style="color:'+(reached?'var(--win)':'var(--text)')+'">'+g.aliveCount+'</span>名</span>'+
     (reached?'<span class="pill" style="color:var(--win);border-color:var(--win)">進出人数に到達</span>':'')+
     '</div>'+
@@ -1748,6 +1768,47 @@ document.addEventListener("change", function(e){
         else rebuildGroupFromSlots(toura, groups[gi]);
       });
     }
+    saveState(); render();
+  }
+  else if(action==="resize-group"){
+    var tidR=t.getAttribute("data-tid"); var tourR=findTournament(tidR);
+    if(!tourR) return;
+    var idxR=Number(t.getAttribute("data-idx"));
+    var newSize=Math.max(1, Math.round(Number(t.value))||1);
+    var hasProgR = tourR.status!=="assigning" && (groupOrBlockHasProgress(tourR, idxR) || !!tourR.finals);
+    if(hasProgR && !confirm("人数を変更すると、既に入力されている対戦結果(場合によっては決勝トーナメントの結果も)が取り消されます。よろしいですか?")){
+      render();
+      return;
+    }
+    if(tourR.finals) unwindFinalsIfNeeded(tourR);
+    resizeGroupOrBlockSlots(tourR, idxR, newSize);
+    if(tourR.status!=="assigning"){
+      var groupsR = tourR.format==="blockPrelim" ? tourR.blocks : tourR.groups;
+      if(tourR.format==="blockPrelim") rebuildBlockFromSlots(tourR, groupsR[idxR]);
+      else rebuildGroupFromSlots(tourR, groupsR[idxR]);
+    }
+    saveState(); render();
+  }
+  else if(action==="update-advance-per-group"){
+    var tidAG=t.getAttribute("data-tid"); var tourAG=findTournament(tidAG);
+    if(!tourAG) return;
+    var vAG=Math.max(1, Math.round(Number(t.value))||1);
+    if(tourAG.finals && vAG!==tourAG.advancePerGroup){
+      if(!confirm("決勝進出人数を変更すると、既に確定している決勝トーナメントの結果が取り消されます。よろしいですか?")){ render(); return; }
+      unwindFinalsIfNeeded(tourAG);
+    }
+    tourAG.advancePerGroup = vAG;
+    saveState(); render();
+  }
+  else if(action==="update-advance-per-block"){
+    var tidAB=t.getAttribute("data-tid"); var tourAB=findTournament(tidAB);
+    if(!tourAB) return;
+    var vAB=Math.max(1, Math.round(Number(t.value))||1);
+    if(tourAB.finals && vAB!==tourAB.advancePerBlock){
+      if(!confirm("決勝進出人数を変更すると、既に確定している決勝トーナメントの結果が取り消されます。よろしいですか?")){ render(); return; }
+      unwindFinalsIfNeeded(tourAB);
+    }
+    tourAB.advancePerBlock = vAB;
     saveState(); render();
   }
   else if(action==="update-score"){
