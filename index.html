@@ -214,8 +214,9 @@ details[open] > summary:before{content:"▾ ";}
   position:absolute; right:-34px; width:34px; border-top:2px solid var(--border); border-bottom:2px solid var(--border);
   border-right:2px solid var(--border); box-sizing:border-box; pointer-events:none; z-index:0;
 }
-.bflow-match-footer{flex:none; height:24px; display:flex; align-items:center; justify-content:flex-end; padding:0 .4rem; border-top:1px solid var(--border); background:var(--surface-2);}
-.bflow-match-footer .btn{padding:.05rem .4rem; font-size:.66rem;}
+.bflow-match-footer{flex:none; height:24px; display:flex; align-items:center; justify-content:space-between; padding:0 .4rem; border-top:1px solid var(--border); background:var(--surface-2);}
+.bflow-match-footer .btn{padding:.05rem .4rem; font-size:.66rem; margin-left:auto;}
+.match-no{font-size:.66rem; color:var(--muted); font-family:var(--font-num);}
 
 /* ---- simple round list (losers bracket) ---- */
 .simple-bracket{display:flex; gap:1.6rem; overflow-x:auto; padding:.3rem .1rem 1rem;}
@@ -303,7 +304,7 @@ var BONUS_DEFAULT = {
   champion:2,
   championBelowB:4,
   bestBInFinals:2,
-  bestBorCInFinals:2,
+  bestCInFinals:2,
   beatPrevChampion:1,
   prelimDoubleLossPenalty:-3
 };
@@ -315,11 +316,11 @@ var BONUS_LABELS = {
   champion:"優勝",
   championBelowB:"優勝(Bクラス以下)",
   bestBInFinals:"決勝進出者中ベストBクラス",
-  bestBorCInFinals:"決勝進出者中ベストB/Cクラス",
+  bestCInFinals:"決勝進出者中ベストCクラス",
   beatPrevChampion:"前回優勝者に勝利",
   prelimDoubleLossPenalty:"予選2敗による敗退"
 };
-var BONUS_ORDER = ["finalsAdvance","runnerUp","runnerUpBelowB","champion","championBelowB","bestBInFinals","bestBorCInFinals","beatPrevChampion","prelimDoubleLossPenalty"];
+var BONUS_ORDER = ["finalsAdvance","runnerUp","runnerUpBelowB","champion","championBelowB","bestBInFinals","bestCInFinals","beatPrevChampion","prelimDoubleLossPenalty"];
 
 var PLAYER_SEED = [
 ["池田 義則",55],["石井 伸之",100],["岩崎 勝男",65],["岩崎 真也",65],["牛久保 ユウタ",87],
@@ -355,6 +356,16 @@ function defaultState(){
 var STORAGE_KEY = "billiards_tourney_state_v4";
 var state = null;
 
+function migrateBestBorC(parsed){
+  if(parsed && parsed.settings && parsed.settings.bonuses){
+    var b = parsed.settings.bonuses;
+    if(b.bestBorCInFinals!==undefined && b.bestCInFinals===undefined){
+      b.bestCInFinals = b.bestBorCInFinals;
+      delete b.bestBorCInFinals;
+    }
+  }
+  return parsed;
+}
 function loadState(){
   try{
     var raw = localStorage.getItem(STORAGE_KEY);
@@ -362,7 +373,7 @@ function loadState(){
       var parsed = JSON.parse(raw);
       if(parsed && parsed.settings && parsed.players){
         parsed.entries = parsed.entries || {};
-        return parsed;
+        return migrateBestBorC(parsed);
       }
     }
     var legacy = localStorage.getItem("billiards_tourney_state_v3");
@@ -370,7 +381,7 @@ function loadState(){
       var parsedLegacy = JSON.parse(legacy);
       if(parsedLegacy && parsedLegacy.settings && parsedLegacy.players){
         parsedLegacy.entries = {};
-        return parsedLegacy;
+        return migrateBestBorC(parsedLegacy);
       }
     }
   }catch(e){ console.warn("state load failed", e); }
@@ -776,7 +787,7 @@ function finalizeTournamentResult(t){
   }
   var entrants = t.finals.entrants;
   var bTier = entrants.filter(function(id){ return tierOf(classOf(pointsOf(id)))==="B"; });
-  var bcTier = entrants.filter(function(id){ var tt=tierOf(classOf(pointsOf(id))); return tt==="B"||tt==="C"; });
+  var cTier = entrants.filter(function(id){ return tierOf(classOf(pointsOf(id)))==="C"; });
   function pickBest(list){
     if(!list.length) return null;
     return list.slice().sort(function(a,b){
@@ -787,8 +798,8 @@ function finalizeTournamentResult(t){
   }
   var bestB = pickBest(bTier);
   if(bestB && bonuses.bestBInFinals){ getPlayer(bestB).points += bonuses.bestBInFinals; finishDeltas.push({playerId:bestB, amount:bonuses.bestBInFinals, reason:BONUS_LABELS.bestBInFinals}); }
-  var bestBC = pickBest(bcTier);
-  if(bestBC && bonuses.bestBorCInFinals){ getPlayer(bestBC).points += bonuses.bestBorCInFinals; finishDeltas.push({playerId:bestBC, amount:bonuses.bestBorCInFinals, reason:BONUS_LABELS.bestBorCInFinals}); }
+  var bestC = pickBest(cTier);
+  if(bestC && bonuses.bestCInFinals){ getPlayer(bestC).points += bonuses.bestCInFinals; finishDeltas.push({playerId:bestC, amount:bonuses.bestCInFinals, reason:BONUS_LABELS.bestCInFinals}); }
   t.finishDeltas = finishDeltas;
   t.championId = championId;
   t.runnerUpId = runnerUpId;
@@ -897,6 +908,7 @@ function createTournament(opts){
       return { index:bi, targetSize:size, slots:new Array(size).fill(null) };
     });
     t.finals = null;
+    t.blocks.forEach(function(b){ rebuildBlockFromSlots(t, b); });
   } else {
     t.prelimType = opts.prelimType;
     t.advancePerGroup = opts.advancePerGroup;
@@ -906,15 +918,46 @@ function createTournament(opts){
       return { index:gi, targetSize:size, slots:new Array(bracketSize).fill(null) };
     });
     t.finals = null;
+    t.groups.forEach(function(g){ rebuildGroupFromSlots(t, g); });
   }
   state.tournaments.push(t);
   state.currentTournamentId = id;
   saveState();
   navigate({screen:"tournament", id:id});
 }
+function reverseAllTournamentEffects(t){
+  if(t.finals){
+    reverseFinalize(t);
+    t.finals.rounds.forEach(function(r){ r.forEach(function(m){ if(m.winner && !m.bye) undoMatchDeltas(m); }); });
+  }
+  if(t.advanceBonusApplied){
+    Object.keys(t.advanceBonusApplied).forEach(function(id){
+      var p=getPlayer(id); if(p) p.points -= t.advanceBonusApplied[id];
+    });
+  }
+  if(t.format==="blockPrelim"){
+    (t.blocks||[]).forEach(function(b){
+      (b.matches||[]).forEach(function(m){ if(m.winner) undoMatchDeltas(m); });
+      if(b.penaltyDeltas){
+        Object.keys(b.penaltyDeltas).forEach(function(id){ var p=getPlayer(id); if(p) p.points -= b.penaltyDeltas[id]; });
+      }
+    });
+  } else {
+    (t.groups||[]).forEach(function(g){
+      if(g.wb){ g.wb.rounds.forEach(function(r){ r.forEach(function(m){ if(m.winner && !m.bye) undoMatchDeltas(m); }); }); }
+      if(g.lb){ g.lb.rounds.forEach(function(r){ r.forEach(function(m){ if(m.winner && !m.bye) undoMatchDeltas(m); }); }); }
+      if(g.penaltyDeltas){
+        Object.keys(g.penaltyDeltas).forEach(function(id){ var p=getPlayer(id); if(p) p.points -= g.penaltyDeltas[id]; });
+      }
+    });
+  }
+}
 function deleteTournament(id){
-  if(!confirm("この大会の記録を削除しますか?この操作は取り消せません(選手の現在ポイントは変わりません)。")) return;
-  state.tournaments = state.tournaments.filter(function(t){ return t.id!==id; });
+  var t = findTournament(id);
+  if(!t) return;
+  if(!confirm("この大会の記録を削除しますか?この操作は取り消せません。この大会で加減算されたポイントはすべて元に戻ります。")) return;
+  reverseAllTournamentEffects(t);
+  state.tournaments = state.tournaments.filter(function(x){ return x.id!==id; });
   saveState();
   navigate({screen:"history"});
 }
@@ -945,23 +988,6 @@ function assignSlot(t, targetIdx, targetSlotIdx, newPlayerId){
   return touched;
 }
 function confirmLineup(t){
-  if(t.format==="blockPrelim"){
-    t.blocks.forEach(function(b){
-      var real = b.slots.filter(function(x){ return x; });
-      b.playerIds = real;
-      b.matches = roundRobinPairs(real).map(function(pair,i){ return {id:"b"+b.index+"m"+i, a:pair[0], b:pair[1], winner:null, deltas:null, score:{a:null,b:null}}; });
-      b.eliminated={}; b.losses={}; b.penaltyDeltas={}; b.advanced=[];
-    });
-  } else {
-    t.groups.forEach(function(g){
-      g.wb = buildBracketFromSlots(g.slots);
-      g.lb = t.prelimType==="double" ? {rounds:[]} : null;
-      g.losses={}; g.eliminated={}; g.penaltyDeltas={};
-      g.threshold = t.prelimType==="double" ? 2 : 1;
-      advanceElimGroup(t, g);
-      recomputeElimGroup(t, g);
-    });
-  }
   t.status = "prelim";
   saveState(); render();
 }
@@ -1272,10 +1298,11 @@ function renderHistory(){
   return '<div class="page-head"><h1>大会一覧</h1></div><div style="display:flex;flex-direction:column;gap:.7rem">'+cards+'</div>';
 }
 
-function matchRow(match, tprefix, extraActionData){
+function matchRow(match, tprefix, extraActionData, matchNo, resolvable){
   var a = match.a, b = match.b;
   var resolved = !!match.winner;
   var actionData = extraActionData || "";
+  if(resolvable===undefined) resolvable = true;
   function sideBtn(id, side){
     if(!id) return '<span class="hint">(不戦)</span>';
     var label = playerName(id)+" ("+classOf(pointsOf(id))+")";
@@ -1286,12 +1313,15 @@ function matchRow(match, tprefix, extraActionData){
       var val = score[side];
       scoreHTML = '<input type="number" class="num score-input-inline" min="0" data-action="update-score" data-scope="block" data-which="'+side+'" data-mid="'+match.id+'" '+actionData+' value="'+(val==null?"":val)+'" placeholder="-">';
     }
+    var clickable = !resolved && resolvable;
     return '<button class="btn btn-sm'+(isWinner?' btn-felt':'')+'" '+
-      (resolved?'disabled':'')+' data-action="resolve-match" data-scope="'+tprefix+'" data-mid="'+match.id+'" data-winner="'+id+'" '+actionData+'>'+
+      (clickable?'':'disabled')+' data-action="resolve-match" data-scope="'+tprefix+'" data-mid="'+match.id+'" data-winner="'+id+'" '+actionData+'>'+
       esc(label)+(isWinner?' 🏆':'')+'</button>'+scoreHTML;
   }
   var undo = resolved ? '<button class="btn btn-sm btn-ghost" data-action="undo-match" data-scope="'+tprefix+'" data-mid="'+match.id+'" '+actionData+'>取消</button>' : '';
+  var matchNoHTML = matchNo ? '<span class="match-no">No.'+matchNo+'</span>' : "";
   return '<div class="match-row">'+
+    matchNoHTML+
     '<div class="match-side">'+sideBtn(a,"a")+'</div>'+
     '<div class="match-vs">vs</div>'+
     '<div class="match-side">'+sideBtn(b,"b")+'</div>'+
@@ -1317,34 +1347,6 @@ function rosterOptionsHTML(currentValue, allowBye, eligibleIds){
   }).join("");
   return opts;
 }
-function renderAssigningSection(t){
-  var out = '<div class="card"><h3>組み合わせ</h3><p class="hint">各枠のプルダウンから出場選手を選んでください。未割当のまま残った枠は不戦(空き)として扱われます。</p>';
-  if(t.format==="blockPrelim"){
-    out += '<div style="display:flex;gap:1rem;flex-wrap:wrap">'+t.blocks.map(function(b){
-      var rows = b.slots.map(function(id, si){
-        return '<div class="form-row" style="margin:.25rem 0"><select data-action="assign-slot" data-kind="block" data-idx="'+b.index+'" data-slot="'+si+'" data-tid="'+t.id+'" style="width:100%">'+
-          rosterOptionsHTML(id, false, t.eligiblePlayerIds)+'</select></div>';
-      }).join("");
-      return '<div class="assign-group" style="flex:1;min-width:220px"><h3 style="font-size:.9rem">ブロック '+(b.index+1)+'</h3>'+rows+'</div>';
-    }).join("")+'</div>';
-  } else {
-    out += t.groups.map(function(g){
-      var slots = g.slots;
-      var rows="";
-      for(var i=0;i<slots.length;i+=2){
-        rows += '<div class="form-row" style="align-items:center;flex-wrap:nowrap;gap:.5rem">'+
-          '<span class="hint num" style="width:4rem;flex:none">第'+(i/2+1)+'試合</span>'+
-          '<select data-action="assign-slot" data-kind="group" data-idx="'+g.index+'" data-slot="'+i+'" data-tid="'+t.id+'" style="flex:1;min-width:0">'+rosterOptionsHTML(slots[i], true, t.eligiblePlayerIds)+'</select>'+
-          '<span class="hint" style="flex:none">vs</span>'+
-          '<select data-action="assign-slot" data-kind="group" data-idx="'+g.index+'" data-slot="'+(i+1)+'" data-tid="'+t.id+'" style="flex:1;min-width:0">'+rosterOptionsHTML(slots[i+1], true, t.eligiblePlayerIds)+'</select>'+
-        '</div>';
-      }
-      return '<div class="assign-group"><h3 style="font-size:.9rem">グループ '+(g.index+1)+'</h3>'+rows+'</div>';
-    }).join("");
-  }
-  out += '</div><div class="card"><button class="btn btn-primary" data-action="confirm-lineup" data-tid="'+t.id+'">組み合わせを確定して大会を開始する</button></div>';
-  return out;
-}
 function renderEditSlots(t, kind, groupIdx, slots, pairwise){
   var rows;
   if(pairwise){
@@ -1363,7 +1365,7 @@ function renderEditSlots(t, kind, groupIdx, slots, pairwise){
         rosterOptionsHTML(id, false, t.eligiblePlayerIds)+'</select></div>';
     }).join("");
   }
-  return '<details style="margin-bottom:.7rem"><summary class="hint" style="cursor:pointer">出場選手を編集</summary><div style="margin-top:.5rem">'+rows+'</div></details>';
+  return '<details open style="margin-bottom:.7rem"><summary class="hint" style="cursor:pointer">出場選手を編集</summary><div style="margin-top:.5rem">'+rows+'</div></details>';
 }
 
 // ---------- connected bracket visual ----------
@@ -1388,6 +1390,7 @@ function bflowSideHTML(m, playerId, opts){
   return '<div class="'+cls+'" '+attrs+'><span class="pname">'+esc(playerName(playerId))+' '+badge(classOf(pointsOf(playerId)))+'</span>'+scoreHTML+'<span class="pts num">'+pointsOf(playerId)+'</span></div>';
 }
 function renderBracketFlow(rounds, roundLabelFn, opts){
+  var counter = 0;
   var html = rounds.map(function(roundMatches, ri){
     var n = roundMatches.length;
     var isLast = ri===rounds.length-1;
@@ -1399,9 +1402,11 @@ function renderBracketFlow(rounds, roundLabelFn, opts){
       }
     }
     var matches = roundMatches.map(function(m){
+      counter++;
       var undo = (m.winner && !m.bye) ?
         '<button class="btn btn-sm btn-ghost" data-action="'+opts.undoActionName+'" data-mid="'+m.id+'" '+opts.extraAttrs+'>取消</button>' : "";
-      return '<div class="bflow-match">'+bflowSideHTML(m, m.a, opts)+bflowSideHTML(m, m.b, opts)+'<div class="bflow-match-footer">'+undo+'</div></div>';
+      var noHTML = m.bye ? "" : '<span class="match-no">No.'+counter+'</span>';
+      return '<div class="bflow-match">'+bflowSideHTML(m, m.a, opts)+bflowSideHTML(m, m.b, opts)+'<div class="bflow-match-footer">'+noHTML+undo+'</div></div>';
     }).join("");
     return '<div class="bflow-round"><div class="bflow-round-label">'+roundLabelFn(ri, rounds.length)+'</div>'+
       '<div class="bflow-slots">'+connectors+matches+'</div></div>';
@@ -1429,11 +1434,14 @@ function simpleSideHTML(m, playerId, opts){
 }
 function renderSimpleRounds(rounds, roundLabelFn, opts){
   if(!rounds.length) return '<p class="empty-note">敗者復活ブロックの組み合わせはまだありません。</p>';
+  var counter = 0;
   var html = rounds.map(function(roundMatches, ri){
     var matches = roundMatches.map(function(m){
+      counter++;
       var undo = (m.winner && !m.bye) ?
-        '<div style="text-align:right"><button class="btn btn-sm btn-ghost" data-action="'+opts.undoActionName+'" data-mid="'+m.id+'" '+opts.extraAttrs+'>取消</button></div>' : "";
-      return '<div class="simple-match">'+simpleSideHTML(m, m.a, opts)+simpleSideHTML(m, m.b, opts)+undo+'</div>';
+        '<button class="btn btn-sm btn-ghost" data-action="'+opts.undoActionName+'" data-mid="'+m.id+'" '+opts.extraAttrs+'>取消</button>' : "";
+      var noHTML = m.bye ? "" : '<span class="match-no">No.'+counter+'</span>';
+      return '<div class="simple-match">'+simpleSideHTML(m, m.a, opts)+simpleSideHTML(m, m.b, opts)+'<div class="bflow-match-footer">'+noHTML+undo+'</div></div>';
     }).join("");
     return '<div class="simple-round"><div class="simple-round-label">敗者復活 '+(ri+1)+'回戦</div>'+matches+'</div>';
   }).join("");
@@ -1447,11 +1455,11 @@ function renderBlockPrelimTournament(t){
     '<span class="pill '+t.status+'">'+STATUS_LABEL[t.status]+'</span></p></div>'+
     '<button class="btn btn-sm" data-action="nav" data-screen="history">一覧へ戻る</button></div>';
   var out = header;
-  if(t.status==="assigning"){
-    out += renderAssigningSection(t);
-    return out;
-  }
   out += t.blocks.map(function(block){ return renderOneBlock(t, block); }).join("");
+  if(t.status==="assigning"){
+    out += '<div class="card"><p class="hint">各枠の選手を選び終えたら、下のボタンで大会を開始してください。</p>'+
+      '<button class="btn btn-primary" data-action="confirm-lineup" data-tid="'+t.id+'">組み合わせを確定して大会を開始する</button></div>';
+  }
   if(t.status==="prelim"){
     out += '<div class="card"><h3>決勝進出者を確定</h3><p class="hint">各ブロック上位'+t.advancePerBlock+'名が決勝トーナメントに進出します(決勝進出ボーナス '+state.settings.bonuses.finalsAdvance+'pt が付与されます)。</p>'+
       '<button class="btn btn-primary" data-action="finalize-block-prelim" data-tid="'+t.id+'">予選を締めて決勝進出者を確定する</button></div>';
@@ -1479,7 +1487,7 @@ function renderOneBlock(t, block){
       '<td class="num">'+pointsOf(id)+'</td><td class="num">'+w+'勝'+(block.losses?(block.losses[id]||0):0)+'敗</td>'+
       '<td>'+(elim?'<span class="pill" style="color:var(--loss);border-color:var(--loss)">予選敗退</span>':'')+'</td></tr>';
   }).join("");
-  var matches = block.matches.map(function(m){ return matchRow(m, "prelim", 'data-tid="'+t.id+'" data-block="'+block.index+'"'); }).join("");
+  var matches = block.matches.map(function(m,mi){ return matchRow(m, "prelim", 'data-tid="'+t.id+'" data-block="'+block.index+'"', mi+1, t.status==="prelim"); }).join("");
   return '<div class="card"><h3>ブロック '+(block.index+1)+'</h3>'+
     renderGroupControls(t, "block", block.index, block.targetSize, "各ブロックの決勝進出人数", t.advancePerBlock, "update-advance-per-block")+
     renderEditSlots(t, "block", block.index, block.slots, false)+
@@ -1495,11 +1503,11 @@ function renderElimPrelimTournament(t){
     '<span class="pill '+t.status+'">'+STATUS_LABEL[t.status]+'</span></p></div>'+
     '<button class="btn btn-sm" data-action="nav" data-screen="history">一覧へ戻る</button></div>';
   var out = header;
-  if(t.status==="assigning"){
-    out += renderAssigningSection(t);
-    return out;
-  }
   out += t.groups.map(function(g){ return renderOneGroup(t, g); }).join("");
+  if(t.status==="assigning"){
+    out += '<div class="card"><p class="hint">各枠の選手を選び終えたら、下のボタンで大会を開始してください。</p>'+
+      '<button class="btn btn-primary" data-action="confirm-lineup" data-tid="'+t.id+'">組み合わせを確定して大会を開始する</button></div>';
+  }
   if(t.status==="prelim"){
     out += '<div class="card"><h3>決勝進出者を確定</h3>'+
       '<p class="hint">各グループの勝ち残り上位'+t.advancePerGroup+'名が決勝トーナメントに進出します(決勝進出ボーナス '+state.settings.bonuses.finalsAdvance+'pt が付与されます)。</p>'+
@@ -1518,7 +1526,7 @@ function renderOneGroup(t, g){
     (reached?'<span class="pill" style="color:var(--win);border-color:var(--win)">進出人数に到達</span>':'')+
     '</div>'+
     renderBracketFlow(g.wb.rounds, function(ri){ return "グループ"+(g.index+1)+" "+(ri+1)+"回戦"; }, {
-      resolvable: !reached,
+      resolvable: t.status==="prelim" && !reached,
       actionName: "resolve-elim-match",
       undoActionName: "undo-elim-match",
       scoreScope: "elim",
@@ -1528,7 +1536,7 @@ function renderOneGroup(t, g){
   if(t.prelimType==="double"){
     sec += '<div class="card"><h3>グループ'+(g.index+1)+' ・ 敗者復活ブロック</h3><p class="hint">1敗した選手が入り、ここでもう1敗すると失格になります。</p>'+
       renderSimpleRounds(g.lb.rounds, null, {
-        resolvable: !reached,
+        resolvable: t.status==="prelim" && !reached,
         actionName: "resolve-elim-match",
         undoActionName: "undo-elim-match",
         scoreScope: "elim",
@@ -1617,6 +1625,7 @@ document.addEventListener("click", function(e){
   else if(action==="resolve-match"){
     var tid2 = t.getAttribute("data-tid"); var tour2 = findTournament(tid2);
     if(!tour2) return;
+    if(tour2.status!=="prelim") return;
     var mid = t.getAttribute("data-mid"); var winner = t.getAttribute("data-winner");
     var bidx = Number(t.getAttribute("data-block"));
     var block = tour2.blocks[bidx];
@@ -1637,6 +1646,7 @@ document.addEventListener("click", function(e){
   else if(action==="resolve-elim-match"){
     var tid6=t.getAttribute("data-tid"); var tour6=findTournament(tid6);
     if(!tour6) return;
+    if(tour6.status!=="prelim") return;
     var gi=Number(t.getAttribute("data-group"));
     var g = tour6.groups[gi];
     if(g.aliveCount <= tour6.advancePerGroup) return;
@@ -1754,20 +1764,18 @@ document.addEventListener("change", function(e){
     if(!toura) return;
     var idx=Number(t.getAttribute("data-idx"));
     var slotIdx=Number(t.getAttribute("data-slot"));
-    var needsWarning = toura.status!=="assigning" && (groupOrBlockHasProgress(toura, idx) || !!toura.finals);
+    var needsWarning = groupOrBlockHasProgress(toura, idx) || !!toura.finals;
     if(needsWarning && !confirm("この枠の選手を変更すると、既に入力されている対戦結果(場合によっては決勝トーナメントの結果も)が取り消されます。よろしいですか?")){
       render();
       return;
     }
     var touched = assignSlot(toura, idx, slotIdx, t.value);
-    if(toura.status!=="assigning"){
-      unwindFinalsIfNeeded(toura);
-      var groups = toura.format==="blockPrelim" ? toura.blocks : toura.groups;
-      touched.forEach(function(gi){
-        if(toura.format==="blockPrelim") rebuildBlockFromSlots(toura, groups[gi]);
-        else rebuildGroupFromSlots(toura, groups[gi]);
-      });
-    }
+    unwindFinalsIfNeeded(toura);
+    var groups = toura.format==="blockPrelim" ? toura.blocks : toura.groups;
+    touched.forEach(function(gi){
+      if(toura.format==="blockPrelim") rebuildBlockFromSlots(toura, groups[gi]);
+      else rebuildGroupFromSlots(toura, groups[gi]);
+    });
     saveState(); render();
   }
   else if(action==="resize-group"){
@@ -1775,18 +1783,16 @@ document.addEventListener("change", function(e){
     if(!tourR) return;
     var idxR=Number(t.getAttribute("data-idx"));
     var newSize=Math.max(1, Math.round(Number(t.value))||1);
-    var hasProgR = tourR.status!=="assigning" && (groupOrBlockHasProgress(tourR, idxR) || !!tourR.finals);
+    var hasProgR = groupOrBlockHasProgress(tourR, idxR) || !!tourR.finals;
     if(hasProgR && !confirm("人数を変更すると、既に入力されている対戦結果(場合によっては決勝トーナメントの結果も)が取り消されます。よろしいですか?")){
       render();
       return;
     }
     if(tourR.finals) unwindFinalsIfNeeded(tourR);
     resizeGroupOrBlockSlots(tourR, idxR, newSize);
-    if(tourR.status!=="assigning"){
-      var groupsR = tourR.format==="blockPrelim" ? tourR.blocks : tourR.groups;
-      if(tourR.format==="blockPrelim") rebuildBlockFromSlots(tourR, groupsR[idxR]);
-      else rebuildGroupFromSlots(tourR, groupsR[idxR]);
-    }
+    var groupsR = tourR.format==="blockPrelim" ? tourR.blocks : tourR.groups;
+    if(tourR.format==="blockPrelim") rebuildBlockFromSlots(tourR, groupsR[idxR]);
+    else rebuildGroupFromSlots(tourR, groupsR[idxR]);
     saveState(); render();
   }
   else if(action==="update-advance-per-group"){
