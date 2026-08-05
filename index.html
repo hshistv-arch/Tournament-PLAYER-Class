@@ -337,6 +337,8 @@ var PLAYER_SEED = [
 ["小林 直樹",105],["小林 涼子",72]
 ];
 
+var CURRENT_ROSTER_VERSION = 2;
+
 function defaultState(){
   return {
     settings:{
@@ -348,6 +350,7 @@ function defaultState(){
     players: PLAYER_SEED.map(function(row,i){
       return {id:"p"+(i+1), name:row[0], points:row[1]};
     }),
+    rosterVersion: CURRENT_ROSTER_VERSION,
     entries: {},
     previousChampionId: null,
     tournaments: [],
@@ -368,6 +371,23 @@ function migrateBestBorC(parsed){
   }
   return parsed;
 }
+function applyRosterUpdate(parsed){
+  var version = parsed.rosterVersion || 1;
+  if(version >= CURRENT_ROSTER_VERSION) return parsed;
+  var byName = {};
+  parsed.players.forEach(function(p){ byName[p.name] = p; });
+  PLAYER_SEED.forEach(function(row){
+    var name = row[0], points = row[1];
+    if(byName[name]){
+      byName[name].points = points;
+    } else {
+      var id = "p_seed_" + Date.now() + "_" + Math.floor(Math.random()*100000);
+      parsed.players.push({id:id, name:name, points:points});
+    }
+  });
+  parsed.rosterVersion = CURRENT_ROSTER_VERSION;
+  return parsed;
+}
 function loadState(){
   try{
     var raw = localStorage.getItem(STORAGE_KEY);
@@ -375,7 +395,7 @@ function loadState(){
       var parsed = JSON.parse(raw);
       if(parsed && parsed.settings && parsed.players){
         parsed.entries = parsed.entries || {};
-        return migrateBestBorC(parsed);
+        return applyRosterUpdate(migrateBestBorC(parsed));
       }
     }
     var legacy = localStorage.getItem("billiards_tourney_state_v3");
@@ -383,7 +403,7 @@ function loadState(){
       var parsedLegacy = JSON.parse(legacy);
       if(parsedLegacy && parsedLegacy.settings && parsedLegacy.players){
         parsedLegacy.entries = {};
-        return migrateBestBorC(parsedLegacy);
+        return applyRosterUpdate(migrateBestBorC(parsedLegacy));
       }
     }
   }catch(e){ console.warn("state load failed", e); }
@@ -1062,7 +1082,10 @@ function render(){
 }
 
 function renderRoster(){
-  var players = state.players.slice().sort(function(a,b){ return b.points-a.points; });
+  var sortMode = route.rosterSort || "points";
+  var players = state.players.slice().sort(function(a,b){
+    return sortMode==="name" ? a.name.localeCompare(b.name, "ja") : b.points-a.points;
+  });
   var total = players.length;
   var avg = total ? Math.round(players.reduce(function(s,p){return s+p.points;},0)/total) : 0;
   var rows = players.map(function(p){
@@ -1088,7 +1111,11 @@ function renderRoster(){
     '</form>'+
   '</div>'+
   '<div class="card">'+
-    '<h3>選手一覧 <span class="hint">(ポイント順)</span></h3>'+
+    '<h3>選手一覧</h3>'+
+    '<div class="tabs" style="margin-bottom:.8rem">'+
+      '<button class="tab'+(sortMode==="points"?" active":"")+'" data-action="roster-sort" data-sort="points">ポイント順</button>'+
+      '<button class="tab'+(sortMode==="name"?" active":"")+'" data-action="roster-sort" data-sort="name">あいうえお順</button>'+
+    '</div>'+
     '<div class="table-wrap"><table class="data">'+
       '<thead><tr><th>氏名</th><th>ポイント</th><th>クラス</th><th></th></tr></thead>'+
       '<tbody>'+rows+'</tbody>'+
@@ -1587,6 +1614,7 @@ document.addEventListener("click", function(e){
     navigate(r);
   }
   else if(action==="settings-tab"){ route = {screen:"settings", tab:t.getAttribute("data-tab")}; render(); }
+  else if(action==="roster-sort"){ route.rosterSort = t.getAttribute("data-sort"); render(); }
   else if(action==="delete-player"){ deletePlayer(t.getAttribute("data-id")); }
   else if(action==="reset-entries"){
     if(confirm("エントリー状況をリセットしますか?")){ state.entries={}; saveState(); render(); }
@@ -1871,6 +1899,7 @@ document.addEventListener("submit", function(e){
 
 // ============ INIT ============
 state = loadState();
+saveState();
 render();
 
 })();
