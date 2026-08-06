@@ -1025,6 +1025,39 @@ function confirmLineup(t){
 }
 
 // ---------- export / import ----------
+function csvEscape(v){
+  v = String(v==null ? "" : v);
+  if(/[",\n\r]/.test(v)){ v = '"' + v.replace(/"/g,'""') + '"'; }
+  return v;
+}
+function exportRosterCSV(){
+  var sortMode = route.rosterSort || "points";
+  var players = state.players.slice().sort(function(a,b){
+    if(sortMode==="name"){
+      var ka=a.kana||a.name, kb=b.kana||b.name;
+      return ka.localeCompare(kb, "ja");
+    }
+    return b.points-a.points;
+  });
+  var lines = ["氏名,読みカナ,ポイント,クラス"];
+  players.forEach(function(p){
+    lines.push([csvEscape(p.name), csvEscape(p.kana||""), p.points, classOf(p.points)].join(","));
+  });
+  var csv = "\uFEFF" + lines.join("\r\n");
+  var filename = "billiards-roster-" + dateStamp() + ".csv";
+  if(window.claude && window.claude.downloads){
+    window.claude.downloads.save({filename:filename, data:csv}).catch(function(err){
+      if(err && err.code==="declined") return;
+      alert("CSVの書き出しに失敗しました: " + (err && err.message ? err.message : err));
+    });
+  } else {
+    var blob = new Blob([csv], {type:"text/csv;charset=utf-8;"});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a"); a.href=url; a.download=filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+}
 function exportData(){
   var dataStr = JSON.stringify(state, null, 2);
   var filename = "billiards-tournament-" + dateStamp() + ".json";
@@ -1127,7 +1160,10 @@ function renderRoster(){
     '</form>'+
   '</div>'+
   '<div class="card">'+
-    '<h3>選手一覧</h3>'+
+    '<div class="form-row" style="align-items:center;justify-content:space-between">'+
+      '<h3 style="margin:0">選手一覧</h3>'+
+      '<button class="btn btn-sm btn-ghost" data-action="export-roster-csv">CSVで書き出す</button>'+
+    '</div>'+
     '<p class="hint">氏名・読みカナ・ポイントはその場で編集できます(変更は自動保存されます)。あいうえお順は読みカナがあればそれを、なければ氏名を使って並べ替えます。</p>'+
     '<div class="tabs" style="margin-bottom:.8rem">'+
       '<button class="tab'+(sortMode==="points"?" active":"")+'" data-action="roster-sort" data-sort="points">ポイント順</button>'+
@@ -1632,6 +1668,7 @@ document.addEventListener("click", function(e){
   }
   else if(action==="settings-tab"){ route = {screen:"settings", tab:t.getAttribute("data-tab")}; render(); }
   else if(action==="roster-sort"){ route.rosterSort = t.getAttribute("data-sort"); render(); }
+  else if(action==="export-roster-csv"){ exportRosterCSV(); }
   else if(action==="delete-player"){ deletePlayer(t.getAttribute("data-id")); }
   else if(action==="reset-entries"){
     if(confirm("エントリー状況をリセットしますか?")){ state.entries={}; saveState(); render(); }
