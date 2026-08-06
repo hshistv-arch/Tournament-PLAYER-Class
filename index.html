@@ -894,13 +894,13 @@ function resizeGroupOrBlockSlots(t, idx, newSize){
 }
 
 // ---------- roster mutation actions ----------
-function addPlayer(name, points){
+function addPlayer(name, points, kana){
   name=(name||"").trim();
   if(!name) return;
   points = Math.round(Number(points));
   if(!isFinite(points)) points=50;
   var id = "p_" + Date.now() + "_" + Math.floor(Math.random()*1000);
-  state.players.push({id:id, name:name, points:points});
+  state.players.push({id:id, name:name, points:points, kana:(kana||"").trim()});
   saveState(); render();
 }
 function updatePlayerPoints(id, points){
@@ -908,6 +908,16 @@ function updatePlayerPoints(id, points){
   points=Math.round(Number(points));
   if(!isFinite(points)) return;
   p.points=points; saveState(); render();
+}
+function updatePlayerName(id, name){
+  var p=getPlayer(id); if(!p) return;
+  name=(name||"").trim();
+  if(!name) return;
+  p.name=name; saveState(); render();
+}
+function updatePlayerKana(id, kana){
+  var p=getPlayer(id); if(!p) return;
+  p.kana=(kana||"").trim(); saveState(); render();
 }
 function deletePlayer(id){
   if(!confirm("この選手をロースターから削除しますか?過去の大会記録の名前表示は保持されます。")) return;
@@ -1084,13 +1094,18 @@ function render(){
 function renderRoster(){
   var sortMode = route.rosterSort || "points";
   var players = state.players.slice().sort(function(a,b){
-    return sortMode==="name" ? a.name.localeCompare(b.name, "ja") : b.points-a.points;
+    if(sortMode==="name"){
+      var ka = a.kana||a.name, kb = b.kana||b.name;
+      return ka.localeCompare(kb, "ja");
+    }
+    return b.points-a.points;
   });
   var total = players.length;
   var avg = total ? Math.round(players.reduce(function(s,p){return s+p.points;},0)/total) : 0;
   var rows = players.map(function(p){
     return '<tr>'+
-      '<td>'+esc(p.name)+'</td>'+
+      '<td><input type="text" style="width:8rem" value="'+esc(p.name)+'" data-action="update-name" data-id="'+p.id+'"></td>'+
+      '<td><input type="text" style="width:7rem" value="'+esc(p.kana||"")+'" placeholder="よみがな" data-action="update-kana" data-id="'+p.id+'"></td>'+
       '<td><input type="number" class="num" style="width:5rem" value="'+p.points+'" data-action="update-points" data-id="'+p.id+'"></td>'+
       '<td>'+badge(classOf(p.points))+'</td>'+
       '<td><button class="btn btn-sm btn-ghost btn-danger" data-action="delete-player" data-id="'+p.id+'">削除</button></td>'+
@@ -1106,18 +1121,20 @@ function renderRoster(){
     '<h3>メンバーを追加</h3>'+
     '<form data-form="add-player" class="form-row">'+
       '<div class="field"><label>氏名</label><input type="text" name="name" placeholder="例: 山田 太郎" required></div>'+
+      '<div class="field"><label>読みカナ</label><input type="text" name="kana" placeholder="例: ヤマダ タロウ"></div>'+
       '<div class="field"><label>初期ポイント</label><input type="number" name="points" value="50" required style="width:6rem"></div>'+
       '<button type="submit" class="btn btn-primary">追加する</button>'+
     '</form>'+
   '</div>'+
   '<div class="card">'+
     '<h3>選手一覧</h3>'+
+    '<p class="hint">氏名・読みカナ・ポイントはその場で編集できます(変更は自動保存されます)。あいうえお順は読みカナがあればそれを、なければ氏名を使って並べ替えます。</p>'+
     '<div class="tabs" style="margin-bottom:.8rem">'+
       '<button class="tab'+(sortMode==="points"?" active":"")+'" data-action="roster-sort" data-sort="points">ポイント順</button>'+
       '<button class="tab'+(sortMode==="name"?" active":"")+'" data-action="roster-sort" data-sort="name">あいうえお順</button>'+
     '</div>'+
     '<div class="table-wrap"><table class="data">'+
-      '<thead><tr><th>氏名</th><th>ポイント</th><th>クラス</th><th></th></tr></thead>'+
+      '<thead><tr><th>氏名</th><th>読みカナ</th><th>ポイント</th><th>クラス</th><th></th></tr></thead>'+
       '<tbody>'+rows+'</tbody>'+
     '</table></div>'+
   '</div>';
@@ -1735,6 +1752,8 @@ document.addEventListener("change", function(e){
   var action = t.getAttribute && t.getAttribute("data-action");
   if(!action) return;
   if(action==="update-points"){ updatePlayerPoints(t.getAttribute("data-id"), t.value); }
+  else if(action==="update-name"){ updatePlayerName(t.getAttribute("data-id"), t.value); }
+  else if(action==="update-kana"){ updatePlayerKana(t.getAttribute("data-id"), t.value); }
   else if(action==="toggle-entry"){
     var id=t.getAttribute("data-id");
     state.entries[id] = state.entries[id] || {entered:false, feePaid:false};
@@ -1875,7 +1894,7 @@ document.addEventListener("submit", function(e){
   if(form.getAttribute("data-form")==="add-player"){
     e.preventDefault();
     var fd = new FormData(form);
-    addPlayer(fd.get("name"), fd.get("points"));
+    addPlayer(fd.get("name"), fd.get("points"), fd.get("kana"));
     form.reset();
   }
   else if(form.getAttribute("data-form")==="create-tournament"){
