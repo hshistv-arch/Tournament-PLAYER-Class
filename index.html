@@ -1031,7 +1031,7 @@ function csvEscape(v){
   return v;
 }
 function exportRosterCSV(){
-  var sortMode = route.rosterSort || "points";
+  var sortMode = route.rosterSort || "name";
   var players = state.players.slice().sort(function(a,b){
     if(sortMode==="name"){
       var ka=a.kana||a.name, kb=b.kana||b.name;
@@ -1125,7 +1125,7 @@ function render(){
 }
 
 function renderRoster(){
-  var sortMode = route.rosterSort || "points";
+  var sortMode = route.rosterSort || "name";
   var players = state.players.slice().sort(function(a,b){
     if(sortMode==="name"){
       var ka = a.kana||a.name, kb = b.kana||b.name;
