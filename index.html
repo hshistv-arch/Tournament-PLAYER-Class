@@ -866,6 +866,14 @@ function recomputeElimGroup(t, g){
   });
   g.losses = losses;
   g.aliveCount = ids.filter(function(id){ return losses[id] < threshold; }).length;
+  g.wbAliveCount = ids.filter(function(id){ return (losses[id]||0)===0; }).length;
+  g.lbAliveCount = ids.filter(function(id){ return (losses[id]||0)===1; }).length;
+}
+function groupReached(t, g){
+  if(t.prelimType==="double" && t.advancePerGroupWB!=null){
+    return g.wbAliveCount<=t.advancePerGroupWB && g.lbAliveCount<=t.advancePerGroupLB;
+  }
+  return g.aliveCount <= t.advancePerGroup;
 }
 function lbRoundSource(prelim, i){
   if(i % 2 === 1){
@@ -1919,7 +1927,7 @@ function renderElimPrelimTournament(t){
   return out;
 }
 function renderOneGroup(t, g){
-  var reached = g.aliveCount <= t.advancePerGroup;
+  var reached = groupReached(t, g);
   var sec = '<div class="card"><h3>グループ'+(g.index+1)+' ・ 勝者側ブラケット</h3>'+
     renderGroupControls(t, "group", g.index, g.targetSize, "各グループの決勝進出人数", t.advancePerGroup, "update-advance-per-group",
       (t.prelimType==="double" && t.advancePerGroupWB!=null) ? t.advancePerGroupWB : null,
@@ -2222,7 +2230,7 @@ document.addEventListener("click", function(e){
     if(tour6.status!=="prelim") return;
     var gi=Number(t.getAttribute("data-group"));
     var g = tour6.groups[gi];
-    if(g.aliveCount <= tour6.advancePerGroup) return;
+    if(groupReached(tour6, g)) return;
     var side=t.getAttribute("data-side"); var mid5=t.getAttribute("data-mid"); var winner3=t.getAttribute("data-winner");
     var match5 = findElimMatch(g, side, mid5);
     if(match5 && !match5.winner && !match5.bye){
