@@ -362,7 +362,8 @@ function defaultState(){
       winMatrix: JSON.parse(JSON.stringify(WIN_MATRIX_DEFAULT)),
       loseMatrix: JSON.parse(JSON.stringify(LOSE_MATRIX_DEFAULT)),
       bonuses: JSON.parse(JSON.stringify(BONUS_DEFAULT)),
-      setCounts: JSON.parse(JSON.stringify(SET_COUNT_DEFAULT))
+      setCounts: JSON.parse(JSON.stringify(SET_COUNT_DEFAULT)),
+      downSetCounts: JSON.parse(JSON.stringify(DOWN_SET_COUNT_DEFAULT))
     },
     players: PLAYER_SEED.map(function(row,i){
       return {id:"p"+(i+1), name:row[0], kana:row[1], points:row[2]};
@@ -412,6 +413,13 @@ function migrateAddBeClass(parsed){
   } else {
     Object.keys(SET_COUNT_DEFAULT).forEach(function(cls){
       if(s.setCounts[cls]===undefined) s.setCounts[cls] = SET_COUNT_DEFAULT[cls];
+    });
+  }
+  if(!s.downSetCounts){
+    s.downSetCounts = JSON.parse(JSON.stringify(DOWN_SET_COUNT_DEFAULT));
+  } else {
+    Object.keys(DOWN_SET_COUNT_DEFAULT).forEach(function(cls){
+      if(s.downSetCounts[cls]===undefined) s.downSetCounts[cls] = DOWN_SET_COUNT_DEFAULT[cls];
     });
   }
   return parsed;
@@ -547,6 +555,7 @@ function tierBelowB(id){
 
 // ---------- match format: sets / chess clock / secondary handicap ----------
 var SET_COUNT_DEFAULT = {SA:5,AA:5,AB:5,AC:5,BA:4,BB:4,BC:4,CA:3,CB:3,CC:3,Be:2};
+var DOWN_SET_COUNT_DEFAULT = {SA:4,AA:4,AB:4,AC:4,BA:3,BB:3,BC:3,CA:2,CB:2,CC:2,Be:2};
 var MINUTES_BY_SETS = {2:15,3:20,4:25,5:30,6:35};
 function classSubRank(code){
   if(code==="Be") code="BB";
@@ -573,21 +582,22 @@ function secondaryHandicap(classA, classB){
   }
   return result;
 }
-function matchFormatFor(playerId, opponentId){
+function matchFormatFor(playerId, opponentId, useDownSet){
   var p = getPlayer(playerId), o = getPlayer(opponentId);
   if(!p || !o) return null;
   var pClass = classOf(p.points), oClass = classOf(o.points);
-  var setCounts = state.settings.setCounts || SET_COUNT_DEFAULT;
-  var sets = setCounts[pClass] || SET_COUNT_DEFAULT[pClass] || 3;
+  var table = useDownSet ? (state.settings.downSetCounts || DOWN_SET_COUNT_DEFAULT) : (state.settings.setCounts || SET_COUNT_DEFAULT);
+  var fallback = useDownSet ? DOWN_SET_COUNT_DEFAULT : SET_COUNT_DEFAULT;
+  var sets = table[pClass] || fallback[pClass] || 3;
   if(state.previousChampionId === playerId) sets += 1;
   var minutes = MINUTES_BY_SETS[sets] != null ? MINUTES_BY_SETS[sets] : 30;
   var hc = secondaryHandicap(pClass, oClass);
   minutes -= hc.reduceA;
   return {sets:sets, minutes:Math.max(0,minutes), hasBreak: hc.breakFor==="a"};
 }
-function matchFormatHintHTML(playerId, opponentId){
+function matchFormatHintHTML(playerId, opponentId, useDownSet){
   if(!playerId || !opponentId) return "";
-  var f = matchFormatFor(playerId, opponentId);
+  var f = matchFormatFor(playerId, opponentId, useDownSet);
   if(!f) return "";
   return '<span class="hint match-format">'+f.sets+'S/'+f.minutes+'m'+(f.hasBreak?'・Br':'')+'</span>';
 }
@@ -1100,6 +1110,7 @@ function createTournament(opts){
     t.blocks.forEach(function(b){ rebuildBlockFromSlots(t, b); });
   } else {
     t.prelimType = opts.prelimType;
+    t.lbOneSetDown = opts.prelimType==="double" ? (opts.lbOneSetDown!==false) : undefined;
     t.advancePerGroup = opts.advancePerGroup;
     t.advanceBonusApplied = {};
     t.groups = sizes.map(function(size, gi){
@@ -1378,17 +1389,23 @@ function renderSettings(){
 }
 function renderSettingsSetCounts(){
   var sc = state.settings.setCounts || SET_COUNT_DEFAULT;
+  var dsc = state.settings.downSetCounts || DOWN_SET_COUNT_DEFAULT;
   var rows = CLASSES.map(function(c){
     var v = sc[c]!=null ? sc[c] : SET_COUNT_DEFAULT[c];
+    var dv = dsc[c]!=null ? dsc[c] : DOWN_SET_COUNT_DEFAULT[c];
     var minutes = MINUTES_BY_SETS[v] != null ? MINUTES_BY_SETS[v] : "-";
+    var dMinutes = MINUTES_BY_SETS[dv] != null ? MINUTES_BY_SETS[dv] : "-";
     return '<tr><td>'+badge(c)+'</td>'+
       '<td><input type="number" class="num" style="width:6rem" min="1" value="'+v+'" data-action="update-set-count" data-class="'+c+'"></td>'+
-      '<td class="hint">'+minutes+'分(前回優勝者は+1セット)</td></tr>';
+      '<td class="hint">'+minutes+'分</td>'+
+      '<td><input type="number" class="num" style="width:6rem" min="1" value="'+dv+'" data-action="update-down-set-count" data-class="'+c+'"></td>'+
+      '<td class="hint">'+dMinutes+'分</td></tr>';
   }).join("");
   return '<div class="card">'+
     '<h3>クラスごとのセット数(レース本数)</h3>'+
-    '<p class="hint">対戦カードに表示される、各選手の必要セット数です。持ち時間はセット数に応じて自動計算されます(2セット=15分、3セット=20分、4セット=25分、5セット=30分、6セット=35分)。</p>'+
-    '<div class="table-wrap"><table class="data"><thead><tr><th>クラス</th><th>セット数</th><th>持ち時間</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+    '<p class="hint">対戦カードに表示される、各選手の必要セット数です。持ち時間はセット数に応じて自動計算されます(2セット=15分、3セット=20分、4セット=25分、5セット=30分、6セット=35分。前回優勝者は+1セット)。「ワンセットダウン」は、ダブルエリミネーションの敗者復活ブロックで使うセット数です(大会作成時にこちらを使うか選択でき、デフォルトで採用されます)。</p>'+
+    '<p class="hint">※SA vs SA 以外の対戦では、SA側の持ち時間が5分短縮されます(セカンダリハンデ)。</p>'+
+    '<div class="table-wrap"><table class="data"><thead><tr><th>クラス</th><th>基本セット数</th><th>持ち時間</th><th>ワンセットダウン</th><th>持ち時間</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
     '<div style="margin-top:.8rem"><button class="btn btn-sm" data-action="reset-set-counts">デフォルトに戻す</button></div>'+
   '</div>';
 }
@@ -1466,7 +1483,7 @@ function ensureNewTournamentState(){
   if(!route.newTournament){
     var eligibleCount = eligiblePlayerIdsForNewEvent().length;
     route.newTournament = {
-      format:"elimPrelim", prelimType:"single",
+      format:"elimPrelim", prelimType:"single", lbOneSetDown:true,
       groupCount:1, advancePerGroup:4,
       blockCount:4, advancePerBlock:2,
       totalParticipants: Math.max(2, eligibleCount || 8)
@@ -1507,6 +1524,11 @@ function renderNewTournament(){
         '<div class="radio-card-row">'+
           radioCard("prelimType","single", nt.prelimType==="single", "予選: シングルエリミネーション", "1敗で失格。通常のノックアウト方式です。")+
           radioCard("prelimType","double", nt.prelimType==="double", "予選: ダブルエリミネーション", "2敗で失格。1敗しても敗者復活ブロックで再挑戦できます。")+
+        '</div>'+
+        '<div style="'+(nt.prelimType==="double"?"":"display:none")+';margin-top:.6rem">'+
+          '<label class="hint" style="display:flex;align-items:center;gap:.4rem;cursor:pointer">'+
+            '<input type="checkbox" data-action="lb-oneset-toggle"'+(nt.lbOneSetDown?" checked":"")+'> 敗者側(敗者復活ブロック)はワンセットダウンのセット数を採用する'+
+          '</label>'+
         '</div>'+
         '<div class="form-row" style="margin-top:.8rem">'+
           '<div class="field"><label>予選グループ数</label><input type="number" data-action="groupCount-input" value="'+nt.groupCount+'" min="1" style="width:6rem"></div>'+
@@ -1658,7 +1680,7 @@ function bflowSideHTML(m, playerId, opts){
     scoreHTML = '<input type="number" class="num score-input-inline" min="0" data-action="update-score" data-scope="'+opts.scoreScope+'" data-which="'+which+'" data-mid="'+m.id+'" '+opts.extraAttrs+' value="'+(val==null?"":val)+'" placeholder="-">';
   }
   var oppId = playerId===m.a ? m.b : m.a;
-  return '<div class="'+cls+'" '+attrs+'><span class="pname">'+esc(playerName(playerId))+' '+badge(classOf(pointsOf(playerId)))+'</span>'+matchFormatHintHTML(playerId, oppId)+scoreHTML+'<span class="pts num">'+pointsOf(playerId)+'</span></div>';
+  return '<div class="'+cls+'" '+attrs+'><span class="pname">'+esc(playerName(playerId))+' '+badge(classOf(pointsOf(playerId)))+'</span>'+matchFormatHintHTML(playerId, oppId, opts.useDownSet)+scoreHTML+'<span class="pts num">'+pointsOf(playerId)+'</span></div>';
 }
 function renderBracketFlow(rounds, roundLabelFn, opts){
   var counter = 0;
@@ -1702,7 +1724,7 @@ function simpleSideHTML(m, playerId, opts){
     scoreHTML = '<input type="number" class="num score-input-inline" min="0" data-action="update-score" data-scope="'+opts.scoreScope+'" data-which="'+which+'" data-mid="'+m.id+'" '+opts.extraAttrs+' value="'+(val==null?"":val)+'" placeholder="-">';
   }
   var oppId2 = playerId===m.a ? m.b : m.a;
-  return '<div class="'+cls+'" '+attrs+'>'+esc(playerName(playerId))+' '+badge(classOf(pointsOf(playerId)))+matchFormatHintHTML(playerId, oppId2)+scoreHTML+'<span class="pts num">'+pointsOf(playerId)+'</span></div>';
+  return '<div class="'+cls+'" '+attrs+'>'+esc(playerName(playerId))+' '+badge(classOf(pointsOf(playerId)))+matchFormatHintHTML(playerId, oppId2, opts.useDownSet)+scoreHTML+'<span class="pts num">'+pointsOf(playerId)+'</span></div>';
 }
 function renderSimpleRounds(rounds, roundLabelFn, opts){
   if(!rounds.length) return '<p class="empty-note">敗者復活ブロックの組み合わせはまだありません。</p>';
@@ -1812,7 +1834,8 @@ function renderOneGroup(t, g){
         actionName: "resolve-elim-match",
         undoActionName: "undo-elim-match",
         scoreScope: "elim",
-        extraAttrs: 'data-tid="'+t.id+'" data-side="lb" data-group="'+g.index+'"'
+        extraAttrs: 'data-tid="'+t.id+'" data-side="lb" data-group="'+g.index+'"',
+        useDownSet: t.lbOneSetDown!==false
       })+
     '</div>';
   }
@@ -1980,7 +2003,11 @@ document.addEventListener("click", function(e){
     if(confirm("ボーナス設定をデフォルトに戻しますか?")){ state.settings.bonuses = JSON.parse(JSON.stringify(BONUS_DEFAULT)); saveState(); render(); }
   }
   else if(action==="reset-set-counts"){
-    if(confirm("セット数設定をデフォルトに戻しますか?")){ state.settings.setCounts = JSON.parse(JSON.stringify(SET_COUNT_DEFAULT)); saveState(); render(); }
+    if(confirm("セット数設定をデフォルトに戻しますか?")){
+      state.settings.setCounts = JSON.parse(JSON.stringify(SET_COUNT_DEFAULT));
+      state.settings.downSetCounts = JSON.parse(JSON.stringify(DOWN_SET_COUNT_DEFAULT));
+      saveState(); render();
+    }
   }
   else if(action==="export-data"){ exportData(); }
   else if(action==="delete-tournament"){ deleteTournament(t.getAttribute("data-id")); }
@@ -2096,6 +2123,9 @@ document.addEventListener("change", function(e){
   else if(action==="tourname-input"){
     var ntn = ensureNewTournamentState(); ntn.name = t.value;
   }
+  else if(action==="lb-oneset-toggle"){
+    var ntlb = ensureNewTournamentState(); ntlb.lbOneSetDown = t.checked; render();
+  }
   else if(action==="toggle-entry"){
     var id=t.getAttribute("data-id");
     state.entries[id] = state.entries[id] || {entered:false, feePaid:false};
@@ -2129,6 +2159,13 @@ document.addEventListener("change", function(e){
     var scVal = Math.max(1, Math.round(Number(t.value))||1);
     if(!state.settings.setCounts) state.settings.setCounts = JSON.parse(JSON.stringify(SET_COUNT_DEFAULT));
     state.settings.setCounts[scCls] = scVal;
+    saveState(); render();
+  }
+  else if(action==="update-down-set-count"){
+    var dscCls = t.getAttribute("data-class");
+    var dscVal = Math.max(1, Math.round(Number(t.value))||1);
+    if(!state.settings.downSetCounts) state.settings.downSetCounts = JSON.parse(JSON.stringify(DOWN_SET_COUNT_DEFAULT));
+    state.settings.downSetCounts[dscCls] = dscVal;
     saveState(); render();
   }
   else if(action==="update-prev-champion"){
@@ -2268,7 +2305,7 @@ document.addEventListener("submit", function(e){
     if(nt.format==="elimPrelim"){
       if(nt.totalParticipants < nt.groupCount){ alert("参加人数がグループ数より少なくなっています。"); return; }
       if(Math.floor(nt.totalParticipants/nt.groupCount) < nt.advancePerGroup){ alert("各グループからの決勝進出人数が、1グループあたりの人数より多くなっています。"); return; }
-      createTournament({name:name, format:"elimPrelim", prelimType:nt.prelimType, groupCount:nt.groupCount, advancePerGroup:nt.advancePerGroup, totalParticipants:nt.totalParticipants});
+      createTournament({name:name, format:"elimPrelim", prelimType:nt.prelimType, lbOneSetDown:nt.lbOneSetDown, groupCount:nt.groupCount, advancePerGroup:nt.advancePerGroup, totalParticipants:nt.totalParticipants});
     } else {
       if(nt.totalParticipants < nt.blockCount*2){ alert("参加人数がブロック数に対して少なすぎます。"); return; }
       if(Math.floor(nt.totalParticipants/nt.blockCount) < nt.advancePerBlock){ alert("各ブロックからの決勝進出人数が、1ブロックあたりの人数より多くなっています。"); return; }
