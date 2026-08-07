@@ -222,6 +222,7 @@ details[open] > summary:before{content:"▾ ";}
 .bflow-side.winner{font-weight:700; background:color-mix(in srgb, var(--felt) 14%, transparent); cursor:default;}
 .bflow-side.bye{color:var(--muted); font-style:italic; cursor:default;}
 .bflow-side .pts{margin-left:.2rem; color:var(--muted); font-size:.7rem; flex:none;}
+.match-format{flex:none; font-size:.66rem; margin-left:.2rem; white-space:nowrap;}
 .bflow-side.locked{cursor:default; opacity:.6;}
 .bflow-connector{
   position:absolute; right:-34px; width:34px; border-top:2px solid var(--border); border-bottom:2px solid var(--border);
@@ -276,38 +277,40 @@ details[open] > summary:before{content:"▾ ";}
 (function(){
 "use strict";
 
-var CLASSES = ["SA","AA","AB","AC","BA","BB","BC","CA","CB","CC"];
+var CLASSES = ["SA","AA","AB","AC","BA","BB","BC","CA","CB","CC","Be"];
 
 var DEFAULT_CLASS_BOUNDS = [
   {code:"SA",min:100},{code:"AA",min:90},{code:"AB",min:80},{code:"AC",min:70},
   {code:"BA",min:60},{code:"BB",min:50},{code:"BC",min:40},
-  {code:"CA",min:30},{code:"CB",min:20},{code:"CC",min:10}
+  {code:"CA",min:30},{code:"CB",min:20},{code:"CC",min:10},{code:"Be",min:0}
 ];
 
 var WIN_MATRIX_DEFAULT = {
-  SA:{SA:1,AA:1,AB:0,AC:0,BA:0,BB:0,BC:0,CA:0,CB:0,CC:0},
-  AA:{SA:1,AA:1,AB:1,AC:1,BA:1,BB:0,BC:0,CA:0,CB:0,CC:0},
-  AB:{SA:1,AA:1,AB:1,AC:1,BA:1,BB:1,BC:0,CA:0,CB:0,CC:0},
-  AC:{SA:2,AA:1,AB:1,AC:1,BA:1,BB:1,BC:1,CA:0,CB:0,CC:0},
-  BA:{SA:2,AA:1,AB:1,AC:1,BA:1,BB:1,BC:1,CA:1,CB:0,CC:0},
-  BB:{SA:2,AA:2,AB:1,AC:1,BA:1,BB:1,BC:1,CA:1,CB:1,CC:0},
-  BC:{SA:3,AA:2,AB:2,AC:1,BA:1,BB:1,BC:1,CA:1,CB:1,CC:1},
-  CA:{SA:3,AA:2,AB:2,AC:2,BA:2,BB:1,BC:1,CA:1,CB:1,CC:1},
-  CB:{SA:3,AA:3,AB:2,AC:2,BA:2,BB:2,BC:2,CA:1,CB:1,CC:1},
-  CC:{SA:3,AA:3,AB:3,AC:2,BA:2,BB:3,BC:2,CA:1,CB:1,CC:1}
+  SA:{SA:1,AA:1,AB:0,AC:0,BA:0,BB:0,BC:0,CA:0,CB:0,CC:0,Be:0},
+  AA:{SA:1,AA:1,AB:1,AC:1,BA:1,BB:0,BC:0,CA:0,CB:0,CC:0,Be:0},
+  AB:{SA:1,AA:1,AB:1,AC:1,BA:1,BB:1,BC:0,CA:0,CB:0,CC:0,Be:0},
+  AC:{SA:2,AA:1,AB:1,AC:1,BA:1,BB:1,BC:1,CA:0,CB:0,CC:0,Be:0},
+  BA:{SA:2,AA:1,AB:1,AC:1,BA:1,BB:1,BC:1,CA:1,CB:0,CC:0,Be:0},
+  BB:{SA:2,AA:2,AB:1,AC:1,BA:1,BB:1,BC:1,CA:1,CB:1,CC:0,Be:0},
+  BC:{SA:3,AA:2,AB:2,AC:1,BA:1,BB:1,BC:1,CA:1,CB:1,CC:1,Be:1},
+  CA:{SA:3,AA:2,AB:2,AC:2,BA:2,BB:1,BC:1,CA:1,CB:1,CC:1,Be:1},
+  CB:{SA:3,AA:3,AB:2,AC:2,BA:2,BB:2,BC:2,CA:1,CB:1,CC:1,Be:1},
+  CC:{SA:3,AA:3,AB:3,AC:2,BA:2,BB:3,BC:2,CA:1,CB:1,CC:1,Be:1},
+  Be:{SA:3,AA:3,AB:3,AC:2,BA:2,BB:3,BC:2,CA:1,CB:1,CC:1,Be:1}
 };
 
 var LOSE_MATRIX_DEFAULT = {
-  SA:{SA:-1,AA:-1,AB:-2,AC:-3,BA:-2,BB:-2,BC:-3,CA:-2,CB:-2,CC:-3},
-  AA:{SA:-1,AA:-1,AB:-1,AC:-2,BA:-1,BB:-2,BC:-2,CA:-1,CB:-2,CC:-2},
-  AB:{SA:0,AA:-1,AB:-1,AC:-1,BA:-1,BB:-1,BC:-2,CA:-1,CB:-1,CC:-2},
-  AC:{SA:0,AA:-1,AB:-1,AC:-1,BA:-1,BB:-1,BC:-2,CA:-1,CB:-1,CC:-2},
-  BA:{SA:0,AA:0,AB:-1,AC:-1,BA:-1,BB:-1,BC:-2,CA:-1,CB:-2,CC:-2},
-  BB:{SA:0,AA:0,AB:-1,AC:-1,BA:-1,BB:-1,BC:-2,CA:-1,CB:-1,CC:-2},
-  BC:{SA:0,AA:0,AB:0,AC:-1,BA:-1,BB:-1,BC:-1,CA:-1,CB:-1,CC:-2},
-  CA:{SA:0,AA:0,AB:0,AC:0,BA:-1,BB:-1,BC:-1,CA:-1,CB:-1,CC:-2},
-  CB:{SA:0,AA:0,AB:0,AC:0,BA:0,BB:0,BC:-1,CA:-1,CB:-1,CC:-1},
-  CC:{SA:0,AA:0,AB:0,AC:0,BA:0,BB:0,BC:-1,CA:-1,CB:-1,CC:-1}
+  SA:{SA:-1,AA:-1,AB:-2,AC:-3,BA:-2,BB:-2,BC:-3,CA:-2,CB:-2,CC:-3,Be:-3},
+  AA:{SA:-1,AA:-1,AB:-1,AC:-2,BA:-1,BB:-2,BC:-2,CA:-1,CB:-2,CC:-2,Be:-2},
+  AB:{SA:0,AA:-1,AB:-1,AC:-1,BA:-1,BB:-1,BC:-2,CA:-1,CB:-1,CC:-2,Be:-2},
+  AC:{SA:0,AA:-1,AB:-1,AC:-1,BA:-1,BB:-1,BC:-2,CA:-1,CB:-1,CC:-2,Be:-2},
+  BA:{SA:0,AA:0,AB:-1,AC:-1,BA:-1,BB:-1,BC:-2,CA:-1,CB:-2,CC:-2,Be:-2},
+  BB:{SA:0,AA:0,AB:-1,AC:-1,BA:-1,BB:-1,BC:-2,CA:-1,CB:-1,CC:-2,Be:-2},
+  BC:{SA:0,AA:0,AB:0,AC:-1,BA:-1,BB:-1,BC:-1,CA:-1,CB:-1,CC:-2,Be:-2},
+  CA:{SA:0,AA:0,AB:0,AC:0,BA:-1,BB:-1,BC:-1,CA:-1,CB:-1,CC:-2,Be:-2},
+  CB:{SA:0,AA:0,AB:0,AC:0,BA:0,BB:0,BC:-1,CA:-1,CB:-1,CC:-1,Be:-1},
+  CC:{SA:0,AA:0,AB:0,AC:0,BA:0,BB:0,BC:-1,CA:-1,CB:-1,CC:-1,Be:-1},
+  Be:{SA:0,AA:0,AB:0,AC:0,BA:0,BB:0,BC:-1,CA:-1,CB:-1,CC:-1,Be:-1}
 };
 
 var BONUS_DEFAULT = {
@@ -384,6 +387,27 @@ function migrateBestBorC(parsed){
   }
   return parsed;
 }
+function migrateAddBeClass(parsed){
+  if(!(parsed && parsed.settings)) return parsed;
+  var s = parsed.settings;
+  if(s.classBounds && !s.classBounds.some(function(b){ return b.code==="Be"; })){
+    s.classBounds.push({code:"Be", min:0});
+  }
+  [s.winMatrix, s.loseMatrix].forEach(function(m){
+    if(!m) return;
+    if(!m.Be){
+      var cc = m.CC || {};
+      var beRow = {};
+      Object.keys(cc).forEach(function(k){ beRow[k]=cc[k]; });
+      if(beRow.Be===undefined) beRow.Be = cc.CC!=null ? cc.CC : 0;
+      m.Be = beRow;
+    }
+    Object.keys(m).forEach(function(cls){
+      if(m[cls].Be===undefined){ m[cls].Be = m[cls].CC!=null ? m[cls].CC : 0; }
+    });
+  });
+  return parsed;
+}
 function applyRosterUpdate(parsed){
   var version = parsed.rosterVersion || 1;
   if(version >= CURRENT_ROSTER_VERSION) return parsed;
@@ -409,7 +433,7 @@ function loadState(){
       var parsed = JSON.parse(raw);
       if(parsed && parsed.settings && parsed.players){
         parsed.entries = parsed.entries || {};
-        return applyRosterUpdate(migrateBestBorC(parsed));
+        return applyRosterUpdate(migrateAddBeClass(migrateBestBorC(parsed)));
       }
     }
     var legacy = localStorage.getItem("billiards_tourney_state_v3");
@@ -417,7 +441,7 @@ function loadState(){
       var parsedLegacy = JSON.parse(legacy);
       if(parsedLegacy && parsedLegacy.settings && parsedLegacy.players){
         parsedLegacy.entries = {};
-        return applyRosterUpdate(migrateBestBorC(parsedLegacy));
+        return applyRosterUpdate(migrateAddBeClass(migrateBestBorC(parsedLegacy)));
       }
     }
   }catch(e){ console.warn("state load failed", e); }
@@ -480,7 +504,7 @@ function syncFromServer(){
     return r.json();
   }).then(function(serverState){
     if(serverState && serverState.players){
-      state = applyRosterUpdate(migrateBestBorC(serverState));
+      state = applyRosterUpdate(migrateAddBeClass(migrateBestBorC(serverState)));
       state.entries = state.entries || {};
       state.currentTournamentId = state.currentTournamentId || null;
       render();
@@ -511,6 +535,52 @@ function tierOf(code){
 function tierBelowB(id){
   var t = tierOf(classOf(pointsOf(id)));
   return t==="B" || t==="C";
+}
+
+// ---------- match format: sets / chess clock / secondary handicap ----------
+var SET_COUNT_BY_CLASS = {SA:5,AA:5,AB:5,AC:5,BA:4,BB:4,BC:4,CA:3,CB:3,CC:3,Be:2};
+var MINUTES_BY_SETS = {2:15,3:20,4:25,5:30,6:35};
+function classSubRank(code){
+  if(code==="Be") code="BB";
+  var c2 = code.charAt(1);
+  return c2==="A" ? 1 : c2==="B" ? 2 : c2==="C" ? 3 : null;
+}
+function secondaryHandicap(classA, classB){
+  var result = {breakFor:null, reduceA:0, reduceB:0};
+  var aIsSA = classA==="SA", bIsSA = classB==="SA";
+  if(aIsSA || bIsSA){
+    if(aIsSA && bIsSA) return result;
+    if(aIsSA){ result.reduceA = 5; result.breakFor = "b"; }
+    else { result.reduceB = 5; result.breakFor = "a"; }
+    return result;
+  }
+  if(classA.charAt(0) !== classB.charAt(0)) return result;
+  var rA = classSubRank(classA), rB = classSubRank(classB);
+  if(rA==null || rB==null || rA===rB) return result;
+  var idxA = CLASSES.indexOf(classA), idxB = CLASSES.indexOf(classB);
+  var weaker = idxA>idxB ? "a" : "b";
+  result.breakFor = weaker;
+  if(Math.abs(rA-rB)>=2){
+    if(weaker==="a") result.reduceB = 5; else result.reduceA = 5;
+  }
+  return result;
+}
+function matchFormatFor(playerId, opponentId){
+  var p = getPlayer(playerId), o = getPlayer(opponentId);
+  if(!p || !o) return null;
+  var pClass = classOf(p.points), oClass = classOf(o.points);
+  var sets = SET_COUNT_BY_CLASS[pClass] || 3;
+  if(state.previousChampionId === playerId) sets += 1;
+  var minutes = MINUTES_BY_SETS[sets] != null ? MINUTES_BY_SETS[sets] : 30;
+  var hc = secondaryHandicap(pClass, oClass);
+  minutes -= hc.reduceA;
+  return {sets:sets, minutes:Math.max(0,minutes), hasBreak: hc.breakFor==="a"};
+}
+function matchFormatHintHTML(playerId, opponentId){
+  if(!playerId || !opponentId) return "";
+  var f = matchFormatFor(playerId, opponentId);
+  if(!f) return "";
+  return '<span class="hint match-format">'+f.sets+'S/'+f.minutes+'m'+(f.hasBreak?'・Br':'')+'</span>';
 }
 function classRangeLabel(bounds, idx){
   var b = bounds[idx];
@@ -1474,9 +1544,10 @@ function matchRow(match, tprefix, extraActionData, matchNo, resolvable){
       scoreHTML = '<input type="number" class="num score-input-inline" min="0" data-action="update-score" data-scope="block" data-which="'+side+'" data-mid="'+match.id+'" '+actionData+' value="'+(val==null?"":val)+'" placeholder="-">';
     }
     var clickable = !resolved && resolvable;
+    var oppId = side==="a" ? b : a;
     return '<button class="btn btn-sm'+(isWinner?' btn-felt':'')+'" '+
       (clickable?'':'disabled')+' data-action="resolve-match" data-scope="'+tprefix+'" data-mid="'+match.id+'" data-winner="'+id+'" '+actionData+'>'+
-      esc(label)+(isWinner?' 🏆':'')+'</button>'+scoreHTML;
+      esc(label)+(isWinner?' 🏆':'')+'</button>'+scoreHTML+matchFormatHintHTML(id, oppId);
   }
   var undo = resolved ? '<button class="btn btn-sm btn-ghost" data-action="undo-match" data-scope="'+tprefix+'" data-mid="'+match.id+'" '+actionData+'>取消</button>' : '';
   var matchNoHTML = matchNo ? '<span class="match-no">No.'+matchNo+'</span>' : "";
@@ -1560,7 +1631,8 @@ function bflowSideHTML(m, playerId, opts){
     var val = score[which];
     scoreHTML = '<input type="number" class="num score-input-inline" min="0" data-action="update-score" data-scope="'+opts.scoreScope+'" data-which="'+which+'" data-mid="'+m.id+'" '+opts.extraAttrs+' value="'+(val==null?"":val)+'" placeholder="-">';
   }
-  return '<div class="'+cls+'" '+attrs+'><span class="pname">'+esc(playerName(playerId))+' '+badge(classOf(pointsOf(playerId)))+'</span>'+scoreHTML+'<span class="pts num">'+pointsOf(playerId)+'</span></div>';
+  var oppId = playerId===m.a ? m.b : m.a;
+  return '<div class="'+cls+'" '+attrs+'><span class="pname">'+esc(playerName(playerId))+' '+badge(classOf(pointsOf(playerId)))+'</span>'+matchFormatHintHTML(playerId, oppId)+scoreHTML+'<span class="pts num">'+pointsOf(playerId)+'</span></div>';
 }
 function renderBracketFlow(rounds, roundLabelFn, opts){
   var counter = 0;
@@ -1603,7 +1675,8 @@ function simpleSideHTML(m, playerId, opts){
     var val = score[which];
     scoreHTML = '<input type="number" class="num score-input-inline" min="0" data-action="update-score" data-scope="'+opts.scoreScope+'" data-which="'+which+'" data-mid="'+m.id+'" '+opts.extraAttrs+' value="'+(val==null?"":val)+'" placeholder="-">';
   }
-  return '<div class="'+cls+'" '+attrs+'>'+esc(playerName(playerId))+' '+badge(classOf(pointsOf(playerId)))+scoreHTML+'<span class="pts num">'+pointsOf(playerId)+'</span></div>';
+  var oppId2 = playerId===m.a ? m.b : m.a;
+  return '<div class="'+cls+'" '+attrs+'>'+esc(playerName(playerId))+' '+badge(classOf(pointsOf(playerId)))+matchFormatHintHTML(playerId, oppId2)+scoreHTML+'<span class="pts num">'+pointsOf(playerId)+'</span></div>';
 }
 function renderSimpleRounds(rounds, roundLabelFn, opts){
   if(!rounds.length) return '<p class="empty-note">敗者復活ブロックの組み合わせはまだありません。</p>';
@@ -1727,7 +1800,7 @@ function renderFinalsSection(t){
     '<h3 style="margin:0">決勝トーナメント</h3>'+redrawBtn+
     '</div>'+
     (t.status==="finals" ? renderFinalsEditSlots(t) : "")+
-    renderBracketFlow(t.finals.rounds, function(ri,total){ return roundName(ri+1,total); }, {
+    renderBracketFlow(t.finals.rounds, function(ri){ return roundName(ri+1, t.finals.totalRounds); }, {
       resolvable: t.status==="finals",
       actionName: "resolve-bracket",
       undoActionName: "undo-bracket",
