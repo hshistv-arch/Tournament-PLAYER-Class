@@ -1338,9 +1338,11 @@ function renderRoster(){
   var total = players.length;
   var avg = total ? Math.round(players.reduce(function(s,p){return s+p.points;},0)/total) : 0;
   var rows = players.map(function(p){
+    var prevPts = previousPointsOf(p.id);
     return '<tr>'+
       '<td><input type="text" style="width:8rem" value="'+esc(p.name)+'" data-action="update-name" data-id="'+p.id+'"></td>'+
       '<td><input type="text" style="width:7rem" value="'+esc(p.kana||"")+'" placeholder="よみがな" data-action="update-kana" data-id="'+p.id+'"></td>'+
+      '<td class="num hint">'+(prevPts==null?"-":prevPts)+'</td>'+
       '<td><input type="number" class="num" style="width:5rem" value="'+p.points+'" data-action="update-points" data-id="'+p.id+'"></td>'+
       '<td>'+badge(classOf(p.points))+'</td>'+
       '<td><button class="btn btn-sm btn-ghost btn-danger" data-action="delete-player" data-id="'+p.id+'">削除</button></td>'+
@@ -1372,7 +1374,7 @@ function renderRoster(){
       '<button class="tab'+(sortMode==="name"?" active":"")+'" data-action="roster-sort" data-sort="name">名前順</button>'+
     '</div>'+
     '<div class="table-wrap"><table class="data">'+
-      '<thead><tr><th>氏名</th><th>読みカナ</th><th>ポイント</th><th>クラス</th><th></th></tr></thead>'+
+      '<thead><tr><th>氏名</th><th>読みカナ</th><th>前回ポイント</th><th>ポイント</th><th>クラス</th><th></th></tr></thead>'+
       '<tbody>'+rows+'</tbody>'+
     '</table></div>'+
   '</div>';
@@ -1946,7 +1948,7 @@ function renderResultBanner(t){
 function tournamentPointDeltas(t){
   var totals = {};
   function add(playerId, amount){
-    if(!playerId || !amount) return;
+    if(!playerId || amount==null) return;
     totals[playerId] = (totals[playerId]||0) + amount;
   }
   function walkMatches(matches){
@@ -1975,16 +1977,27 @@ function tournamentPointDeltas(t){
   if(t.finishDeltas) t.finishDeltas.forEach(function(d){ add(d.playerId, d.amount); });
   return totals;
 }
+function previousPointsOf(playerId){
+  for(var i=state.tournaments.length-1;i>=0;i--){
+    var tour = state.tournaments[i];
+    if(tour.status!=="completed") continue;
+    var totals = tournamentPointDeltas(tour);
+    if(totals[playerId]!==undefined){
+      return pointsOf(playerId) - totals[playerId];
+    }
+  }
+  return null;
+}
 function renderPointSummary(t){
   var totals = tournamentPointDeltas(t);
   var ids = Object.keys(totals);
   ids.sort(function(a,b){ return totals[b]-totals[a]; });
   var rows = ids.map(function(id){
-    return '<tr><td>'+esc(playerName(id))+'</td><td>'+badge(classOf(pointsOf(id)))+'</td><td class="num">'+fmtDelta(totals[id])+'</td></tr>';
+    return '<tr><td>'+esc(playerName(id))+'</td><td>'+badge(classOf(pointsOf(id)))+'</td><td class="num">'+fmtDelta(totals[id])+'</td><td class="num">'+pointsOf(id)+'</td></tr>';
   }).join("");
   if(!rows) return "";
   return '<div class="card"><h3>参加メンバーのポイント変化</h3>'+
-    '<div class="table-wrap"><table class="data"><thead><tr><th>氏名</th><th>クラス</th><th>今大会での変動</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+    '<div class="table-wrap"><table class="data"><thead><tr><th>氏名</th><th>クラス</th><th>今大会での変動</th><th>最新の合計ポイント</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
   '</div>';
 }
 function redrawFinals(t){
