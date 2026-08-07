@@ -1736,7 +1736,7 @@ function renderBlockPrelimTournament(t){
     out += '<div class="card"><h3>決勝進出者を確定</h3><p class="hint">各ブロック上位'+t.advancePerBlock+'名が決勝トーナメントに進出します(決勝進出ボーナス '+state.settings.bonuses.finalsAdvance+'pt が付与されます)。</p>'+
       '<button class="btn btn-primary" data-action="finalize-block-prelim" data-tid="'+t.id+'">予選を締めて決勝進出者を確定する</button></div>';
   }
-  if(t.finals){ out += renderFinalsSection(t); }
+  out += t.finals ? renderFinalsSection(t) : renderFinalsPlaceholder(t);
   return out;
 }
 function renderGroupControls(t, kind, idx, size, advanceLabel, advanceValue, advanceAction){
@@ -1785,7 +1785,7 @@ function renderElimPrelimTournament(t){
       '<p class="hint">各グループの勝ち残り上位'+t.advancePerGroup+'名が決勝トーナメントに進出します(決勝進出ボーナス '+state.settings.bonuses.finalsAdvance+'pt が付与されます)。</p>'+
       '<button class="btn btn-primary" data-action="finalize-elim-prelim" data-tid="'+t.id+'">予選を締めて決勝進出者を確定する</button></div>';
   }
-  if(t.finals){ out += renderFinalsSection(t); }
+  out += t.finals ? renderFinalsSection(t) : renderFinalsPlaceholder(t);
   return out;
 }
 function renderOneGroup(t, g){
@@ -1819,6 +1819,20 @@ function renderOneGroup(t, g){
   return sec;
 }
 
+function renderFinalsPlaceholder(t){
+  var count = t.format==="blockPrelim"
+    ? (t.blocks||[]).length * (t.advancePerBlock||1)
+    : (t.groups||[]).length * (t.advancePerGroup||1);
+  count = Math.max(2, count);
+  var size = 1; while(size<count) size*=2;
+  var bracket = buildBracketFromSlots(new Array(size).fill(null));
+  return '<div class="card"><h3>決勝トーナメント</h3>'+
+    '<p class="hint">予選が確定すると、ここに実際の決勝トーナメントの組み合わせが表示されます(現在の設定では'+count+'名が進出予定)。</p>'+
+    renderBracketFlow(bracket.rounds, function(ri){ return roundName(ri+1, bracket.totalRounds); }, {
+      resolvable:false, actionName:"", undoActionName:"", scoreScope:"", extraAttrs:""
+    })+
+  '</div>';
+}
 function renderFinalsSection(t){
   var redrawBtn = (t.status==="finals") ?
     '<button class="btn btn-sm btn-ghost" data-action="redraw-finals" data-tid="'+t.id+'">組み合わせを再抽選</button>' : "";
