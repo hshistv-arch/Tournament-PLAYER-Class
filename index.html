@@ -1339,6 +1339,7 @@ function render(){
   var html = "";
   if(route.screen==="roster") html = renderRoster();
   else if(route.screen==="rosterPrint") html = renderRosterPrint();
+  else if(route.screen==="tournamentPrint") html = renderTournamentResultPrint(route.id);
   else if(route.screen==="entry") html = renderEntry();
   else if(route.screen==="settings") html = renderSettings();
   else if(route.screen==="newTournament") html = renderNewTournament();
@@ -1980,7 +1981,11 @@ function renderFinalsSection(t){
       extraAttrs: 'data-tid="'+t.id+'"'
     })+
   '</div>';
-  if(t.status==="completed"){ out += renderResultBanner(t); out += renderPointSummary(t); }
+  if(t.status==="completed"){
+    out += renderResultBanner(t);
+    out += renderPointSummary(t);
+    out += '<div class="card"><button class="btn btn-sm btn-ghost" data-action="nav" data-screen="tournamentPrint" data-id="'+t.id+'">大会結果を印刷する</button></div>';
+  }
   return out;
 }
 function renderResultBanner(t){
@@ -2047,6 +2052,37 @@ function renderPointSummary(t){
   if(!rows) return "";
   return '<div class="card"><h3>参加メンバーのポイント変化</h3>'+
     '<div class="table-wrap"><table class="data"><thead><tr><th>氏名</th><th>クラス</th><th>今大会での変動</th><th>最新の合計ポイント</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+  '</div>';
+}
+function renderTournamentResultPrint(tid){
+  var t = findTournament(tid);
+  if(!t || t.status!=="completed"){
+    return '<div class="card"><p class="hint">この大会の結果はまだ確定していません。</p>'+
+      '<button class="btn btn-sm btn-ghost" data-action="nav" data-screen="history">大会一覧へ戻る</button></div>';
+  }
+  var totals = tournamentPointDeltas(t);
+  var ids = Object.keys(totals);
+  ids.sort(function(a,b){ return totals[b]-totals[a]; });
+  var pointRows = ids.map(function(id){
+    return '<tr><td>'+esc(playerName(id))+'</td><td>'+classOf(pointsOf(id))+'</td><td class="num">'+fmtDelta(totals[id])+'</td><td class="num">'+pointsOf(id)+'</td></tr>';
+  }).join("");
+  var bonusRows = t.finishDeltas.map(function(d){
+    return '<tr><td>'+esc(playerName(d.playerId))+'</td><td>'+esc(d.reason)+'</td><td class="num">'+fmtDelta(d.amount)+'</td></tr>';
+  }).join("");
+  return ''+
+  '<div class="print-summary">'+
+    '<div class="page-head no-print"><div><h1>大会結果(印刷用)</h1><p class="sub">'+esc(t.name)+'の結果サマリーです。印刷ボタンを押すと、この内容のみが印刷されます。</p></div></div>'+
+    '<div class="form-row no-print" style="gap:.5rem;margin-bottom:1rem">'+
+      '<button class="btn btn-primary" data-action="print-page">印刷する</button>'+
+      '<button class="btn btn-sm btn-ghost" data-action="nav" data-screen="tournament" data-id="'+t.id+'">大会画面へ戻る</button>'+
+    '</div>'+
+    '<h1>'+esc(t.name)+' — 大会結果</h1>'+
+    '<p class="hint">出力日: '+dateStamp()+'</p>'+
+    '<p>🏆 優勝: '+esc(playerName(t.championId))+' ・ 準優勝: '+esc(playerName(t.runnerUpId))+'</p>'+
+    '<h3>ボーナス内訳</h3>'+
+    '<table class="print-table"><thead><tr><th>氏名</th><th>内容</th><th>ポイント</th></tr></thead><tbody>'+bonusRows+'</tbody></table>'+
+    '<h3 style="margin-top:1.2rem">参加メンバーのポイント変化</h3>'+
+    '<table class="print-table"><thead><tr><th>氏名</th><th>クラス</th><th>今大会での変動</th><th>最新の合計ポイント</th></tr></thead><tbody>'+pointRows+'</tbody></table>'+
   '</div>';
 }
 function redrawFinals(t){
