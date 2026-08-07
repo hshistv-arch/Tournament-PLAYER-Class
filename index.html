@@ -204,21 +204,20 @@ details[open] > summary:before{content:"▾ ";}
 /* ---- connected bracket visual (finals / winners-side elimination) ---- */
 .bflow-wrap{overflow-x:auto; padding:.3rem .1rem 1rem;}
 .bflow{display:flex; align-items:stretch;}
-.bflow-round{display:flex; flex-direction:column; width:236px; flex:none; margin-right:34px;}
+.bflow-round{display:flex; flex-direction:column; width:340px; flex:none; margin-right:34px;}
 .bflow-round:last-child{margin-right:0;}
 .bflow-round-label{flex:none; font-size:.74rem; color:var(--muted); text-align:center; letter-spacing:.03em; margin-bottom:.5rem;}
 .bflow-slots{flex:1; display:flex; flex-direction:column; justify-content:space-around; position:relative; min-height:220px;}
 .bflow-match{
-  flex:none; height:84px; margin:5px 0; border:1px solid var(--border); border-radius:8px; background:var(--surface);
-  box-shadow:var(--shadow); display:flex; flex-direction:column; overflow:hidden; position:relative; z-index:1;
+  flex:none; min-height:84px; margin:5px 0; border:1px solid var(--border); border-radius:8px; background:var(--surface);
+  box-shadow:var(--shadow); display:flex; flex-direction:column; position:relative; z-index:1;
 }
 .bflow-side{
-  display:flex; align-items:center; gap:.3rem; padding:0 .5rem; flex:1; font-size:.78rem; cursor:pointer;
-  white-space:nowrap; overflow:hidden;
+  display:flex; align-items:center; gap:.3rem; padding:.25rem .5rem; flex:1; font-size:.78rem; cursor:pointer;
 }
 .bflow-side + .bflow-side{border-top:1px solid var(--border);}
 .bflow-side:hover:not(.bye):not(.winner){background:var(--surface-2);}
-.bflow-side span.pname{overflow:hidden; text-overflow:ellipsis; flex:1; min-width:0;}
+.bflow-side span.pname{flex:1; min-width:0; white-space:normal; overflow-wrap:break-word;}
 .bflow-side .badge, .simple-side .badge{flex:none;}
 .bflow-side.winner{font-weight:700; background:color-mix(in srgb, var(--felt) 14%, transparent); cursor:default;}
 .bflow-side.bye{color:var(--muted); font-style:italic; cursor:default;}
@@ -717,6 +716,19 @@ function maybeAdvanceRounds(bracket){
     }
     bracket.rounds.push(nextRound);
   }
+}
+function padBracketRounds(bracket){
+  var rounds = bracket.rounds.slice();
+  var lastSize = rounds[rounds.length-1].length;
+  for(var r=rounds.length; r<bracket.totalRounds; r++){
+    lastSize = Math.max(1, Math.round(lastSize/2));
+    var placeholder=[];
+    for(var i=0;i<lastSize;i++){
+      placeholder.push({id:"ph_r"+(r+1)+"_m"+i, round:r+1, a:null, b:null, winner:null, deltas:null, bye:false, score:{a:null,b:null}});
+    }
+    rounds.push(placeholder);
+  }
+  return rounds;
 }
 function roundName(roundIdx, totalRounds){
   var fromEnd = totalRounds-roundIdx;
@@ -1395,7 +1407,10 @@ function renderRoster(){
 }
 
 function renderRosterPrint(){
-  var players = state.players.slice().sort(function(a,b){ return b.points-a.points; });
+  var players = state.players.slice().sort(function(a,b){
+    var ka = a.kana||a.name, kb = b.kana||b.name;
+    return ka.localeCompare(kb, "ja");
+  });
   var rows = players.map(function(p, i){
     return '<tr><td class="num">'+(i+1)+'</td><td>'+esc(p.name)+'</td><td>'+classOf(p.points)+'</td><td class="num">'+p.points+'</td></tr>';
   }).join("");
@@ -1747,7 +1762,7 @@ function renderFinalsEditSlots(t){
 
 // ---------- connected bracket visual ----------
 function bflowSideHTML(m, playerId, opts){
-  if(!playerId) return '<div class="bflow-side bye">(不戦)</div>';
+  if(!playerId) return m.bye ? '<div class="bflow-side bye">(不戦)</div>' : '<div class="bflow-side bye">(未定)</div>';
   var isWinner = m.winner===playerId;
   var resolved = !!m.winner;
   var cls = "bflow-side"+(isWinner?" winner":"");
@@ -1913,7 +1928,7 @@ function renderOneGroup(t, g){
     '<span class="hint">現在の勝ち残り: <span class="prelim-alive-pill num" style="color:'+(reached?'var(--win)':'var(--text)')+'">'+g.aliveCount+'</span>名</span>'+
     (reached?'<span class="pill" style="color:var(--win);border-color:var(--win)">進出人数に到達</span>':'')+
     '</div>'+
-    renderBracketFlow(g.wb.rounds, function(ri){ return "グループ"+(g.index+1)+" "+(ri+1)+"回戦"; }, {
+    renderBracketFlow(padBracketRounds(g.wb), function(ri){ return "グループ"+(g.index+1)+" "+(ri+1)+"回戦"; }, {
       resolvable: t.status==="prelim" && !reached,
       actionName: "resolve-elim-match",
       undoActionName: "undo-elim-match",
@@ -1957,7 +1972,7 @@ function renderFinalsSection(t){
     '<h3 style="margin:0">決勝トーナメント</h3>'+redrawBtn+
     '</div>'+
     (t.status==="finals" ? renderFinalsEditSlots(t) : "")+
-    renderBracketFlow(t.finals.rounds, function(ri){ return roundName(ri+1, t.finals.totalRounds); }, {
+    renderBracketFlow(padBracketRounds(t.finals), function(ri){ return roundName(ri+1, t.finals.totalRounds); }, {
       resolvable: t.status==="finals",
       actionName: "resolve-bracket",
       undoActionName: "undo-bracket",
