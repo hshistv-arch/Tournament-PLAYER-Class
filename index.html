@@ -266,6 +266,9 @@ details[open] > summary:before{content:"▾ ";}
   .main{padding:0; margin:0;}
   .print-summary h1{margin-top:0;}
   .print-table{font-size:11pt;}
+  .print-summary .bflow-wrap{overflow:visible;}
+  .print-summary .bflow-round{width:220px; margin-right:20px;}
+  .print-summary .bflow-side{font-size:.68rem;}
 }
 </style>
 
@@ -717,10 +720,12 @@ function maybeAdvanceRounds(bracket){
     bracket.rounds.push(nextRound);
   }
 }
-function padBracketRounds(bracket){
+function padBracketRounds(bracket, capRounds){
+  var totalRounds = capRounds!=null ? Math.min(capRounds, bracket.totalRounds) : bracket.totalRounds;
   var rounds = bracket.rounds.slice();
+  if(rounds.length > totalRounds) rounds = rounds.slice(0, totalRounds);
   var lastSize = rounds[rounds.length-1].length;
-  for(var r=rounds.length; r<bracket.totalRounds; r++){
+  for(var r=rounds.length; r<totalRounds; r++){
     lastSize = Math.max(1, Math.round(lastSize/2));
     var placeholder=[];
     for(var i=0;i<lastSize;i++){
@@ -729,6 +734,15 @@ function padBracketRounds(bracket){
     rounds.push(placeholder);
   }
   return rounds;
+}
+function roundsNeededForTarget(startSize, target){
+  if(!target || target<1) target=1;
+  var size = startSize, rounds=0;
+  while(size>target){
+    size = Math.ceil(size/2);
+    rounds++;
+  }
+  return Math.max(1, rounds);
 }
 function roundName(roundIdx, totalRounds){
   var fromEnd = totalRounds-roundIdx;
@@ -1805,8 +1819,8 @@ function renderBracketFlow(rounds, roundLabelFn, opts){
     }
     var matches = roundMatches.map(function(m){
       counter++;
-      var undo = (m.winner && !m.bye) ?
-        '<button class="btn btn-sm btn-ghost" data-action="'+opts.undoActionName+'" data-mid="'+m.id+'" '+opts.extraAttrs+'>取消</button>' : "";
+      var undo = (opts.showUndo!==false && m.winner && !m.bye) ?
+        '<button class="btn btn-sm btn-ghost no-print" data-action="'+opts.undoActionName+'" data-mid="'+m.id+'" '+opts.extraAttrs+'>取消</button>' : "";
       var noHTML = m.bye ? "" : '<span class="match-no">No.'+counter+'</span>';
       return '<div class="bflow-match">'+bflowSideHTML(m, m.a, opts)+bflowSideHTML(m, m.b, opts)+'<div class="bflow-match-footer">'+noHTML+undo+'</div></div>';
     }).join("");
@@ -1841,8 +1855,8 @@ function renderSimpleRounds(rounds, roundLabelFn, opts){
   var html = rounds.map(function(roundMatches, ri){
     var matches = roundMatches.map(function(m){
       counter++;
-      var undo = (m.winner && !m.bye) ?
-        '<button class="btn btn-sm btn-ghost" data-action="'+opts.undoActionName+'" data-mid="'+m.id+'" '+opts.extraAttrs+'>取消</button>' : "";
+      var undo = (opts.showUndo!==false && m.winner && !m.bye) ?
+        '<button class="btn btn-sm btn-ghost no-print" data-action="'+opts.undoActionName+'" data-mid="'+m.id+'" '+opts.extraAttrs+'>取消</button>' : "";
       var noHTML = m.bye ? "" : '<span class="match-no">No.'+counter+'</span>';
       return '<div class="simple-match">'+simpleSideHTML(m, m.a, opts)+simpleSideHTML(m, m.b, opts)+'<div class="bflow-match-footer">'+noHTML+undo+'</div></div>';
     }).join("");
@@ -1937,7 +1951,7 @@ function renderOneGroup(t, g){
     '<span class="hint">現在の勝ち残り: <span class="prelim-alive-pill num" style="color:'+(reached?'var(--win)':'var(--text)')+'">'+g.aliveCount+'</span>名</span>'+
     (reached?'<span class="pill" style="color:var(--win);border-color:var(--win)">進出人数に到達</span>':'')+
     '</div>'+
-    renderBracketFlow(padBracketRounds(g.wb), function(ri){ return "グループ"+(g.index+1)+" "+(ri+1)+"回戦"; }, {
+    renderBracketFlow(padBracketRounds(g.wb, roundsNeededForTarget(g.targetSize, (t.prelimType==="double" && t.advancePerGroupWB!=null) ? t.advancePerGroupWB : t.advancePerGroup)), function(ri){ return "グループ"+(g.index+1)+" "+(ri+1)+"回戦"; }, {
       resolvable: t.status==="prelim" && !reached,
       actionName: "resolve-elim-match",
       undoActionName: "undo-elim-match",
@@ -2068,15 +2082,12 @@ function renderTournamentResultPrint(tid){
     return '<div class="card"><p class="hint">この大会の結果はまだ確定していません。</p>'+
       '<button class="btn btn-sm btn-ghost" data-action="nav" data-screen="history">大会一覧へ戻る</button></div>';
   }
-  var totals = tournamentPointDeltas(t);
-  var ids = Object.keys(totals);
-  ids.sort(function(a,b){ return totals[b]-totals[a]; });
-  var pointRows = ids.map(function(id){
-    return '<tr><td>'+esc(playerName(id))+'</td><td>'+classOf(pointsOf(id))+'</td><td class="num">'+fmtDelta(totals[id])+'</td><td class="num">'+pointsOf(id)+'</td></tr>';
-  }).join("");
   var bonusRows = t.finishDeltas.map(function(d){
     return '<tr><td>'+esc(playerName(d.playerId))+'</td><td>'+esc(d.reason)+'</td><td class="num">'+fmtDelta(d.amount)+'</td></tr>';
   }).join("");
+  var bracketHTML = t.finals ? renderBracketFlow(padBracketRounds(t.finals), function(ri){ return roundName(ri+1, t.finals.totalRounds); }, {
+    resolvable:false, actionName:"", undoActionName:"", scoreScope:"", extraAttrs:"", showUndo:false
+  }) : "";
   return ''+
   '<div class="print-summary">'+
     '<div class="page-head no-print"><div><h1>大会結果(印刷用)</h1><p class="sub">'+esc(t.name)+'の結果サマリーです。印刷ボタンを押すと、この内容のみが印刷されます。</p></div></div>'+
@@ -2089,8 +2100,8 @@ function renderTournamentResultPrint(tid){
     '<p>🏆 優勝: '+esc(playerName(t.championId))+' ・ 準優勝: '+esc(playerName(t.runnerUpId))+'</p>'+
     '<h3>ボーナス内訳</h3>'+
     '<table class="print-table"><thead><tr><th>氏名</th><th>内容</th><th>ポイント</th></tr></thead><tbody>'+bonusRows+'</tbody></table>'+
-    '<h3 style="margin-top:1.2rem">参加メンバーのポイント変化</h3>'+
-    '<table class="print-table"><thead><tr><th>氏名</th><th>クラス</th><th>今大会での変動</th><th>最新の合計ポイント</th></tr></thead><tbody>'+pointRows+'</tbody></table>'+
+    '<h3 style="margin-top:1.2rem">決勝トーナメント</h3>'+
+    bracketHTML+
   '</div>';
 }
 function redrawFinals(t){
