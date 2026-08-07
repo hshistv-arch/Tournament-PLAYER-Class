@@ -336,21 +336,21 @@ var BONUS_LABELS = {
 var BONUS_ORDER = ["finalsAdvance","runnerUp","runnerUpBelowB","champion","championBelowB","bestBInFinals","bestCInFinals","beatPrevChampion","prelimDoubleLossPenalty"];
 
 var PLAYER_SEED = [
-["池田 義則",54],["池辺 明弘",50],["池辺 龍太郎",58],["石井 伸之",101],["石川 証",87],
-["岩崎 勝男",73],["岩崎 真也",63],["牛久保 ユウタ",88],["内澤 宏之",52],["海野 貴行",63],
-["エンシソ",72],["大澤 典史",94],["大広 航平",67],["風見",88],["加藤 玄太",82],
-["金井 裕之",63],["金子 功",54],["ガルシア",97],["河田 義之",90],["岸 大輔",26],
-["桑谷 真吾",57],["形 正偉",72],["コシノ",91],["小林 順",85],["米田 佳功",44],
-["米田 允久",90],["斉藤 勝",69],["佐々木 ヒデオ",67],["佐藤 佑太",103],["篠田 理",76],
-["清水 知男",82],["鈴木 拓也",100],["鈴木 光俊",120],["須田 誠治",61],["関口 芳則",47],
-["瀬沼 孝徳",58],["瀬間 康憲",37],["高橋 卓",79],["竹内",97],["丹治 秀徳",52],
-["鎮西",85],["南雲 亮太",70],["長谷川 悦史",53],["ハヤシ",52],["半田 洋二",89],
-["福島 和久",50],["藤川 潤",113],["藤吉 隆基",43],["マイケル",52],["水口 仁",80],
-["行村 剛",79],["吉田 然",67],["米田 寿之",50],["ローランド",69],["渡辺",55],
-["小林 直樹",105],["小林 涼子",72]
+["エンシソ","エンシソ",75],["ガルシア","ガルシア",97],["コシノ","コシノ",91],["ハヤシ","ハヤシ",52],["マイケル","マイケル",54],
+["ローランド","ローランド",66],["加藤 玄太","カトウ",85],["河田 義之","カワダ",90],["海野 貴行","ウンノ",63],["関口 芳則","セキグチ",47],
+["岸 大輔","キシ",23],["岩崎 勝男","イワサキ",69],["岩崎 真也","イワサキ",63],["吉田 然","ヨシダ",67],["牛久保 ユウタ","ウシクボ",83],
+["金井 裕之","カナイ",63],["金子 功","カネコ",54],["桑谷 真吾","クワタニ",57],["形 正偉","ケイ",72],["行村 剛","ユクムラ",79],
+["高橋 卓","タカハシ",79],["佐々木 ヒデオ","ササキ",67],["佐藤 佑太","サトウ",103],["篠田 理","シノダ",76],["小林 順","コバヤシ",85],
+["小林 直樹","コバヤシ",105],["小林 涼子","コバヤシ",72],["須田 誠治","スダ",61],["水口 仁","ミズグチ",80],["瀬間 康憲","セマ",37],
+["瀬沼 孝徳","セヌマ",58],["清水 知男","シミズ",82],["斉藤 勝","サイトウ",69],["石井 伸之","イシイ",101],["石川 証","イシカワ",87],
+["大広 航平","オオヒロ",67],["大澤 典史","オオサワ",94],["丹治 秀徳","タンジ",52],["池田 義則","イケダ",54],["池辺 明弘","イケベ",50],
+["池辺 龍太郎","イケベ",58],["竹内 幸一","タケウチ",97],["長谷川 悦史","ハセガワ",53],["鎮西","チンゼイ",85],["渡辺","ワタナベ",55],
+["藤吉 隆基","フジヨシ",43],["藤川 潤","フジカワ",113],["内澤 宏之","ウチザワ",52],["南雲 亮太","ナグモ",70],["半田 洋二","ハンダ",89],
+["風見","カザミ",88],["福島 和久","フクシマ",50],["米田 允久","コメダ",90],["米田 佳功","コメダ",44],["米田 寿之","ヨネダ",50],
+["鈴木 光俊","スズキ",120],["鈴木 拓也","スズキ",100]
 ];
 
-var CURRENT_ROSTER_VERSION = 2;
+var CURRENT_ROSTER_VERSION = 3;
 
 function defaultState(){
   return {
@@ -361,7 +361,7 @@ function defaultState(){
       bonuses: JSON.parse(JSON.stringify(BONUS_DEFAULT))
     },
     players: PLAYER_SEED.map(function(row,i){
-      return {id:"p"+(i+1), name:row[0], points:row[1]};
+      return {id:"p"+(i+1), name:row[0], kana:row[1], points:row[2]};
     }),
     rosterVersion: CURRENT_ROSTER_VERSION,
     entries: {},
@@ -390,12 +390,13 @@ function applyRosterUpdate(parsed){
   var byName = {};
   parsed.players.forEach(function(p){ byName[p.name] = p; });
   PLAYER_SEED.forEach(function(row){
-    var name = row[0], points = row[1];
+    var name = row[0], kana = row[1], points = row[2];
     if(byName[name]){
       byName[name].points = points;
+      byName[name].kana = kana;
     } else {
       var id = "p_seed_" + Date.now() + "_" + Math.floor(Math.random()*100000);
-      parsed.players.push({id:id, name:name, points:points});
+      parsed.players.push({id:id, name:name, kana:kana, points:points});
     }
   });
   parsed.rosterVersion = CURRENT_ROSTER_VERSION;
@@ -1526,6 +1527,19 @@ function renderEditSlots(t, kind, groupIdx, slots, pairwise){
   }
   return '<details open style="margin-bottom:.7rem"><summary class="hint" style="cursor:pointer">出場選手を編集</summary><div style="margin-top:.5rem">'+rows+'</div></details>';
 }
+function renderFinalsEditSlots(t){
+  var slots = finalsSlotsArray(t);
+  var rows = "";
+  for(var i=0;i<slots.length;i+=2){
+    rows += '<div class="form-row" style="align-items:center;flex-wrap:nowrap;gap:.5rem">'+
+      '<span class="hint num" style="width:4rem;flex:none">第'+(i/2+1)+'試合</span>'+
+      '<select data-action="assign-finals-slot" data-tid="'+t.id+'" data-slot="'+i+'" style="flex:1;min-width:0">'+rosterOptionsHTML(slots[i], true, t.finalists)+'</select>'+
+      '<span class="hint" style="flex:none">vs</span>'+
+      '<select data-action="assign-finals-slot" data-tid="'+t.id+'" data-slot="'+(i+1)+'" style="flex:1;min-width:0">'+rosterOptionsHTML(slots[i+1], true, t.finalists)+'</select>'+
+    '</div>';
+  }
+  return '<details style="margin-bottom:.7rem"><summary class="hint" style="cursor:pointer">決勝の組み合わせを選んで編集</summary><div style="margin-top:.5rem">'+rows+'</div></details>';
+}
 
 // ---------- connected bracket visual ----------
 function bflowSideHTML(m, playerId, opts){
@@ -1712,6 +1726,7 @@ function renderFinalsSection(t){
   var out = '<div class="card"><div class="form-row" style="align-items:center;justify-content:space-between">'+
     '<h3 style="margin:0">決勝トーナメント</h3>'+redrawBtn+
     '</div>'+
+    (t.status==="finals" ? renderFinalsEditSlots(t) : "")+
     renderBracketFlow(t.finals.rounds, function(ri,total){ return roundName(ri+1,total); }, {
       resolvable: t.status==="finals",
       actionName: "resolve-bracket",
@@ -1796,6 +1811,27 @@ function finalsHasProgress(t){
   if(!t.finals) return false;
   if(t.status==="completed") return true;
   return t.finals.rounds.some(function(r){ return r.some(function(m){ return !!m.winner && !m.bye; }); });
+}
+function finalsSlotsArray(t){
+  var slots = [];
+  t.finals.rounds[0].forEach(function(m){ slots.push(m.a); slots.push(m.b); });
+  return slots;
+}
+function assignFinalsSlot(t, slotIdx, newPlayerId){
+  var slots = finalsSlotsArray(t);
+  var newVal = newPlayerId || null;
+  if(newVal!==null){
+    var ownerIdx = slots.indexOf(newVal);
+    if(ownerIdx>=0 && ownerIdx!==slotIdx){ slots[ownerIdx] = slots[slotIdx]; }
+  }
+  slots[slotIdx] = newVal;
+  return slots;
+}
+function rebuildFinalsFromSlots(t, slots){
+  if(t.status==="completed") reverseFinalize(t);
+  t.finals.rounds.forEach(function(r){ r.forEach(function(m){ if(m.winner && !m.bye) undoMatchDeltas(m); }); });
+  t.finals = buildBracketFromSlots(slots);
+  t.status = "finals";
 }
 
 // ============ EVENTS ============
@@ -2015,6 +2051,18 @@ document.addEventListener("change", function(e){
       if(toura.format==="blockPrelim") rebuildBlockFromSlots(toura, groups[gi]);
       else rebuildGroupFromSlots(toura, groups[gi]);
     });
+    saveState(); render();
+  }
+  else if(action==="assign-finals-slot"){
+    var tidf=t.getAttribute("data-tid"); var tourf=findTournament(tidf);
+    if(!tourf || !tourf.finals) return;
+    var slotIdxF=Number(t.getAttribute("data-slot"));
+    if(finalsHasProgress(tourf) && !confirm("決勝の組み合わせを変更すると、既に入力されている決勝の対戦結果・大会結果は取り消されます。よろしいですか?")){
+      render();
+      return;
+    }
+    var slotsF = assignFinalsSlot(tourf, slotIdxF, t.value);
+    rebuildFinalsFromSlots(tourf, slotsF);
     saveState(); render();
   }
   else if(action==="resize-group"){
