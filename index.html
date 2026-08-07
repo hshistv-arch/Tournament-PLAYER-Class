@@ -259,6 +259,15 @@ details[open] > summary:before{content:"▾ ";}
   .nav-spacer{display:none;}
   .main{padding:1.2rem 1rem 3rem;}
 }
+.print-table{width:100%; border-collapse:collapse;}
+.print-table th, .print-table td{border:1px solid #999; padding:.4rem .6rem; text-align:left;}
+.print-table th{background:#eee;}
+@media print{
+  .sidenav, .no-print{display:none !important;}
+  .main{padding:0; margin:0;}
+  .print-summary h1{margin-top:0;}
+  .print-table{font-size:11pt;}
+}
 </style>
 
 <div class="app-shell">
@@ -718,16 +727,17 @@ function roundName(roundIdx, totalRounds){
 }
 
 // ---------- core scoring engine ----------
-function applyPointDelta(player, amount){
-  if(amount < 0){
+function applyPointDelta(player, amount, t){
+  if(amount < 0 && t){
     var floor = state.settings.minPoints!=null ? state.settings.minPoints : MIN_POINTS_DEFAULT;
-    var maxLoss = Math.max(0, player.points - floor);
+    var soFar = tournamentPointDeltas(t)[player.id] || 0;
+    var maxLoss = Math.max(0, soFar - floor);
     amount = -Math.min(-amount, maxLoss);
   }
   player.points += amount;
   return amount;
 }
-function resolveMatch(match, winnerId){
+function resolveMatch(match, winnerId, t){
   var loserId = winnerId===match.a ? match.b : match.a;
   var winner = getPlayer(winnerId), loser = getPlayer(loserId);
   if(!winner || !loser) return [];
@@ -736,7 +746,7 @@ function resolveMatch(match, winnerId){
   var loseDelta = state.settings.loseMatrix[lClass][wClass] || 0;
   var deltas=[];
   if(winDelta){ winner.points += winDelta; deltas.push({playerId:winnerId, amount:winDelta, reason:"勝利 ("+wClass+" vs "+lClass+")"}); }
-  if(loseDelta){ var appliedLoseDelta = applyPointDelta(loser, loseDelta); deltas.push({playerId:loserId, amount:appliedLoseDelta, reason:"敗北 ("+lClass+" vs "+wClass+")"}); }
+  if(loseDelta){ var appliedLoseDelta = applyPointDelta(loser, loseDelta, t); deltas.push({playerId:loserId, amount:appliedLoseDelta, reason:"敗北 ("+lClass+" vs "+wClass+")"}); }
   if(state.previousChampionId && loserId===state.previousChampionId){
     var b = state.settings.bonuses.beatPrevChampion || 0;
     if(b){ winner.points += b; deltas.push({playerId:winnerId, amount:b, reason:BONUS_LABELS.beatPrevChampion}); }
@@ -752,7 +762,7 @@ function undoMatchDeltas(match){
 }
 
 // ---------- ② block prelim ----------
-function recomputeBlockElimination(block){
+function recomputeBlockElimination(block, t){
   var losses={};
   block.playerIds.forEach(function(id){ losses[id]=0; });
   block.matches.forEach(function(m){
@@ -766,7 +776,7 @@ function recomputeBlockElimination(block){
     if(now && !was){
       block.eliminated[id]=true;
       var pen = state.settings.bonuses.prelimDoubleLossPenalty || 0;
-      if(pen){ var p=getPlayer(id); if(p) block.penaltyDeltas[id]=applyPointDelta(p, pen); }
+      if(pen){ var p=getPlayer(id); if(p) block.penaltyDeltas[id]=applyPointDelta(p, pen, t); }
     } else if(!now && was){
       block.eliminated[id]=false;
       var applied = block.penaltyDeltas[id];
@@ -780,7 +790,7 @@ function correctBlockMatch(t, block, matchId){
   var match = block.matches.find(function(m){ return m.id===matchId; });
   if(!match || !match.winner) return;
   undoMatchDeltas(match);
-  recomputeBlockElimination(block);
+  recomputeBlockElimination(block, t);
 }
 function finalizeBlockPrelim(t){
   var advancers=[];
@@ -834,7 +844,7 @@ function recomputeElimGroup(t, g){
       g.eliminated[id] = true;
       if(threshold===2){
         var pen = state.settings.bonuses.prelimDoubleLossPenalty || 0;
-        if(pen){ var p=getPlayer(id); if(p) g.penaltyDeltas[id]=applyPointDelta(p, pen); }
+        if(pen){ var p=getPlayer(id); if(p) g.penaltyDeltas[id]=applyPointDelta(p, pen, t); }
       }
     } else if(!now && was){
       g.eliminated[id] = false;
@@ -1316,6 +1326,7 @@ function render(){
   var main = document.getElementById("main");
   var html = "";
   if(route.screen==="roster") html = renderRoster();
+  else if(route.screen==="rosterPrint") html = renderRosterPrint();
   else if(route.screen==="entry") html = renderEntry();
   else if(route.screen==="settings") html = renderSettings();
   else if(route.screen==="newTournament") html = renderNewTournament();
@@ -1366,7 +1377,10 @@ function renderRoster(){
   '<div class="card">'+
     '<div class="form-row" style="align-items:center;justify-content:space-between">'+
       '<h3 style="margin:0">選手一覧</h3>'+
-      '<button class="btn btn-sm btn-ghost" data-action="export-roster-csv">CSVで書き出す</button>'+
+      '<div class="form-row" style="gap:.5rem">'+
+        '<button class="btn btn-sm btn-ghost" data-action="nav" data-screen="rosterPrint">サマリーを印刷</button>'+
+        '<button class="btn btn-sm btn-ghost" data-action="export-roster-csv">CSVで書き出す</button>'+
+      '</div>'+
     '</div>'+
     '<p class="hint">氏名・読みカナ・ポイントはその場で編集できます(変更は自動保存されます)。名前順は読みカナがあればそれを、なければ氏名を使って並べ替えます。</p>'+
     '<div class="tabs" style="margin-bottom:.8rem">'+
@@ -1380,6 +1394,26 @@ function renderRoster(){
   '</div>';
 }
 
+function renderRosterPrint(){
+  var players = state.players.slice().sort(function(a,b){ return b.points-a.points; });
+  var rows = players.map(function(p, i){
+    return '<tr><td class="num">'+(i+1)+'</td><td>'+esc(p.name)+'</td><td>'+classOf(p.points)+'</td><td class="num">'+p.points+'</td></tr>';
+  }).join("");
+  return ''+
+  '<div class="print-summary">'+
+    '<div class="page-head no-print"><div><h1>選手サマリー(印刷用)</h1><p class="sub">氏名・クラス・最新ポイントの一覧です。印刷ボタンを押すと、この一覧のみが印刷されます。</p></div></div>'+
+    '<div class="form-row no-print" style="gap:.5rem;margin-bottom:1rem">'+
+      '<button class="btn btn-primary" data-action="print-page">印刷する</button>'+
+      '<button class="btn btn-sm btn-ghost" data-action="nav" data-screen="roster">選手ロースターへ戻る</button>'+
+    '</div>'+
+    '<h1>選手サマリー</h1>'+
+    '<p class="hint">出力日: '+dateStamp()+' ・ 登録選手数: '+players.length+'名</p>'+
+    '<table class="print-table">'+
+      '<thead><tr><th>#</th><th>氏名</th><th>クラス</th><th>ポイント</th></tr></thead>'+
+      '<tbody>'+rows+'</tbody>'+
+    '</table>'+
+  '</div>';
+}
 function renderEntry(){
   var players = state.players.slice().sort(function(a,b){ return b.points-a.points; });
   var entered = players.filter(function(p){ var e=state.entries[p.id]; return e && e.entered; });
@@ -1493,10 +1527,10 @@ function renderSettingsBonus(){
     rows+
     '<div style="margin-top:.8rem"><button class="btn btn-sm" data-action="reset-bonus">デフォルトに戻す</button></div>'+
   '</div>'+
-  '<div class="card"><h3>ポイントの下限</h3>'+
-    '<p class="hint">敗北・予選敗退などでポイントが減る場合、この値より下がらないように制限します(勝利・ボーナスによる加点には影響しません)。</p>'+
+  '<div class="card"><h3>ポイント変動の下限</h3>'+
+    '<p class="hint">1つの大会の中で、敗北・予選敗退などによりポイントが減る場合、その大会での合計の点数変動がこの値より下がらないように制限します(勝利・ボーナスによる加点には影響しません)。</p>'+
     '<div class="form-row" style="align-items:center;justify-content:space-between;padding:.5rem 0">'+
-      '<div>下限ポイント</div>'+
+      '<div>下限(1大会あたり)</div>'+
       '<input type="number" class="num" style="width:6rem" value="'+minPointsVal+'" data-action="update-min-points">'+
     '</div>'+
     '<div style="margin-top:.8rem"><button class="btn btn-sm" data-action="reset-min-points">デフォルトに戻す</button></div>'+
@@ -2056,6 +2090,7 @@ document.addEventListener("click", function(e){
   else if(action==="settings-tab"){ route = {screen:"settings", tab:t.getAttribute("data-tab")}; render(); }
   else if(action==="roster-sort"){ route.rosterSort = t.getAttribute("data-sort"); render(); }
   else if(action==="export-roster-csv"){ exportRosterCSV(); }
+  else if(action==="print-page"){ window.print(); }
   else if(action==="delete-player"){ deletePlayer(t.getAttribute("data-id")); }
   else if(action==="reset-entries"){
     if(confirm("エントリー状況をリセットしますか?")){ state.entries={}; saveState(); render(); }
@@ -2117,7 +2152,7 @@ document.addEventListener("click", function(e){
     var bidx = Number(t.getAttribute("data-block"));
     var block = tour2.blocks[bidx];
     var m2 = block.matches.find(function(x){return x.id===mid;});
-    if(m2 && !m2.winner){ resolveMatch(m2, winner); recomputeBlockElimination(block); }
+    if(m2 && !m2.winner){ resolveMatch(m2, winner, tour2); recomputeBlockElimination(block, tour2); }
     saveState(); render();
   }
   else if(action==="undo-match"){
@@ -2140,7 +2175,7 @@ document.addEventListener("click", function(e){
     var side=t.getAttribute("data-side"); var mid5=t.getAttribute("data-mid"); var winner3=t.getAttribute("data-winner");
     var match5 = findElimMatch(g, side, mid5);
     if(match5 && !match5.winner && !match5.bye){
-      resolveMatch(match5, winner3);
+      resolveMatch(match5, winner3, tour6);
       advanceElimGroup(tour6, g);
       recomputeElimGroup(tour6, g);
       saveState(); render();
@@ -2163,7 +2198,7 @@ document.addEventListener("click", function(e){
     var match=null;
     tour4.finals.rounds.forEach(function(r){ r.forEach(function(mm){ if(mm.id===mid3) match=mm; }); });
     if(match && !match.winner && !match.bye){
-      resolveMatch(match, winner2);
+      resolveMatch(match, winner2, tour4);
       var loserId = winner2===match.a ? match.b : match.a;
       tour4.finals.eliminatedRound[loserId] = match.round;
       maybeAdvanceRounds(tour4.finals);
