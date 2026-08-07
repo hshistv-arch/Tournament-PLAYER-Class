@@ -361,7 +361,8 @@ function defaultState(){
       classBounds: DEFAULT_CLASS_BOUNDS.map(function(b){return {code:b.code,min:b.min};}),
       winMatrix: JSON.parse(JSON.stringify(WIN_MATRIX_DEFAULT)),
       loseMatrix: JSON.parse(JSON.stringify(LOSE_MATRIX_DEFAULT)),
-      bonuses: JSON.parse(JSON.stringify(BONUS_DEFAULT))
+      bonuses: JSON.parse(JSON.stringify(BONUS_DEFAULT)),
+      setCounts: JSON.parse(JSON.stringify(SET_COUNT_DEFAULT))
     },
     players: PLAYER_SEED.map(function(row,i){
       return {id:"p"+(i+1), name:row[0], kana:row[1], points:row[2]};
@@ -406,6 +407,13 @@ function migrateAddBeClass(parsed){
       if(m[cls].Be===undefined){ m[cls].Be = m[cls].CC!=null ? m[cls].CC : 0; }
     });
   });
+  if(!s.setCounts){
+    s.setCounts = JSON.parse(JSON.stringify(SET_COUNT_DEFAULT));
+  } else {
+    Object.keys(SET_COUNT_DEFAULT).forEach(function(cls){
+      if(s.setCounts[cls]===undefined) s.setCounts[cls] = SET_COUNT_DEFAULT[cls];
+    });
+  }
   return parsed;
 }
 function applyRosterUpdate(parsed){
@@ -538,7 +546,7 @@ function tierBelowB(id){
 }
 
 // ---------- match format: sets / chess clock / secondary handicap ----------
-var SET_COUNT_BY_CLASS = {SA:5,AA:5,AB:5,AC:5,BA:4,BB:4,BC:4,CA:3,CB:3,CC:3,Be:2};
+var SET_COUNT_DEFAULT = {SA:5,AA:5,AB:5,AC:5,BA:4,BB:4,BC:4,CA:3,CB:3,CC:3,Be:2};
 var MINUTES_BY_SETS = {2:15,3:20,4:25,5:30,6:35};
 function classSubRank(code){
   if(code==="Be") code="BB";
@@ -569,7 +577,8 @@ function matchFormatFor(playerId, opponentId){
   var p = getPlayer(playerId), o = getPlayer(opponentId);
   if(!p || !o) return null;
   var pClass = classOf(p.points), oClass = classOf(o.points);
-  var sets = SET_COUNT_BY_CLASS[pClass] || 3;
+  var setCounts = state.settings.setCounts || SET_COUNT_DEFAULT;
+  var sets = setCounts[pClass] || SET_COUNT_DEFAULT[pClass] || 3;
   if(state.previousChampionId === playerId) sets += 1;
   var minutes = MINUTES_BY_SETS[sets] != null ? MINUTES_BY_SETS[sets] : 30;
   var hc = secondaryHandicap(pClass, oClass);
@@ -1356,15 +1365,32 @@ function renderSettings(){
   if(tab==="bounds") body = renderSettingsBounds();
   else if(tab==="matrix") body = renderSettingsMatrix();
   else if(tab==="bonus") body = renderSettingsBonus();
+  else if(tab==="setcounts") body = renderSettingsSetCounts();
   else if(tab==="champion") body = renderSettingsChampion();
   else if(tab==="data") body = renderSettingsData();
   return ''+
   '<div class="page-head"><div><h1>設定</h1><p class="sub">クラス区分・勝敗ポイント表・ボーナス条件を変更できます</p></div></div>'+
   '<div class="tabs">'+
     tabBtn("bounds","クラス区分")+tabBtn("matrix","勝敗ポイント表")+tabBtn("bonus","ボーナス設定")+
-    tabBtn("champion","前回優勝者")+tabBtn("data","データ管理")+
+    tabBtn("setcounts","セット数")+tabBtn("champion","前回優勝者")+tabBtn("data","データ管理")+
   '</div>'+
   body;
+}
+function renderSettingsSetCounts(){
+  var sc = state.settings.setCounts || SET_COUNT_DEFAULT;
+  var rows = CLASSES.map(function(c){
+    var v = sc[c]!=null ? sc[c] : SET_COUNT_DEFAULT[c];
+    var minutes = MINUTES_BY_SETS[v] != null ? MINUTES_BY_SETS[v] : "-";
+    return '<tr><td>'+badge(c)+'</td>'+
+      '<td><input type="number" class="num" style="width:6rem" min="1" value="'+v+'" data-action="update-set-count" data-class="'+c+'"></td>'+
+      '<td class="hint">'+minutes+'分(前回優勝者は+1セット)</td></tr>';
+  }).join("");
+  return '<div class="card">'+
+    '<h3>クラスごとのセット数(レース本数)</h3>'+
+    '<p class="hint">対戦カードに表示される、各選手の必要セット数です。持ち時間はセット数に応じて自動計算されます(2セット=15分、3セット=20分、4セット=25分、5セット=30分、6セット=35分)。</p>'+
+    '<div class="table-wrap"><table class="data"><thead><tr><th>クラス</th><th>セット数</th><th>持ち時間</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+    '<div style="margin-top:.8rem"><button class="btn btn-sm" data-action="reset-set-counts">デフォルトに戻す</button></div>'+
+  '</div>';
 }
 function renderSettingsBounds(){
   var bounds = state.settings.classBounds;
@@ -1939,6 +1965,9 @@ document.addEventListener("click", function(e){
   else if(action==="reset-bonus"){
     if(confirm("ボーナス設定をデフォルトに戻しますか?")){ state.settings.bonuses = JSON.parse(JSON.stringify(BONUS_DEFAULT)); saveState(); render(); }
   }
+  else if(action==="reset-set-counts"){
+    if(confirm("セット数設定をデフォルトに戻しますか?")){ state.settings.setCounts = JSON.parse(JSON.stringify(SET_COUNT_DEFAULT)); saveState(); render(); }
+  }
   else if(action==="export-data"){ exportData(); }
   else if(action==="delete-tournament"){ deleteTournament(t.getAttribute("data-id")); }
   else if(action==="redraw-finals"){
@@ -2080,6 +2109,13 @@ document.addEventListener("change", function(e){
     var key=t.getAttribute("data-key");
     var v3 = Math.round(Number(t.value));
     if(isFinite(v3)){ state.settings.bonuses[key]=v3; saveState(); render(); }
+  }
+  else if(action==="update-set-count"){
+    var scCls = t.getAttribute("data-class");
+    var scVal = Math.max(1, Math.round(Number(t.value))||1);
+    if(!state.settings.setCounts) state.settings.setCounts = JSON.parse(JSON.stringify(SET_COUNT_DEFAULT));
+    state.settings.setCounts[scCls] = scVal;
+    saveState(); render();
   }
   else if(action==="update-prev-champion"){
     state.previousChampionId = t.value || null; saveState(); render();
