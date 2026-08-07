@@ -76,6 +76,8 @@ button{font-family:inherit;}
 .navlink .ico{width:1.1em; text-align:center; opacity:.85;}
 .nav-spacer{flex:1;}
 .nav-foot{font-size:.72rem; color:var(--muted); padding:0 .35rem;}
+.nav-foot.sync-ok{color:var(--win);}
+.nav-foot.sync-error, .nav-foot.sync-offline{color:var(--loss);}
 .main{flex:1; min-width:0; padding:1.6rem 2rem 4rem;}
 .main-inner{max-width:1120px; margin:0 auto; display:flex; flex-direction:column; gap:1.2rem;}
 .page-head{display:flex; align-items:baseline; justify-content:space-between; gap:1rem; flex-wrap:wrap;}
@@ -254,7 +256,7 @@ details[open] > summary:before{content:"▾ ";}
     </div>
     <div class="navgroup" id="nav-links"></div>
     <div class="nav-spacer"></div>
-    <div class="nav-foot">端末内に自動保存されます。<br>設定画面からバックアップを書き出せます。</div>
+    <div class="nav-foot" id="sync-status">同期を確認しています…</div>
   </nav>
   <main class="main"><div class="main-inner" id="main"></div></main>
 </div>
@@ -410,8 +412,72 @@ function loadState(){
   return defaultState();
 }
 function saveState(){
+  saveLocalOnly();
+  scheduleServerSync();
+}
+function saveLocalOnly(){
   try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
   catch(e){ console.warn("state save failed", e); }
+}
+
+// ---------- cross-device sync (shared cloud copy, no login) ----------
+var SYNC_URL = "/api/state";
+var syncTimer = null;
+var syncInFlight = false;
+var syncDirty = false;
+function setSyncStatus(status){
+  var el = document.getElementById("sync-status");
+  if(!el) return;
+  var label = {
+    syncing: "🔄 同期中…",
+    ok: "☁ クラウドに同期済み",
+    error: "⚠ 同期エラー(この端末にのみ保存されています)",
+    offline: "📴 オフライン(この端末にのみ保存されています)"
+  }[status] || "";
+  el.textContent = label;
+  el.className = "nav-foot sync-" + status;
+}
+function scheduleServerSync(){
+  syncDirty = true;
+  if(syncTimer) clearTimeout(syncTimer);
+  syncTimer = setTimeout(pushStateToServer, 600);
+}
+function pushStateToServer(){
+  if(syncInFlight){ syncTimer = setTimeout(pushStateToServer, 600); return; }
+  syncDirty = false;
+  syncInFlight = true;
+  setSyncStatus("syncing");
+  fetch(SYNC_URL, {
+    method: "PUT",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify(state)
+  }).then(function(r){
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    syncInFlight = false;
+    if(syncDirty){ pushStateToServer(); } else { setSyncStatus("ok"); }
+  }).catch(function(e){
+    syncInFlight = false;
+    console.warn("server sync failed", e);
+    setSyncStatus("error");
+  });
+}
+function syncFromServer(){
+  setSyncStatus("syncing");
+  fetch(SYNC_URL, {cache:"no-store"}).then(function(r){
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    return r.json();
+  }).then(function(serverState){
+    if(serverState && serverState.players){
+      state = applyRosterUpdate(migrateBestBorC(serverState));
+      state.entries = state.entries || {};
+      state.currentTournamentId = state.currentTournamentId || null;
+      render();
+    }
+    saveState();
+  }).catch(function(e){
+    console.warn("initial sync fetch failed", e);
+    setSyncStatus("offline");
+  });
 }
 
 function getPlayer(id){
@@ -1955,8 +2021,9 @@ document.addEventListener("submit", function(e){
 
 // ============ INIT ============
 state = loadState();
-saveState();
+saveLocalOnly();
 render();
+syncFromServer();
 
 })();
 </script>

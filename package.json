@@ -1,0 +1,24 @@
+{
+  "name": "player-class",
+  "version": "1.0.0",
+  "description": "ビリヤード大会のクラスポイントを管理するツールです。勝敗ポイント表（クラスの組み合わせごとに勝者が得る点・敗者が失う点を定めた表）に基づいて、試合結果からクラスポイントを自動計算・更新します。",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hshistv-arch/Tournament-PLAYER-Class.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/hshistv-arch/Tournament-PLAYER-Class/issues"
+  },
+  "homepage": "https://github.com/hshistv-arch/Tournament-PLAYER-Class#readme",
+  "dependencies": {
+    "@vercel/blob": "^2.7.0"
+  }
+}
