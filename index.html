@@ -1173,12 +1173,20 @@ function createTournament(opts){
   var eligible = eligiblePlayerIdsForNewEvent();
   t.eligiblePlayerIds = eligible.length ? eligible : state.players.map(function(p){ return p.id; });
   var sizes = distributeCount(opts.totalParticipants, opts.groupCount);
+  var perGroupIds = null;
+  if(opts.selectedIds && opts.selectedIds.length){
+    var sortedSelected = opts.selectedIds.slice().sort(function(a,b){ return pointsOf(b)-pointsOf(a); });
+    perGroupIds = sizes.map(function(){ return []; });
+    sortedSelected.forEach(function(id, i){ perGroupIds[i % sizes.length].push(id); });
+  }
   if(opts.format==="blockPrelim"){
     t.blockCount = opts.groupCount;
     t.advancePerBlock = opts.advancePerBlock;
     t.advanceBonusApplied = {};
     t.blocks = sizes.map(function(size, bi){
-      return { index:bi, targetSize:size, slots:new Array(size).fill(null) };
+      var slots = new Array(size).fill(null);
+      if(perGroupIds){ perGroupIds[bi].forEach(function(id, i){ slots[i] = id; }); }
+      return { index:bi, targetSize:size, slots:slots };
     });
     t.finals = null;
     t.blocks.forEach(function(b){ rebuildBlockFromSlots(t, b); });
@@ -1192,8 +1200,14 @@ function createTournament(opts){
     }
     t.advanceBonusApplied = {};
     t.groups = sizes.map(function(size, gi){
-      var bracketSize=1; while(bracketSize<size) bracketSize*=2;
-      return { index:gi, targetSize:size, slots:new Array(bracketSize).fill(null) };
+      var slots;
+      if(perGroupIds){
+        slots = computeDefaultBracketSlots(perGroupIds[gi]);
+      } else {
+        var bracketSize=1; while(bracketSize<size) bracketSize*=2;
+        slots = new Array(bracketSize).fill(null);
+      }
+      return { index:gi, targetSize:size, slots:slots };
     });
     t.finals = null;
     t.groups.forEach(function(g){ rebuildGroupFromSlots(t, g); });
@@ -1453,7 +1467,10 @@ function renderRosterPrint(){
   '</div>';
 }
 function renderEntry(){
-  var players = state.players.slice().sort(function(a,b){ return b.points-a.points; });
+  var players = state.players.slice().sort(function(a,b){
+    var ka = a.kana||a.name, kb = b.kana||b.name;
+    return ka.localeCompare(kb, "ja");
+  });
   var entered = players.filter(function(p){ var e=state.entries[p.id]; return e && e.entered; });
   var paid = entered.filter(function(p){ return state.entries[p.id].feePaid; });
   var rows = players.map(function(p){
@@ -1598,24 +1615,34 @@ function renderSettingsData(){
 // ---------- 大会作成 (人数のみ指定。選手の割当は作成後に行う) ----------
 function ensureNewTournamentState(){
   if(!route.newTournament){
-    var eligibleCount = eligiblePlayerIdsForNewEvent().length;
+    var eligibleIds = eligiblePlayerIdsForNewEvent();
     route.newTournament = {
       format:"elimPrelim", prelimType:"single", lbOneSetDown:true,
       groupCount:1, advancePerGroup:4,
       advancePerGroupWB:4, advancePerGroupLB:4,
       blockCount:4, advancePerBlock:2,
-      totalParticipants: Math.max(2, eligibleCount || 8)
+      selectedIds: eligibleIds.slice(),
+      totalParticipants: Math.max(2, eligibleIds.length || 8)
     };
   }
   return route.newTournament;
 }
 function renderNewTournament(){
   var nt = ensureNewTournamentState();
-  var eligibleCount = eligiblePlayerIdsForNewEvent().length;
+  var eligibleIds = eligiblePlayerIdsForNewEvent();
+  var eligibleCount = eligibleIds.length;
+  var pickPool = (eligibleCount ? state.players.filter(function(p){ return eligibleIds.indexOf(p.id)>=0; }) : state.players.slice())
+    .sort(function(a,b){ var ka=a.kana||a.name, kb=b.kana||b.name; return ka.localeCompare(kb,"ja"); });
   function radioCard(name, value, checked, title, desc){
     return '<label class="radio-card'+(checked?' checked':'')+'"><input type="radio" name="'+name+'" value="'+value+'"'+(checked?' checked':'')+' data-action="'+name+'-radio">'+
       '<div><div class="rc-title">'+title+'</div><div class="rc-desc">'+desc+'</div></div></label>';
   }
+  var pickRows = pickPool.map(function(p){
+    var checked = nt.selectedIds.indexOf(p.id)>=0;
+    return '<label class="hint" style="display:flex;align-items:center;gap:.4rem;cursor:pointer;padding:.3rem 0;border-bottom:1px solid var(--border)">'+
+      '<input type="checkbox" data-action="toggle-select-participant" data-id="'+p.id+'" '+(checked?"checked":"")+'>'+
+      '<span style="flex:1">'+esc(p.name)+'</span>'+badge(classOf(p.points))+'</label>';
+  }).join("");
   return ''+
   '<div class="page-head"><div><h1>大会を作成</h1><p class="sub">まずは試合形式と参加人数だけを決めます。出場選手の割当は大会作成後、トーナメント表/ブロック表の中で行います。</p></div></div>'+
   '<div class="card"><p class="hint">現在「エントリー受付」でエントリー・参加費受領済みの選手: <b class="num">'+eligibleCount+'</b>名'+
@@ -1627,6 +1654,13 @@ function renderNewTournament(){
       '<div class="form-row">'+
         '<div class="field" style="flex:2;min-width:220px"><label>大会名</label><input type="text" name="name" data-action="tourname-input" value="'+esc(nt.name||"")+'" placeholder="例: 2026年8月度月例大会" required></div>'+
       '</div>'+
+    '</div>'+
+    '<div class="card">'+
+      '<h3>出場選手を選択</h3>'+
+      '<p class="hint">チェックした選手が参加人数・組み合わせに使われます(デフォルトでエントリー・参加費受領済みの選手が全員チェックされています)。欠席者はチェックを外してください。'+
+        (eligibleCount===0 ? '「エントリー受付」が未設定のため、ロースター全員が対象です。' : '')+'</p>'+
+      '<p class="hint num">選択中: '+nt.selectedIds.length+'名</p>'+
+      '<div class="table-wrap" style="max-height:16rem;overflow-y:auto">'+pickRows+'</div>'+
     '</div>'+
     '<div class="card">'+
       '<h3>① 試合形式</h3>'+
@@ -1668,8 +1702,12 @@ function renderNewTournament(){
     '</div>'+
     '<div class="card">'+
       '<h3>参加人数</h3>'+
-      '<div class="form-row"><div class="field"><label>総参加人数</label><input type="number" data-action="totalParticipants-input" value="'+nt.totalParticipants+'" min="2" style="width:7rem"></div></div>'+
-      '<p class="hint">出場選手の氏名は、大会作成後にトーナメント表/ブロック表の中で選択します。</p>'+
+      (nt.selectedIds.length>0 ?
+        '<p class="hint">総参加人数: <b class="num">'+nt.totalParticipants+'</b>名(上の「出場選手を選択」でのチェック数から自動設定されます)</p>'
+        :
+        '<div class="form-row"><div class="field"><label>総参加人数</label><input type="number" data-action="totalParticipants-input" value="'+nt.totalParticipants+'" min="2" style="width:7rem"></div></div>'
+      )+
+      '<p class="hint">出場選手は上のチェックから自動でトーナメント表/ブロック表に割り当てられます(大会作成後にも組み替え可能です)。</p>'+
     '</div>'+
     '<div style="display:flex;gap:.6rem;margin-top:.2rem"><button type="submit" class="btn btn-primary">大会を作成</button></div>'+
   '</form>';
@@ -2305,6 +2343,15 @@ document.addEventListener("change", function(e){
   else if(action==="lb-oneset-toggle"){
     var ntlb = ensureNewTournamentState(); ntlb.lbOneSetDown = t.checked; render();
   }
+  else if(action==="toggle-select-participant"){
+    var ntsel = ensureNewTournamentState();
+    var pid = t.getAttribute("data-id");
+    var idx = ntsel.selectedIds.indexOf(pid);
+    if(t.checked && idx<0) ntsel.selectedIds.push(pid);
+    else if(!t.checked && idx>=0) ntsel.selectedIds.splice(idx,1);
+    if(ntsel.selectedIds.length>0) ntsel.totalParticipants = ntsel.selectedIds.length;
+    render();
+  }
   else if(action==="toggle-entry"){
     var id=t.getAttribute("data-id");
     state.entries[id] = state.entries[id] || {entered:false, feePaid:false};
@@ -2522,11 +2569,11 @@ document.addEventListener("submit", function(e){
       var effectiveAdvancePerGroup = nt.prelimType==="double" ? (nt.advancePerGroupWB+nt.advancePerGroupLB) : nt.advancePerGroup;
       if(nt.prelimType==="double" && effectiveAdvancePerGroup<1){ alert("決勝進出人数(勝者側+敗者側)は1名以上にしてください。"); return; }
       if(Math.floor(nt.totalParticipants/nt.groupCount) < effectiveAdvancePerGroup){ alert("各グループからの決勝進出人数が、1グループあたりの人数より多くなっています。"); return; }
-      createTournament({name:name, format:"elimPrelim", prelimType:nt.prelimType, lbOneSetDown:nt.lbOneSetDown, groupCount:nt.groupCount, advancePerGroup:effectiveAdvancePerGroup, advancePerGroupWB:nt.advancePerGroupWB, advancePerGroupLB:nt.advancePerGroupLB, totalParticipants:nt.totalParticipants});
+      createTournament({name:name, format:"elimPrelim", prelimType:nt.prelimType, lbOneSetDown:nt.lbOneSetDown, groupCount:nt.groupCount, advancePerGroup:effectiveAdvancePerGroup, advancePerGroupWB:nt.advancePerGroupWB, advancePerGroupLB:nt.advancePerGroupLB, totalParticipants:nt.totalParticipants, selectedIds:nt.selectedIds});
     } else {
       if(nt.totalParticipants < nt.blockCount*2){ alert("参加人数がブロック数に対して少なすぎます。"); return; }
       if(Math.floor(nt.totalParticipants/nt.blockCount) < nt.advancePerBlock){ alert("各ブロックからの決勝進出人数が、1ブロックあたりの人数より多くなっています。"); return; }
-      createTournament({name:name, format:"blockPrelim", groupCount:nt.blockCount, advancePerBlock:nt.advancePerBlock, totalParticipants:nt.totalParticipants});
+      createTournament({name:name, format:"blockPrelim", groupCount:nt.blockCount, advancePerBlock:nt.advancePerBlock, totalParticipants:nt.totalParticipants, selectedIds:nt.selectedIds});
     }
   }
 }, false);
