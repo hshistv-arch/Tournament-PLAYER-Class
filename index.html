@@ -338,6 +338,7 @@ var BONUS_LABELS = {
   prelimDoubleLossPenalty:"予選2敗による敗退"
 };
 var BONUS_ORDER = ["finalsAdvance","runnerUp","runnerUpBelowB","champion","championBelowB","bestBInFinals","bestCInFinals","beatPrevChampion","prelimDoubleLossPenalty"];
+var MIN_POINTS_DEFAULT = -3;
 
 var PLAYER_SEED = [
 ["エンシソ","エンシソ",75],["ガルシア","ガルシア",97],["コシノ","コシノ",91],["ハヤシ","ハヤシ",52],["マイケル","マイケル",54],
@@ -364,7 +365,8 @@ function defaultState(){
       loseMatrix: JSON.parse(JSON.stringify(LOSE_MATRIX_DEFAULT)),
       bonuses: JSON.parse(JSON.stringify(BONUS_DEFAULT)),
       setCounts: JSON.parse(JSON.stringify(SET_COUNT_DEFAULT)),
-      downSetCounts: JSON.parse(JSON.stringify(DOWN_SET_COUNT_DEFAULT))
+      downSetCounts: JSON.parse(JSON.stringify(DOWN_SET_COUNT_DEFAULT)),
+      minPoints: MIN_POINTS_DEFAULT
     },
     players: PLAYER_SEED.map(function(row,i){
       return {id:"p"+(i+1), name:row[0], kana:row[1], points:row[2]};
@@ -423,6 +425,7 @@ function migrateAddBeClass(parsed){
       if(s.downSetCounts[cls]===undefined) s.downSetCounts[cls] = DOWN_SET_COUNT_DEFAULT[cls];
     });
   }
+  if(s.minPoints===undefined) s.minPoints = MIN_POINTS_DEFAULT;
   return parsed;
 }
 function applyRosterUpdate(parsed){
@@ -715,6 +718,15 @@ function roundName(roundIdx, totalRounds){
 }
 
 // ---------- core scoring engine ----------
+function applyPointDelta(player, amount){
+  if(amount < 0){
+    var floor = state.settings.minPoints!=null ? state.settings.minPoints : MIN_POINTS_DEFAULT;
+    var maxLoss = Math.max(0, player.points - floor);
+    amount = -Math.min(-amount, maxLoss);
+  }
+  player.points += amount;
+  return amount;
+}
 function resolveMatch(match, winnerId){
   var loserId = winnerId===match.a ? match.b : match.a;
   var winner = getPlayer(winnerId), loser = getPlayer(loserId);
@@ -724,7 +736,7 @@ function resolveMatch(match, winnerId){
   var loseDelta = state.settings.loseMatrix[lClass][wClass] || 0;
   var deltas=[];
   if(winDelta){ winner.points += winDelta; deltas.push({playerId:winnerId, amount:winDelta, reason:"勝利 ("+wClass+" vs "+lClass+")"}); }
-  if(loseDelta){ loser.points += loseDelta; deltas.push({playerId:loserId, amount:loseDelta, reason:"敗北 ("+lClass+" vs "+wClass+")"}); }
+  if(loseDelta){ var appliedLoseDelta = applyPointDelta(loser, loseDelta); deltas.push({playerId:loserId, amount:appliedLoseDelta, reason:"敗北 ("+lClass+" vs "+wClass+")"}); }
   if(state.previousChampionId && loserId===state.previousChampionId){
     var b = state.settings.bonuses.beatPrevChampion || 0;
     if(b){ winner.points += b; deltas.push({playerId:winnerId, amount:b, reason:BONUS_LABELS.beatPrevChampion}); }
@@ -754,7 +766,7 @@ function recomputeBlockElimination(block){
     if(now && !was){
       block.eliminated[id]=true;
       var pen = state.settings.bonuses.prelimDoubleLossPenalty || 0;
-      if(pen){ var p=getPlayer(id); if(p) p.points += pen; block.penaltyDeltas[id]=pen; }
+      if(pen){ var p=getPlayer(id); if(p) block.penaltyDeltas[id]=applyPointDelta(p, pen); }
     } else if(!now && was){
       block.eliminated[id]=false;
       var applied = block.penaltyDeltas[id];
@@ -822,7 +834,7 @@ function recomputeElimGroup(t, g){
       g.eliminated[id] = true;
       if(threshold===2){
         var pen = state.settings.bonuses.prelimDoubleLossPenalty || 0;
-        if(pen){ var p=getPlayer(id); if(p) p.points += pen; g.penaltyDeltas[id]=pen; }
+        if(pen){ var p=getPlayer(id); if(p) g.penaltyDeltas[id]=applyPointDelta(p, pen); }
       }
     } else if(!now && was){
       g.eliminated[id] = false;
@@ -1474,9 +1486,18 @@ function renderSettingsBonus(){
       '<input type="number" class="num" style="width:6rem" value="'+v+'" data-action="update-bonus" data-key="'+key+'">'+
     '</div>';
   }).join("");
+  var minPointsVal = state.settings.minPoints!=null ? state.settings.minPoints : MIN_POINTS_DEFAULT;
   return '<div class="card"><h3>特別加点・減点</h3><p class="hint">決勝進出・優勝・予選敗退などの特別ポイントを編集できます。</p>'+
     rows+
     '<div style="margin-top:.8rem"><button class="btn btn-sm" data-action="reset-bonus">デフォルトに戻す</button></div>'+
+  '</div>'+
+  '<div class="card"><h3>ポイントの下限</h3>'+
+    '<p class="hint">敗北・予選敗退などでポイントが減る場合、この値より下がらないように制限します(勝利・ボーナスによる加点には影響しません)。</p>'+
+    '<div class="form-row" style="align-items:center;justify-content:space-between;padding:.5rem 0">'+
+      '<div>下限ポイント</div>'+
+      '<input type="number" class="num" style="width:6rem" value="'+minPointsVal+'" data-action="update-min-points">'+
+    '</div>'+
+    '<div style="margin-top:.8rem"><button class="btn btn-sm" data-action="reset-min-points">デフォルトに戻す</button></div>'+
   '</div>';
 }
 function renderSettingsChampion(){
@@ -2039,6 +2060,9 @@ document.addEventListener("click", function(e){
   else if(action==="reset-bonus"){
     if(confirm("ボーナス設定をデフォルトに戻しますか?")){ state.settings.bonuses = JSON.parse(JSON.stringify(BONUS_DEFAULT)); saveState(); render(); }
   }
+  else if(action==="reset-min-points"){
+    if(confirm("ポイントの下限をデフォルトに戻しますか?")){ state.settings.minPoints = MIN_POINTS_DEFAULT; saveState(); render(); }
+  }
   else if(action==="reset-set-counts"){
     if(confirm("セット数設定をデフォルトに戻しますか?")){
       state.settings.setCounts = JSON.parse(JSON.stringify(SET_COUNT_DEFAULT));
@@ -2190,6 +2214,10 @@ document.addEventListener("change", function(e){
     var key=t.getAttribute("data-key");
     var v3 = Math.round(Number(t.value));
     if(isFinite(v3)){ state.settings.bonuses[key]=v3; saveState(); render(); }
+  }
+  else if(action==="update-min-points"){
+    var vMp = Math.round(Number(t.value));
+    if(isFinite(vMp)){ state.settings.minPoints = vMp; saveState(); render(); }
   }
   else if(action==="update-set-count"){
     var scCls = t.getAttribute("data-class");
