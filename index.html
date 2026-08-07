@@ -1,4 +1,4 @@
-<title>ビリヤード大会 クラスポイント管理</title>
+<title>G-SPeC クラスポイント</title>
 
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -276,7 +276,7 @@ details[open] > summary:before{content:"▾ ";}
   <nav class="sidenav">
     <div class="brand">
       <div class="brand-logo" role="img" aria-label="G-SPeC Pool and Snooker Club"></div>
-      <span class="title">クラスポイント管理</span>
+      <span class="title">G-SPeC クラスポイント</span>
     </div>
     <div class="navgroup" id="nav-links"></div>
     <div class="nav-spacer"></div>
@@ -1621,6 +1621,7 @@ function ensureNewTournamentState(){
       groupCount:1, advancePerGroup:4,
       advancePerGroupWB:4, advancePerGroupLB:4,
       blockCount:4, advancePerBlock:2,
+      useEntryFilter: true,
       selectedIds: eligibleIds.slice(),
       totalParticipants: Math.max(2, eligibleIds.length || 8)
     };
@@ -1631,7 +1632,8 @@ function renderNewTournament(){
   var nt = ensureNewTournamentState();
   var eligibleIds = eligiblePlayerIdsForNewEvent();
   var eligibleCount = eligibleIds.length;
-  var pickPool = (eligibleCount ? state.players.filter(function(p){ return eligibleIds.indexOf(p.id)>=0; }) : state.players.slice())
+  var useFilter = nt.useEntryFilter!==false;
+  var pickPool = ((useFilter && eligibleCount) ? state.players.filter(function(p){ return eligibleIds.indexOf(p.id)>=0; }) : state.players.slice())
     .sort(function(a,b){ var ka=a.kana||a.name, kb=b.kana||b.name; return ka.localeCompare(kb,"ja"); });
   function radioCard(name, value, checked, title, desc){
     return '<label class="radio-card'+(checked?' checked':'')+'"><input type="radio" name="'+name+'" value="'+value+'"'+(checked?' checked':'')+' data-action="'+name+'-radio">'+
@@ -1657,8 +1659,12 @@ function renderNewTournament(){
     '</div>'+
     '<div class="card">'+
       '<h3>出場選手を選択</h3>'+
-      '<p class="hint">チェックした選手が参加人数・組み合わせに使われます(デフォルトでエントリー・参加費受領済みの選手が全員チェックされています)。欠席者はチェックを外してください。'+
-        (eligibleCount===0 ? '「エントリー受付」が未設定のため、ロースター全員が対象です。' : '')+'</p>'+
+      '<p class="hint">チェックした選手が参加人数・組み合わせに使われます。欠席者はチェックを外してください。</p>'+
+      '<label class="hint" style="display:flex;align-items:center;gap:.4rem;cursor:pointer;margin-bottom:.5rem">'+
+        '<input type="checkbox" data-action="entry-filter-toggle" '+(useFilter?"checked":"")+'>'+
+        'エントリー受付でチェック済みの選手のみ表示する(外すとロースター全員が対象になります)'+
+      '</label>'+
+      (useFilter && eligibleCount===0 ? '<p class="hint">「エントリー受付」でチェック済みの選手がいないため、ロースター全員を表示しています。</p>' : '')+
       '<p class="hint num">選択中: '+nt.selectedIds.length+'名</p>'+
       '<div class="table-wrap" style="max-height:16rem;overflow-y:auto">'+pickRows+'</div>'+
     '</div>'+
@@ -2350,6 +2356,15 @@ document.addEventListener("change", function(e){
     if(t.checked && idx<0) ntsel.selectedIds.push(pid);
     else if(!t.checked && idx>=0) ntsel.selectedIds.splice(idx,1);
     if(ntsel.selectedIds.length>0) ntsel.totalParticipants = ntsel.selectedIds.length;
+    render();
+  }
+  else if(action==="entry-filter-toggle"){
+    var ntef = ensureNewTournamentState();
+    ntef.useEntryFilter = t.checked;
+    var eligibleIdsEF = eligiblePlayerIdsForNewEvent();
+    var poolEF = (ntef.useEntryFilter && eligibleIdsEF.length) ? eligibleIdsEF : state.players.map(function(p){ return p.id; });
+    ntef.selectedIds = ntef.selectedIds.filter(function(id){ return poolEF.indexOf(id)>=0; });
+    if(ntef.selectedIds.length>0) ntef.totalParticipants = ntef.selectedIds.length;
     render();
   }
   else if(action==="toggle-entry"){
