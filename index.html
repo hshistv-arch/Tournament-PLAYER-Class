@@ -1846,32 +1846,36 @@ function renderTournamentScreen(id){
 }
 
 // ---------- 組み合わせ割当 ----------
-function rosterOptionsHTML(currentValue, allowBye, eligibleIds){
+function rosterOptionsHTML(currentValue, allowBye, eligibleIds, usedElsewhere){
   var placeholder = allowBye ? ('<option value=""'+(currentValue?"":" selected")+'>(不戦/空き)</option>')
                               : ('<option value=""'+(currentValue?"":" selected")+'>(未定)</option>');
   var pool = (eligibleIds && eligibleIds.length) ? state.players.filter(function(p){ return eligibleIds.indexOf(p.id)>=0; }) : state.players.slice();
   var players = pool.sort(function(a,b){ return a.name.localeCompare(b.name,"ja"); });
   var opts = placeholder + players.map(function(p){
-    return '<option value="'+p.id+'"'+(currentValue===p.id?" selected":"")+'>'+esc(p.name)+' ('+classOf(p.points)+')</option>';
+    var isUsed = usedElsewhere && usedElsewhere.indexOf(p.id)>=0;
+    return '<option value="'+p.id+'"'+(currentValue===p.id?" selected":"")+(isUsed?' style="background:#ddd;color:#777;"':'')+'>'+esc(p.name)+' ('+classOf(p.points)+')'+(isUsed?' ✓選択済み':'')+'</option>';
   }).join("");
   return opts;
 }
 function renderEditSlots(t, kind, groupIdx, slots, pairwise){
   var rows;
+  function usedElsewhere(si){
+    return slots.filter(function(id, idx){ return idx!==si && id; });
+  }
   if(pairwise){
     rows = "";
     for(var i=0;i<slots.length;i+=2){
       rows += '<div class="form-row" style="align-items:center;flex-wrap:nowrap;gap:.5rem">'+
         '<span class="hint num" style="width:4rem;flex:none">第'+(i/2+1)+'試合</span>'+
-        '<select data-action="assign-slot" data-kind="'+kind+'" data-idx="'+groupIdx+'" data-slot="'+i+'" data-tid="'+t.id+'" style="flex:1;min-width:0">'+rosterOptionsHTML(slots[i], true, t.eligiblePlayerIds)+'</select>'+
+        '<select data-action="assign-slot" data-kind="'+kind+'" data-idx="'+groupIdx+'" data-slot="'+i+'" data-tid="'+t.id+'" style="flex:1;min-width:0">'+rosterOptionsHTML(slots[i], true, t.eligiblePlayerIds, usedElsewhere(i))+'</select>'+
         '<span class="hint" style="flex:none">vs</span>'+
-        '<select data-action="assign-slot" data-kind="'+kind+'" data-idx="'+groupIdx+'" data-slot="'+(i+1)+'" data-tid="'+t.id+'" style="flex:1;min-width:0">'+rosterOptionsHTML(slots[i+1], true, t.eligiblePlayerIds)+'</select>'+
+        '<select data-action="assign-slot" data-kind="'+kind+'" data-idx="'+groupIdx+'" data-slot="'+(i+1)+'" data-tid="'+t.id+'" style="flex:1;min-width:0">'+rosterOptionsHTML(slots[i+1], true, t.eligiblePlayerIds, usedElsewhere(i+1))+'</select>'+
       '</div>';
     }
   } else {
     rows = slots.map(function(id, si){
       return '<div class="form-row" style="margin:.2rem 0"><select data-action="assign-slot" data-kind="'+kind+'" data-idx="'+groupIdx+'" data-slot="'+si+'" data-tid="'+t.id+'" style="width:100%">'+
-        rosterOptionsHTML(id, false, t.eligiblePlayerIds)+'</select></div>';
+        rosterOptionsHTML(id, false, t.eligiblePlayerIds, usedElsewhere(si))+'</select></div>';
     }).join("");
   }
   return '<details open style="margin-bottom:.7rem"><summary class="hint" style="cursor:pointer">出場選手を編集</summary><div style="margin-top:.5rem">'+rows+'</div></details>';
@@ -1879,12 +1883,15 @@ function renderEditSlots(t, kind, groupIdx, slots, pairwise){
 function renderFinalsEditSlots(t){
   var slots = finalsSlotsArray(t);
   var rows = "";
+  function usedElsewhere(si){
+    return slots.filter(function(id, idx){ return idx!==si && id; });
+  }
   for(var i=0;i<slots.length;i+=2){
     rows += '<div class="form-row" style="align-items:center;flex-wrap:nowrap;gap:.5rem">'+
       '<span class="hint num" style="width:4rem;flex:none">第'+(i/2+1)+'試合</span>'+
-      '<select data-action="assign-finals-slot" data-tid="'+t.id+'" data-slot="'+i+'" style="flex:1;min-width:0">'+rosterOptionsHTML(slots[i], true, t.finalists)+'</select>'+
+      '<select data-action="assign-finals-slot" data-tid="'+t.id+'" data-slot="'+i+'" style="flex:1;min-width:0">'+rosterOptionsHTML(slots[i], true, t.finalists, usedElsewhere(i))+'</select>'+
       '<span class="hint" style="flex:none">vs</span>'+
-      '<select data-action="assign-finals-slot" data-tid="'+t.id+'" data-slot="'+(i+1)+'" style="flex:1;min-width:0">'+rosterOptionsHTML(slots[i+1], true, t.finalists)+'</select>'+
+      '<select data-action="assign-finals-slot" data-tid="'+t.id+'" data-slot="'+(i+1)+'" style="flex:1;min-width:0">'+rosterOptionsHTML(slots[i+1], true, t.finalists, usedElsewhere(i+1))+'</select>'+
     '</div>';
   }
   return '<details style="margin-bottom:.7rem"><summary class="hint" style="cursor:pointer">決勝の組み合わせを選んで編集</summary><div style="margin-top:.5rem">'+rows+'</div></details>';
