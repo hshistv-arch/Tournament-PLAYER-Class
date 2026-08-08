@@ -818,19 +818,48 @@ function correctBlockMatch(t, block, matchId){
   undoMatchDeltas(match);
   recomputeBlockElimination(block, t);
 }
+function blockStandings(block){
+  return block.playerIds.map(function(id){
+    return {id:id, wins:block.matches.filter(function(m){ return m.winner===id; }).length, points:pointsOf(id)};
+  }).sort(function(a,b){
+    if(b.wins!==a.wins) return b.wins-a.wins;
+    return b.points-a.points;
+  });
+}
+function blockTieInfo(block, advanceCount){
+  var standings = blockStandings(block);
+  if(advanceCount>=standings.length) return null;
+  var boundary = standings[advanceCount-1];
+  var next = standings[advanceCount];
+  if(!boundary || !next || boundary.wins!==next.wins || boundary.points!==next.points) return null;
+  var tiedIds=[], firstTiedIdx=-1;
+  standings.forEach(function(s, i){
+    if(s.wins===boundary.wins && s.points===boundary.points){
+      tiedIds.push(s.id);
+      if(firstTiedIdx<0) firstTiedIdx=i;
+    }
+  });
+  return { tiedIds:tiedIds, needCount: advanceCount-firstTiedIdx, guaranteedIds: standings.slice(0, firstTiedIdx).map(function(s){return s.id;}) };
+}
 function finalizeBlockPrelim(t){
   var advancers=[];
   t.blocks.forEach(function(block){
-    var ranked = block.playerIds.slice().sort(function(a,b){
-      var wa = block.matches.filter(function(m){ return m.winner===a; }).length;
-      var wb = block.matches.filter(function(m){ return m.winner===b; }).length;
-      if(wb!==wa) return wb-wa;
-      return pointsOf(b)-pointsOf(a);
-    });
-    var adv = ranked.slice(0, t.advancePerBlock);
+    var tie = blockTieInfo(block, t.advancePerBlock);
+    var adv;
+    if(tie){
+      var chosen = ((t.tieBreakSelections && t.tieBreakSelections[block.index]) || []).filter(function(id){ return tie.tiedIds.indexOf(id)>=0; });
+      if(chosen.length < tie.needCount){
+        adv = blockStandings(block).map(function(s){ return s.id; }).slice(0, t.advancePerBlock);
+      } else {
+        adv = tie.guaranteedIds.concat(chosen.slice(0, tie.needCount));
+      }
+    } else {
+      adv = blockStandings(block).map(function(s){ return s.id; }).slice(0, t.advancePerBlock);
+    }
     block.advanced = adv;
     advancers = advancers.concat(adv);
   });
+  t.tieBreakSelections = null;
   applyAdvanceBonusAndBuildFinals(t, advancers);
 }
 function rebuildBlockFromSlots(t, b){
@@ -844,6 +873,7 @@ function rebuildBlockFromSlots(t, b){
   b.playerIds = real;
   b.matches = roundRobinPairs(real).map(function(pair,i){ return {id:"b"+b.index+"m"+i, a:pair[0], b:pair[1], winner:null, deltas:null, score:{a:null,b:null}}; });
   b.eliminated={}; b.losses={}; b.penaltyDeltas={}; b.advanced=[];
+  if(t.tieBreakSelections) delete t.tieBreakSelections[b.index];
 }
 
 // ---------- ① single/double elimination prelim (per group) ----------
@@ -1922,8 +1952,31 @@ function renderBlockPrelimTournament(t){
       '<button class="btn btn-primary" data-action="confirm-lineup" data-tid="'+t.id+'">組み合わせを確定して大会を開始する</button></div>';
   }
   if(t.status==="prelim"){
-    out += '<div class="card"><h3>決勝進出者を確定</h3><p class="hint">各ブロック上位'+t.advancePerBlock+'名が決勝トーナメントに進出します(決勝進出ボーナス '+state.settings.bonuses.finalsAdvance+'pt が付与されます)。</p>'+
-      '<button class="btn btn-primary" data-action="finalize-block-prelim" data-tid="'+t.id+'">予選を締めて決勝進出者を確定する</button></div>';
+    var tieBlocks = t.blocks.map(function(block){ return {block:block, tie:blockTieInfo(block, t.advancePerBlock)}; }).filter(function(x){ return x.tie; });
+    if(tieBlocks.length){
+      var allFilled = tieBlocks.every(function(x){
+        var chosen = (t.tieBreakSelections && t.tieBreakSelections[x.block.index]) || [];
+        return chosen.length === x.tie.needCount;
+      });
+      var tieUI = tieBlocks.map(function(x){
+        var block=x.block, tie=x.tie;
+        var chosen = (t.tieBreakSelections && t.tieBreakSelections[block.index]) || [];
+        var rows = tie.tiedIds.map(function(id){
+          var checked = chosen.indexOf(id)>=0;
+          return '<label class="hint" style="display:flex;align-items:center;gap:.4rem;cursor:pointer;padding:.3rem 0;border-bottom:1px solid var(--border)">'+
+            '<input type="checkbox" data-action="toggle-tiebreak" data-tid="'+t.id+'" data-block="'+block.index+'" data-id="'+id+'" '+(checked?"checked":"")+'>'+
+            '<span style="flex:1">'+esc(playerName(id))+'</span>'+badge(classOf(pointsOf(id)))+'</label>';
+        }).join("");
+        return '<div style="margin-bottom:1rem"><p class="hint" style="font-weight:600">ブロック'+(block.index+1)+': 同点者から'+tie.needCount+'名を選択(選択中: '+chosen.length+'/'+tie.needCount+')</p>'+rows+'</div>';
+      }).join("");
+      out += '<div class="card"><h3>決勝進出者を確定</h3>'+
+        '<p class="hint">勝敗・ポイントが同点の選手がいるため、決勝進出者を手動で選択してください(それ以外の順位は自動で決まります)。</p>'+
+        tieUI+
+        '<button class="btn btn-primary" data-action="finalize-block-prelim" data-tid="'+t.id+'"'+(allFilled?"":" disabled")+'>予選を締めて決勝進出者を確定する</button></div>';
+    } else {
+      out += '<div class="card"><h3>決勝進出者を確定</h3><p class="hint">各ブロック上位'+t.advancePerBlock+'名が決勝トーナメントに進出します(決勝進出ボーナス '+state.settings.bonuses.finalsAdvance+'pt が付与されます)。</p>'+
+        '<button class="btn btn-primary" data-action="finalize-block-prelim" data-tid="'+t.id+'">予選を締めて決勝進出者を確定する</button></div>';
+    }
   }
   out += t.finals ? renderFinalsSection(t) : renderFinalsPlaceholder(t);
   return out;
@@ -2357,6 +2410,27 @@ document.addEventListener("change", function(e){
     else if(!t.checked && idx>=0) ntsel.selectedIds.splice(idx,1);
     if(ntsel.selectedIds.length>0) ntsel.totalParticipants = ntsel.selectedIds.length;
     render();
+  }
+  else if(action==="toggle-tiebreak"){
+    var tidTB=t.getAttribute("data-tid"); var tourTB=findTournament(tidTB);
+    if(!tourTB) return;
+    var bidxTB=Number(t.getAttribute("data-block"));
+    var blockTB = tourTB.blocks[bidxTB];
+    var tieTB = blockTieInfo(blockTB, tourTB.advancePerBlock);
+    if(!tieTB) return;
+    var pidTB=t.getAttribute("data-id");
+    tourTB.tieBreakSelections = tourTB.tieBreakSelections || {};
+    var arrTB = tourTB.tieBreakSelections[bidxTB] = tourTB.tieBreakSelections[bidxTB] || [];
+    var idxTB = arrTB.indexOf(pidTB);
+    if(t.checked){
+      if(idxTB<0){
+        if(arrTB.length >= tieTB.needCount){ render(); return; }
+        arrTB.push(pidTB);
+      }
+    } else if(idxTB>=0){
+      arrTB.splice(idxTB,1);
+    }
+    saveState(); render();
   }
   else if(action==="entry-filter-toggle"){
     var ntef = ensureNewTournamentState();
