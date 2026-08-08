@@ -858,10 +858,10 @@ function blockTieInfo(block, advanceCount){
   if(advanceCount>=standings.length) return null;
   var boundary = standings[advanceCount-1];
   var next = standings[advanceCount];
-  if(!boundary || !next || boundary.wins!==next.wins || boundary.points!==next.points) return null;
+  if(!boundary || !next || boundary.wins!==next.wins) return null;
   var tiedIds=[], firstTiedIdx=-1;
   standings.forEach(function(s, i){
-    if(s.wins===boundary.wins && s.points===boundary.points){
+    if(s.wins===boundary.wins){
       tiedIds.push(s.id);
       if(firstTiedIdx<0) firstTiedIdx=i;
     }
