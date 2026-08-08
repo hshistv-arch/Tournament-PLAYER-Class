@@ -574,6 +574,18 @@ function captureEntryPoints(t){
     });
   });
 }
+function activeEntryPointsOf(id){
+  var tours = state.tournaments;
+  for(var i=tours.length-1;i>=0;i--){
+    var tour = tours[i];
+    if(tour.status!=="completed" && tour.entryPoints && tour.entryPoints[id]!=null) return tour.entryPoints[id];
+  }
+  return null;
+}
+function displayPointsOf(id){
+  var frozen = activeEntryPointsOf(id);
+  return frozen!=null ? frozen : pointsOf(id);
+}
 function tierOf(code){
   var c = code.charAt(0);
   return c==="S" ? "A" : c;
@@ -1448,12 +1460,14 @@ function renderRoster(){
   var avg = total ? Math.round(players.reduce(function(s,p){return s+p.points;},0)/total) : 0;
   var rows = players.map(function(p){
     var prevPts = previousPointsOf(p.id);
+    var dispPts = displayPointsOf(p.id);
+    var inProgress = dispPts !== p.points;
     return '<tr>'+
       '<td><input type="text" style="width:8rem" value="'+esc(p.name)+'" data-action="update-name" data-id="'+p.id+'"></td>'+
       '<td><input type="text" style="width:7rem" value="'+esc(p.kana||"")+'" placeholder="よみがな" data-action="update-kana" data-id="'+p.id+'"></td>'+
       '<td class="num hint">'+(prevPts==null?"-":prevPts)+'</td>'+
-      '<td><input type="number" class="num" style="width:5rem" value="'+p.points+'" data-action="update-points" data-id="'+p.id+'"></td>'+
-      '<td>'+badge(classOf(p.points))+'</td>'+
+      '<td><input type="number" class="num" style="width:5rem" value="'+dispPts+'" data-action="update-points" data-id="'+p.id+'" title="'+(inProgress?"大会進行中のため、エントリー時のポイントを表示しています":"")+'"></td>'+
+      '<td>'+badge(classOf(dispPts))+(inProgress?' <span class="hint" style="font-size:.65rem">大会中</span>':'')+'</td>'+
       '<td><button class="btn btn-sm btn-ghost btn-danger" data-action="delete-player" data-id="'+p.id+'">削除</button></td>'+
     '</tr>';
   }).join("");
@@ -1690,7 +1704,7 @@ function renderNewTournament(){
   }
   var pickRows = pickPool.map(function(p){
     var checked = nt.selectedIds.indexOf(p.id)>=0;
-    return '<label class="hint" style="display:flex;align-items:center;gap:.4rem;cursor:pointer;padding:.3rem 0;border-bottom:1px solid var(--border)">'+
+    return '<label class="hint" style="display:flex;align-items:center;gap:.4rem;cursor:pointer;padding:.3rem .4rem;border-bottom:1px solid var(--border)'+(checked?';background:var(--surface-2)':'')+'">'+
       '<input type="checkbox" data-action="toggle-select-participant" data-id="'+p.id+'" '+(checked?"checked":"")+'>'+
       '<span style="flex:1">'+esc(p.name)+'</span>'+badge(classOf(p.points))+'</label>';
   }).join("");
@@ -1896,7 +1910,7 @@ function bflowSideHTML(m, playerId, opts){
     scoreHTML = '<input type="number" class="num score-input-inline" min="0" data-action="update-score" data-scope="'+opts.scoreScope+'" data-which="'+which+'" data-mid="'+m.id+'" '+opts.extraAttrs+' value="'+(val==null?"":val)+'" placeholder="-">';
   }
   var oppId = playerId===m.a ? m.b : m.a;
-  return '<div class="'+cls+'" '+attrs+'><span class="pname">'+esc(playerName(playerId))+'</span>'+badge(entryClassOf(opts.tournament, playerId))+matchFormatHintHTML(playerId, oppId, opts.useDownSet, opts.tournament)+scoreHTML+'<span class="pts num">'+pointsOf(playerId)+'</span></div>';
+  return '<div class="'+cls+'" '+attrs+'><span class="pname">'+esc(playerName(playerId))+'</span>'+badge(entryClassOf(opts.tournament, playerId))+matchFormatHintHTML(playerId, oppId, opts.useDownSet, opts.tournament)+scoreHTML+'<span class="pts num">'+entryPointsOf(opts.tournament, playerId)+'</span></div>';
 }
 function renderBracketFlow(rounds, roundLabelFn, opts){
   var counter = 0;
@@ -1940,7 +1954,7 @@ function simpleSideHTML(m, playerId, opts){
     scoreHTML = '<input type="number" class="num score-input-inline" min="0" data-action="update-score" data-scope="'+opts.scoreScope+'" data-which="'+which+'" data-mid="'+m.id+'" '+opts.extraAttrs+' value="'+(val==null?"":val)+'" placeholder="-">';
   }
   var oppId2 = playerId===m.a ? m.b : m.a;
-  return '<div class="'+cls+'" '+attrs+'>'+esc(playerName(playerId))+' '+badge(entryClassOf(opts.tournament, playerId))+matchFormatHintHTML(playerId, oppId2, opts.useDownSet, opts.tournament)+scoreHTML+'<span class="pts num">'+pointsOf(playerId)+'</span></div>';
+  return '<div class="'+cls+'" '+attrs+'>'+esc(playerName(playerId))+' '+badge(entryClassOf(opts.tournament, playerId))+matchFormatHintHTML(playerId, oppId2, opts.useDownSet, opts.tournament)+scoreHTML+'<span class="pts num">'+entryPointsOf(opts.tournament, playerId)+'</span></div>';
 }
 function renderSimpleRounds(rounds, roundLabelFn, opts){
   if(!rounds.length) return '<p class="empty-note">敗者復活ブロックの組み合わせはまだありません。</p>';
@@ -2021,7 +2035,7 @@ function renderOneBlock(t, block){
     var w = block.matches.filter(function(m){return m.winner===id;}).length;
     var elim = block.eliminated && block.eliminated[id];
     return '<tr><td>'+esc(playerName(id))+'</td><td>'+badge(entryClassOf(t, id))+'</td>'+
-      '<td class="num">'+pointsOf(id)+'</td><td class="num">'+w+'勝'+(block.losses?(block.losses[id]||0):0)+'敗</td>'+
+      '<td class="num">'+entryPointsOf(t, id)+'</td><td class="num">'+w+'勝'+(block.losses?(block.losses[id]||0):0)+'敗</td>'+
       '<td>'+(elim?'<span class="pill" style="color:var(--loss);border-color:var(--loss)">予選敗退</span>':'')+'</td></tr>';
   }).join("");
   var matches = block.matches.map(function(m,mi){ return matchRow(m, "prelim", 'data-tid="'+t.id+'" data-block="'+block.index+'"', mi+1, t.status==="prelim", t); }).join("");
