@@ -1823,6 +1823,9 @@ function render(){
     return;
   }
   var scrollY = window.scrollY, scrollX = window.scrollX;
+  var innerScrollers = Array.from(document.querySelectorAll("[data-preserve-scroll]")).map(function(el){
+    return {id: el.id, scrollTop: el.scrollTop};
+  });
   renderNav();
   var main = document.getElementById("main");
   var html = "";
@@ -1837,6 +1840,10 @@ function render(){
   else html = renderRoster();
   main.innerHTML = html;
   window.scrollTo(scrollX, scrollY);
+  innerScrollers.forEach(function(s){
+    var el = document.getElementById(s.id);
+    if(el) el.scrollTop = s.scrollTop;
+  });
 }
 
 function renderRoster(){
@@ -2121,7 +2128,7 @@ function renderNewTournament(){
       '</label>'+
       (useFilter && eligibleCount===0 ? '<p class="hint">「エントリー受付」でチェック済みの選手がいないため、ロースター全員を表示しています。</p>' : '')+
       '<p class="hint num">選択中: '+nt.selectedIds.length+'名</p>'+
-      '<div class="table-wrap" style="max-height:16rem;overflow-y:auto">'+pickRows+'</div>'+
+      '<div class="table-wrap" id="participant-picker-scroll" data-preserve-scroll style="max-height:16rem;overflow-y:auto">'+pickRows+'</div>'+
     '</div>'+
     '<div class="card">'+
       '<h3>① 試合形式</h3>'+
