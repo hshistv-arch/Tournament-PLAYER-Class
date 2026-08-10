@@ -590,9 +590,9 @@ function tierOf(code){
   var c = code.charAt(0);
   return c==="S" ? "A" : c;
 }
-function tierBelowB(id){
-  var t = tierOf(classOf(pointsOf(id)));
-  return t==="B" || t==="C";
+function tierBelowB(tour, id){
+  var tier = tierOf(entryClassOf(tour, id));
+  return tier==="B" || tier==="C";
 }
 
 // ---------- match format: sets / chess clock / secondary handicap ----------
@@ -845,16 +845,16 @@ function correctBlockMatch(t, block, matchId){
   undoMatchDeltas(match);
   recomputeBlockElimination(block, t);
 }
-function blockStandings(block){
+function blockStandings(t, block){
   return block.playerIds.map(function(id){
-    return {id:id, wins:block.matches.filter(function(m){ return m.winner===id; }).length, points:pointsOf(id)};
+    return {id:id, wins:block.matches.filter(function(m){ return m.winner===id; }).length, points:entryPointsOf(t, id)};
   }).sort(function(a,b){
     if(b.wins!==a.wins) return b.wins-a.wins;
     return b.points-a.points;
   });
 }
-function blockTieInfo(block, advanceCount){
-  var standings = blockStandings(block);
+function blockTieInfo(t, block, advanceCount){
+  var standings = blockStandings(t, block);
   if(advanceCount>=standings.length) return null;
   var boundary = standings[advanceCount-1];
   var next = standings[advanceCount];
@@ -871,17 +871,17 @@ function blockTieInfo(block, advanceCount){
 function finalizeBlockPrelim(t){
   var advancers=[];
   t.blocks.forEach(function(block){
-    var tie = blockTieInfo(block, t.advancePerBlock);
+    var tie = blockTieInfo(t, block, t.advancePerBlock);
     var adv;
     if(tie){
       var chosen = ((t.tieBreakSelections && t.tieBreakSelections[block.index]) || []).filter(function(id){ return tie.tiedIds.indexOf(id)>=0; });
       if(chosen.length < tie.needCount){
-        adv = blockStandings(block).map(function(s){ return s.id; }).slice(0, t.advancePerBlock);
+        adv = blockStandings(t, block).map(function(s){ return s.id; }).slice(0, t.advancePerBlock);
       } else {
         adv = tie.guaranteedIds.concat(chosen.slice(0, tie.needCount));
       }
     } else {
-      adv = blockStandings(block).map(function(s){ return s.id; }).slice(0, t.advancePerBlock);
+      adv = blockStandings(t, block).map(function(s){ return s.id; }).slice(0, t.advancePerBlock);
     }
     block.advanced = adv;
     advancers = advancers.concat(adv);
@@ -1042,13 +1042,13 @@ function finalizeElimPrelim(t){
     if(t.prelimType==="double" && t.advancePerGroupWB!=null){
       var wbAlive = g.wb.entrants.filter(function(id){ return (g.losses[id]||0)===0; });
       var lbAlive = g.wb.entrants.filter(function(id){ return (g.losses[id]||0)===1; });
-      var wbRanked = wbAlive.slice().sort(function(a,b){ return pointsOf(b)-pointsOf(a); }).slice(0, t.advancePerGroupWB);
-      var lbRanked = lbAlive.slice().sort(function(a,b){ return pointsOf(b)-pointsOf(a); }).slice(0, t.advancePerGroupLB);
+      var wbRanked = wbAlive.slice().sort(function(a,b){ return entryPointsOf(t, b)-entryPointsOf(t, a); }).slice(0, t.advancePerGroupWB);
+      var lbRanked = lbAlive.slice().sort(function(a,b){ return entryPointsOf(t, b)-entryPointsOf(t, a); }).slice(0, t.advancePerGroupLB);
       g.advanced = wbRanked.concat(lbRanked);
       advancers = advancers.concat(g.advanced);
     } else {
       var alive = g.wb.entrants.filter(function(id){ return g.losses[id] < g.threshold; });
-      var ranked = alive.slice().sort(function(a,b){ return pointsOf(b)-pointsOf(a); });
+      var ranked = alive.slice().sort(function(a,b){ return entryPointsOf(t, b)-entryPointsOf(t, a); });
       if(ranked.length > t.advancePerGroup) ranked = ranked.slice(0, t.advancePerGroup);
       g.advanced = ranked;
       advancers = advancers.concat(ranked);
@@ -1099,21 +1099,21 @@ function finalizeTournamentResult(t){
     var r = t.finals.eliminatedRound[id];
     return (r===undefined) ? -1 : r;
   }
-  var champAmt = tierBelowB(championId) ? bonuses.championBelowB : bonuses.champion;
+  var champAmt = tierBelowB(t, championId) ? bonuses.championBelowB : bonuses.champion;
   if(champAmt){ getPlayer(championId).points += champAmt; finishDeltas.push({playerId:championId, amount:champAmt, reason:BONUS_LABELS.champion}); }
   if(runnerUpId){
-    var ruAmt = tierBelowB(runnerUpId) ? bonuses.runnerUpBelowB : bonuses.runnerUp;
+    var ruAmt = tierBelowB(t, runnerUpId) ? bonuses.runnerUpBelowB : bonuses.runnerUp;
     if(ruAmt){ getPlayer(runnerUpId).points += ruAmt; finishDeltas.push({playerId:runnerUpId, amount:ruAmt, reason:BONUS_LABELS.runnerUp}); }
   }
   var entrants = t.finals.entrants;
-  var bTier = entrants.filter(function(id){ return tierOf(classOf(pointsOf(id)))==="B"; });
-  var cTier = entrants.filter(function(id){ return tierOf(classOf(pointsOf(id)))==="C"; });
+  var bTier = entrants.filter(function(id){ return tierOf(entryClassOf(t, id))==="B"; });
+  var cTier = entrants.filter(function(id){ return tierOf(entryClassOf(t, id))==="C"; });
   function pickBest(list){
     if(!list.length) return null;
     return list.slice().sort(function(a,b){
       var pr = progressRank(b)-progressRank(a);
       if(pr!==0) return pr;
-      return pointsOf(b)-pointsOf(a);
+      return entryPointsOf(t, b)-entryPointsOf(t, a);
     })[0];
   }
   var bestB = pickBest(bTier);
@@ -1992,7 +1992,7 @@ function renderBlockPrelimTournament(t){
       '<button class="btn btn-primary" data-action="confirm-lineup" data-tid="'+t.id+'">組み合わせを確定して大会を開始する</button></div>';
   }
   if(t.status==="prelim"){
-    var tieBlocks = t.blocks.map(function(block){ return {block:block, tie:blockTieInfo(block, t.advancePerBlock)}; }).filter(function(x){ return x.tie; });
+    var tieBlocks = t.blocks.map(function(block){ return {block:block, tie:blockTieInfo(t, block, t.advancePerBlock)}; }).filter(function(x){ return x.tie; });
     if(tieBlocks.length){
       var allFilled = tieBlocks.every(function(x){
         var chosen = (t.tieBreakSelections && t.tieBreakSelections[x.block.index]) || [];
@@ -2036,7 +2036,7 @@ function renderOneBlock(t, block){
     var wa = block.matches.filter(function(m){return m.winner===a;}).length;
     var wb = block.matches.filter(function(m){return m.winner===b;}).length;
     if(wb!==wa) return wb-wa;
-    return pointsOf(b)-pointsOf(a);
+    return entryPointsOf(t, b)-entryPointsOf(t, a);
   });
   var rows = standings.map(function(id){
     var w = block.matches.filter(function(m){return m.winner===id;}).length;
@@ -2223,7 +2223,7 @@ function renderTournamentResultPrint(tid){
       '<button class="btn btn-sm btn-ghost" data-action="nav" data-screen="history">大会一覧へ戻る</button></div>';
   }
   var bonusRows = t.finishDeltas.map(function(d){
-    return '<tr><td>'+esc(playerName(d.playerId))+'</td><td>'+esc(d.reason)+'</td><td class="num">'+fmtDelta(d.amount)+'</td></tr>';
+    return '<tr><td>'+esc(playerName(d.playerId))+'</td><td>'+esc(d.reason)+'</td></tr>';
   }).join("");
   var bracketHTML = t.finals ? renderBracketFlow(padBracketRounds(t.finals), function(ri){ return roundName(ri+1, t.finals.totalRounds); }, {
     resolvable:false, actionName:"", undoActionName:"", scoreScope:"", extraAttrs:"", showUndo:false, tournament:t
@@ -2239,7 +2239,7 @@ function renderTournamentResultPrint(tid){
     '<p class="hint">出力日: '+dateStamp()+'</p>'+
     '<p>🏆 優勝: '+esc(playerName(t.championId))+' ・ 準優勝: '+esc(playerName(t.runnerUpId))+'</p>'+
     '<h3>ボーナス内訳</h3>'+
-    '<table class="print-table"><thead><tr><th>氏名</th><th>内容</th><th>ポイント</th></tr></thead><tbody>'+bonusRows+'</tbody></table>'+
+    '<table class="print-table"><thead><tr><th>氏名</th><th>内容</th></tr></thead><tbody>'+bonusRows+'</tbody></table>'+
     '<h3 style="margin-top:1.2rem">決勝トーナメント</h3>'+
     bracketHTML+
   '</div>';
@@ -2459,7 +2459,7 @@ document.addEventListener("change", function(e){
     if(!tourTB) return;
     var bidxTB=Number(t.getAttribute("data-block"));
     var blockTB = tourTB.blocks[bidxTB];
-    var tieTB = blockTieInfo(blockTB, tourTB.advancePerBlock);
+    var tieTB = blockTieInfo(tourTB, blockTB, tourTB.advancePerBlock);
     if(!tieTB) return;
     var pidTB=t.getAttribute("data-id");
     tourTB.tieBreakSelections = tourTB.tieBreakSelections || {};
