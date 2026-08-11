@@ -295,16 +295,17 @@ body.display-mode-active .display-picker-list a:hover{background:var(--surface-2
 .qr-details svg{border-radius:6px;}
 .fireworks{position:fixed; inset:0; pointer-events:none; overflow:hidden; z-index:50;}
 .fw-particle{
-  position:absolute; width:7px; height:7px; border-radius:50%;
+  position:absolute; width:4px; height:4px; border-radius:50%;
   transform:translate(-50%,-50%) rotate(var(--fw-angle)) translateX(0) scale(1);
-  animation-name:fw-fly; animation-timing-function:ease-out; animation-iteration-count:infinite; opacity:0;
-  box-shadow:0 0 6px 1px currentColor;
+  animation-name:fw-fly; animation-timing-function:ease-out; animation-iteration-count:3; opacity:0;
+  box-shadow:0 0 3px 0px currentColor;
 }
 @keyframes fw-fly{
-  0%{ transform:translate(-50%,-50%) rotate(var(--fw-angle)) translateX(0) scale(1); opacity:1; }
-  75%{ opacity:.9; }
+  0%{ transform:translate(-50%,-50%) rotate(var(--fw-angle)) translateX(0) scale(1); opacity:.6; }
+  75%{ opacity:.45; }
   100%{ transform:translate(-50%,-50%) rotate(var(--fw-angle)) translateX(var(--fw-dist,120px)) scale(.3); opacity:0; }
 }
+.display-close-btn{position:fixed; top:.8rem; right:1rem; z-index:60; background:var(--surface); border:1px solid var(--border); border-radius:999px; padding:.5rem 1rem; font-size:.9rem; font-weight:600; color:var(--text); box-shadow:var(--shadow); cursor:pointer;}
 </style>
 
 <div class="app-shell">
@@ -2288,7 +2289,7 @@ function renderHistory(){
         '<span class="pill '+t.status+'">'+(STATUS_LABEL[t.status]||t.status)+'</span>'+
         (t.locked?'<span class="pill" style="color:var(--rust-ink);border-color:var(--rust)">🔒 削除ロック中</span>':'')+
         '<button class="btn btn-sm" data-action="nav" data-screen="tournament" data-id="'+t.id+'">開く</button>'+
-        '<a class="btn btn-sm btn-ghost" href="?display=1&id='+t.id+'" target="_blank" rel="noopener">別画面に表示</a>'+
+        '<a class="btn btn-sm btn-ghost" href="?display=1&id='+t.id+'" target="_blank">別画面に表示</a>'+
         '<button class="btn btn-sm btn-ghost" data-action="toggle-lock-tournament" data-id="'+t.id+'">'+(t.locked?'🔓 ロック解除':'🔒 削除をロック')+'</button>'+
         (t.locked?'':'<button class="btn btn-sm btn-ghost btn-danger" data-action="delete-tournament" data-id="'+t.id+'">削除</button>')+
       '</div>'+
@@ -2362,20 +2363,19 @@ function renderDisplayFinals(t){
   '</div>';
 }
 function fireworksHTML(){
-  var colors = ["#ffd23f","#ff6b6b","#4ecdc4","#c77dff","#ffffff","#ffa62b"];
+  var colors = ["#ffd23f","#ff6b6b","#4ecdc4","#c77dff","#ffa62b"];
   var bursts = [
-    {x:20, y:26, delay:0}, {x:80, y:20, delay:0.6}, {x:50, y:34, delay:1.2},
-    {x:14, y:58, delay:1.8}, {x:86, y:56, delay:2.4}
+    {x:22, y:24, delay:0}, {x:78, y:22, delay:0.8}, {x:50, y:30, delay:1.6}
   ];
   var html = '<div class="fireworks" aria-hidden="true">';
   bursts.forEach(function(b, bi){
-    var n = 14;
+    var n = 8;
     for(var i=0;i<n;i++){
       var angle = Math.round(i*(360/n));
       var color = colors[(bi+i)%colors.length];
-      var dist = 90 + (i%3)*20;
-      var dur = 1.6 + (i%3)*0.25;
-      html += '<div class="fw-particle" style="left:'+b.x+'%;top:'+b.y+'%;background:'+color+';color:'+color+';--fw-angle:'+angle+'deg;--fw-dist:'+dist+'px;animation-duration:'+dur+'s;animation-delay:'+(b.delay+i*0.01)+'s"></div>';
+      var dist = 60 + (i%3)*12;
+      var dur = 1.8 + (i%3)*0.3;
+      html += '<div class="fw-particle" style="left:'+b.x+'%;top:'+b.y+'%;background:'+color+';color:'+color+';--fw-angle:'+angle+'deg;--fw-dist:'+dist+'px;animation-duration:'+dur+'s;animation-delay:'+(b.delay+i*0.02)+'s"></div>';
     }
   });
   html += '</div>';
@@ -2399,31 +2399,36 @@ function displayTimeStamp(){
 }
 function renderDisplayScreen(){
   var updatedHTML = '<div class="display-updated">🔄 自動更新 '+displayTimeStamp()+'</div>';
+  var closeHTML = '<button type="button" class="display-close-btn" data-action="close-display-window">✕ 閉じる</button>';
+  var body;
   if(!DISPLAY_TID){
     var list = state.tournaments.slice().sort(function(a,b){ return b.createdAt-a.createdAt; });
     if(!list.length){
-      return '<div class="page-head"><h1>G-SPeC クラスポイント</h1><p class="sub">表示する大会がありません。</p></div>'+updatedHTML;
+      body = '<div class="page-head"><h1>G-SPeC クラスポイント</h1><p class="sub">表示する大会がありません。</p></div>';
+    } else {
+      var STATUS_LABEL0 = {assigning:"組み合わせ待ち", prelim:"予選中", finals:"決勝トーナメント中", completed:"終了"};
+      var items = list.map(function(t){
+        return '<a href="?display=1&id='+t.id+'">'+esc(t.name)+' ・ '+(STATUS_LABEL0[t.status]||t.status)+'</a>';
+      }).join("");
+      body = '<div class="page-head"><h1>表示する大会を選択してください</h1></div><div class="display-picker-list">'+items+'</div>';
     }
-    var STATUS_LABEL0 = {assigning:"組み合わせ待ち", prelim:"予選中", finals:"決勝トーナメント中", completed:"終了"};
-    var items = list.map(function(t){
-      return '<a href="?display=1&id='+t.id+'">'+esc(t.name)+' ・ '+(STATUS_LABEL0[t.status]||t.status)+'</a>';
-    }).join("");
-    return '<div class="page-head"><h1>表示する大会を選択してください</h1></div><div class="display-picker-list">'+items+'</div>'+updatedHTML;
-  }
-  var t = findTournament(DISPLAY_TID);
-  if(!t){
-    return '<div class="page-head"><h1>大会が見つかりません</h1></div><p><a href="?display=1">大会一覧に戻る</a></p>'+updatedHTML;
-  }
-  var STATUS_LABEL = {assigning:"組み合わせ待ち", prelim:"予選中", finals:"決勝トーナメント中", completed:"終了"};
-  var out = '<div class="page-head"><div><h1>'+esc(t.name)+'</h1><p class="sub"><span class="pill '+t.status+'">'+(STATUS_LABEL[t.status]||t.status)+'</span></p></div></div>';
-  if(t.format==="blockPrelim"){
-    out += (t.blocks||[]).map(function(b){ return renderDisplayBlock(t, b); }).join("");
   } else {
-    out += (t.groups||[]).map(function(g){ return renderDisplayGroup(t, g); }).join("");
+    var t = findTournament(DISPLAY_TID);
+    if(!t){
+      body = '<div class="page-head"><h1>大会が見つかりません</h1></div><p><a href="?display=1">大会一覧に戻る</a></p>';
+    } else {
+      var STATUS_LABEL = {assigning:"組み合わせ待ち", prelim:"予選中", finals:"決勝トーナメント中", completed:"終了"};
+      body = '<div class="page-head"><div><h1>'+esc(t.name)+'</h1><p class="sub"><span class="pill '+t.status+'">'+(STATUS_LABEL[t.status]||t.status)+'</span></p></div></div>';
+      if(t.format==="blockPrelim"){
+        body += (t.blocks||[]).map(function(b){ return renderDisplayBlock(t, b); }).join("");
+      } else {
+        body += (t.groups||[]).map(function(g){ return renderDisplayGroup(t, g); }).join("");
+      }
+      body += renderDisplayFinals(t);
+      body += renderDisplayResult(t);
+    }
   }
-  out += renderDisplayFinals(t);
-  out += renderDisplayResult(t);
-  return out + updatedHTML;
+  return closeHTML + body + updatedHTML;
 }
 
 function matchRow(match, tprefix, extraActionData, matchNo, resolvable, t){
@@ -2632,7 +2637,7 @@ function renderBlockPrelimTournament(t){
   var STATUS_LABEL = {assigning:"組み合わせ待ち", prelim:"予選中", finals:"決勝トーナメント中", completed:"終了"};
   var header = '<div class="page-head"><div><h1>'+esc(t.name)+'</h1><p class="sub">②予選リーグ+決勝トーナメント ・ '+
     '<span class="pill '+t.status+'">'+STATUS_LABEL[t.status]+'</span>'+(t.locked?' <span class="pill" style="color:var(--rust-ink);border-color:var(--rust)">🔒 削除ロック中</span>':'')+'</p></div>'+
-    '<div style="display:flex;gap:.5rem"><a class="btn btn-sm btn-ghost" href="?display=1&id='+t.id+'" target="_blank" rel="noopener">別画面に表示</a>'+
+    '<div style="display:flex;gap:.5rem"><a class="btn btn-sm btn-ghost" href="?display=1&id='+t.id+'" target="_blank">別画面に表示</a>'+
     '<button class="btn btn-sm btn-ghost" data-action="toggle-lock-tournament" data-id="'+t.id+'">'+(t.locked?'🔓 ロック解除':'🔒 削除をロック')+'</button>'+
     '<button class="btn btn-sm" data-action="nav" data-screen="history">一覧へ戻る</button></div></div>';
   var out = header + formatSwitchHTML(t);
@@ -2711,7 +2716,7 @@ function renderElimPrelimTournament(t){
   var typeLabel = t.prelimType==="double" ? "ダブルエリミネーション" : "シングルエリミネーション";
   var header = '<div class="page-head"><div><h1>'+esc(t.name)+'</h1><p class="sub">①トーナメント戦(予選:'+typeLabel+') ・ '+
     '<span class="pill '+t.status+'">'+STATUS_LABEL[t.status]+'</span>'+(t.locked?' <span class="pill" style="color:var(--rust-ink);border-color:var(--rust)">🔒 削除ロック中</span>':'')+'</p></div>'+
-    '<div style="display:flex;gap:.5rem"><a class="btn btn-sm btn-ghost" href="?display=1&id='+t.id+'" target="_blank" rel="noopener">別画面に表示</a>'+
+    '<div style="display:flex;gap:.5rem"><a class="btn btn-sm btn-ghost" href="?display=1&id='+t.id+'" target="_blank">別画面に表示</a>'+
     '<button class="btn btn-sm btn-ghost" data-action="toggle-lock-tournament" data-id="'+t.id+'">'+(t.locked?'🔓 ロック解除':'🔒 削除をロック')+'</button>'+
     '<button class="btn btn-sm" data-action="nav" data-screen="history">一覧へ戻る</button></div></div>';
   var out = header + formatSwitchHTML(t);
@@ -2964,6 +2969,12 @@ document.addEventListener("click", function(e){
   else if(action==="roster-sort"){ route.rosterSort = t.getAttribute("data-sort"); render(); }
   else if(action==="export-roster-csv"){ exportRosterCSV(); }
   else if(action==="print-page"){ window.print(); }
+  else if(action==="close-display-window"){
+    window.close();
+    setTimeout(function(){
+      alert("このタブ/ウインドウを自動では閉じられませんでした。お使いのブラウザの操作(タブ一覧・戻るボタンなど)で閉じてください。");
+    }, 300);
+  }
   else if(action==="delete-player"){ deletePlayer(t.getAttribute("data-id")); }
   else if(action==="reset-entries"){
     if(confirm("エントリー状況をリセットしますか?")){ state.entries={}; saveState(); render(); }
