@@ -1686,11 +1686,18 @@ function reverseAllTournamentEffects(t){
 function deleteTournament(id){
   var t = findTournament(id);
   if(!t) return;
+  if(t.locked){ alert("この大会は削除ロック中のため削除できません。先にロックを解除してください。"); return; }
   if(!confirm("この大会の記録を削除しますか?この操作は取り消せません。この大会で加減算されたポイントはすべて元に戻ります。")) return;
   reverseAllTournamentEffects(t);
   state.tournaments = state.tournaments.filter(function(x){ return x.id!==id; });
   saveState();
   navigate({screen:"history"});
+}
+function toggleLockTournament(id){
+  var t = findTournament(id);
+  if(!t) return;
+  t.locked = !t.locked;
+  saveState(); render();
 }
 function changeTournamentFormat(t, newFormat){
   if(t.format===newFormat) return;
@@ -2279,9 +2286,11 @@ function renderHistory(){
       '</div>'+
       '<div style="display:flex;align-items:center;gap:.7rem">'+
         '<span class="pill '+t.status+'">'+(STATUS_LABEL[t.status]||t.status)+'</span>'+
+        (t.locked?'<span class="pill" style="color:var(--rust-ink);border-color:var(--rust)">🔒 削除ロック中</span>':'')+
         '<button class="btn btn-sm" data-action="nav" data-screen="tournament" data-id="'+t.id+'">開く</button>'+
         '<a class="btn btn-sm btn-ghost" href="?display=1&id='+t.id+'" target="_blank" rel="noopener">別画面に表示</a>'+
-        '<button class="btn btn-sm btn-ghost btn-danger" data-action="delete-tournament" data-id="'+t.id+'">削除</button>'+
+        '<button class="btn btn-sm btn-ghost" data-action="toggle-lock-tournament" data-id="'+t.id+'">'+(t.locked?'🔓 ロック解除':'🔒 削除をロック')+'</button>'+
+        (t.locked?'':'<button class="btn btn-sm btn-ghost btn-danger" data-action="delete-tournament" data-id="'+t.id+'">削除</button>')+
       '</div>'+
     '</div>';
   }).join("");
@@ -2622,8 +2631,9 @@ function formatSwitchHTML(t){
 function renderBlockPrelimTournament(t){
   var STATUS_LABEL = {assigning:"組み合わせ待ち", prelim:"予選中", finals:"決勝トーナメント中", completed:"終了"};
   var header = '<div class="page-head"><div><h1>'+esc(t.name)+'</h1><p class="sub">②予選リーグ+決勝トーナメント ・ '+
-    '<span class="pill '+t.status+'">'+STATUS_LABEL[t.status]+'</span></p></div>'+
+    '<span class="pill '+t.status+'">'+STATUS_LABEL[t.status]+'</span>'+(t.locked?' <span class="pill" style="color:var(--rust-ink);border-color:var(--rust)">🔒 削除ロック中</span>':'')+'</p></div>'+
     '<div style="display:flex;gap:.5rem"><a class="btn btn-sm btn-ghost" href="?display=1&id='+t.id+'" target="_blank" rel="noopener">別画面に表示</a>'+
+    '<button class="btn btn-sm btn-ghost" data-action="toggle-lock-tournament" data-id="'+t.id+'">'+(t.locked?'🔓 ロック解除':'🔒 削除をロック')+'</button>'+
     '<button class="btn btn-sm" data-action="nav" data-screen="history">一覧へ戻る</button></div></div>';
   var out = header + formatSwitchHTML(t);
   out += t.blocks.map(function(block){ return renderOneBlock(t, block); }).join("");
@@ -2700,8 +2710,9 @@ function renderElimPrelimTournament(t){
   var STATUS_LABEL = {assigning:"組み合わせ待ち", prelim:"予選中", finals:"決勝トーナメント中", completed:"終了"};
   var typeLabel = t.prelimType==="double" ? "ダブルエリミネーション" : "シングルエリミネーション";
   var header = '<div class="page-head"><div><h1>'+esc(t.name)+'</h1><p class="sub">①トーナメント戦(予選:'+typeLabel+') ・ '+
-    '<span class="pill '+t.status+'">'+STATUS_LABEL[t.status]+'</span></p></div>'+
+    '<span class="pill '+t.status+'">'+STATUS_LABEL[t.status]+'</span>'+(t.locked?' <span class="pill" style="color:var(--rust-ink);border-color:var(--rust)">🔒 削除ロック中</span>':'')+'</p></div>'+
     '<div style="display:flex;gap:.5rem"><a class="btn btn-sm btn-ghost" href="?display=1&id='+t.id+'" target="_blank" rel="noopener">別画面に表示</a>'+
+    '<button class="btn btn-sm btn-ghost" data-action="toggle-lock-tournament" data-id="'+t.id+'">'+(t.locked?'🔓 ロック解除':'🔒 削除をロック')+'</button>'+
     '<button class="btn btn-sm" data-action="nav" data-screen="history">一覧へ戻る</button></div></div>';
   var out = header + formatSwitchHTML(t);
   out += t.groups.map(function(g){ return renderOneGroup(t, g); }).join("");
@@ -2988,6 +2999,7 @@ document.addEventListener("click", function(e){
   }
   else if(action==="export-data"){ exportData(); }
   else if(action==="delete-tournament"){ deleteTournament(t.getAttribute("data-id")); }
+  else if(action==="toggle-lock-tournament"){ toggleLockTournament(t.getAttribute("data-id")); }
   else if(action==="redraw-finals"){
     var tidr=t.getAttribute("data-tid"); var tourr=findTournament(tidr);
     if(!tourr) return;
