@@ -1842,6 +1842,60 @@ function changeTournamentFormat(t, newFormat){
   }
   saveState(); render();
 }
+function changeUsePointsAndSets(t, newVal){
+  newVal = !!newVal;
+  if(usePointsAndSets(t)===newVal) return;
+  var groups = t.format==="blockPrelim" ? t.blocks : t.groups;
+  var hasProg = (groups||[]).some(function(g,i){ return groupOrBlockHasProgress(t,i); }) || !!t.finals;
+  if(hasProg && !confirm("ポイント・セット数の使用有無を切り替えると、これまでの対戦結果(場合によっては決勝トーナメントの結果も)がすべて取り消されます。よろしいですか?")){
+    render();
+    return;
+  }
+  if(t.finals) unwindFinalsIfNeeded(t);
+  t.usePointsAndSets = newVal;
+  if(!t.manualClasses) t.manualClasses = {};
+  (groups||[]).forEach(function(g){
+    if(t.format==="blockPrelim") rebuildBlockFromSlots(t, g);
+    else rebuildGroupFromSlots(t, g);
+  });
+  saveState(); render();
+}
+function changeGroupCount(t, newCount){
+  if(t.format!=="elimPrelim") return;
+  newCount = Math.max(1, Math.round(newCount)||1);
+  var currentCount = (t.groups && t.groups.length) || 1;
+  if(newCount===currentCount) return;
+  var hasProg = (t.groups||[]).some(function(g,i){ return groupOrBlockHasProgress(t,i); }) || !!t.finals;
+  if(hasProg && !confirm("予選グループ数を変更すると、出場選手が自動で再割当され、既に入力されている対戦結果(場合によっては決勝トーナメントの結果も)がすべて取り消されます。よろしいですか?")){
+    render();
+    return;
+  }
+  var participantIds = [];
+  (t.groups||[]).forEach(function(g){
+    (g.slots||[]).forEach(function(id){ if(id && participantIds.indexOf(id)<0) participantIds.push(id); });
+  });
+  reverseAllTournamentEffects(t);
+  t.finals = null;
+  t.finalists = null;
+  t.advanceBonusApplied = {};
+  t.entryPoints = null;
+  t.previousChampionAtEntry = undefined;
+  t.finishDeltas = null;
+  t.championId = null;
+  t.runnerUpId = null;
+  t.previousChampionBefore = undefined;
+  t.tieBreakSelections = null;
+  t.status = "assigning";
+  var sizes = distributeCount(Math.max(participantIds.length, newCount), newCount);
+  var sortedIds = participantIds.slice().sort(function(a,b){ return pointsOf(b)-pointsOf(a); });
+  var perGroupIds = sizes.map(function(){ return []; });
+  sortedIds.forEach(function(id, i){ perGroupIds[i % sizes.length].push(id); });
+  t.groups = sizes.map(function(size, gi){
+    return { index:gi, targetSize:size, slots:computeDefaultBracketSlots(perGroupIds[gi]) };
+  });
+  t.groups.forEach(function(g){ rebuildGroupFromSlots(t, g); });
+  saveState(); render();
+}
 
 // ---------- slot assignment ----------
 function findSlotOwner(t, playerId){
@@ -2646,7 +2700,7 @@ function renderFinalsEditSlots(t){
       (showManualClass?manualClassSelectHTML(t, slots[i+1], "update-manual-class-live"):'')+
     '</div>';
   }
-  return '<details style="margin-bottom:.7rem"><summary class="hint" style="cursor:pointer">決勝の組み合わせを選んで編集</summary><div style="margin-top:.5rem">'+rows+'</div></details>';
+  return '<details open style="margin-bottom:.7rem"><summary class="hint" style="cursor:pointer">決勝の組み合わせを選んで編集</summary><div style="margin-top:.5rem">'+rows+'</div></details>';
 }
 
 // ---------- connected bracket visual ----------
@@ -2757,6 +2811,16 @@ function formatSwitchHTML(t){
     '</select>'+
     '<span class="hint">形式を変更すると、これまでの対戦結果はリセットされます</span>'+
   '</div>'+
+  '<label class="hint" style="display:flex;align-items:center;gap:.4rem;cursor:pointer;margin-top:.6rem">'+
+    '<input type="checkbox" data-action="use-points-and-sets-toggle-live" data-tid="'+t.id+'" '+(usePointsAndSets(t)?"checked":"")+'>'+
+    'ポイント・セット数を使用する(切り替えると、これまでの対戦結果はリセットされます)'+
+  '</label>'+
+  (t.format==="elimPrelim" ?
+    ('<div class="form-row" style="align-items:center;gap:.6rem;margin-top:.6rem">'+
+      '<span class="hint">予選グループ数</span>'+
+      '<input type="number" class="num" min="1" style="width:6rem" value="'+((t.groups&&t.groups.length)||1)+'" data-action="update-group-count" data-tid="'+t.id+'">'+
+      '<span class="hint">グループ数を変更すると、出場選手が自動で再割当され、既に入力されている対戦結果はリセットされます</span>'+
+    '</div>') : '')+
   (usePointsAndSets(t) ?
     ('<div class="form-row" style="align-items:center;gap:.6rem;margin-top:.6rem">'+
       '<span class="hint">基本セット数</span>'+
@@ -3310,6 +3374,16 @@ document.addEventListener("change", function(e){
     var newFmt = t.value;
     if(newFmt!==tourCF.format) changeTournamentFormat(tourCF, newFmt);
     render();
+  }
+  else if(action==="use-points-and-sets-toggle-live"){
+    var tidUps = t.getAttribute("data-tid"); var tourUps = findTournament(tidUps);
+    if(!tourUps) return;
+    changeUsePointsAndSets(tourUps, t.checked);
+  }
+  else if(action==="update-group-count"){
+    var tidGc = t.getAttribute("data-tid"); var tourGc = findTournament(tidGc);
+    if(!tourGc) return;
+    changeGroupCount(tourGc, Number(t.value));
   }
   else if(action==="toggle-tiebreak"){
     var tidTB=t.getAttribute("data-tid"); var tourTB=findTournament(tidTB);
