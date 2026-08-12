@@ -701,6 +701,7 @@ function defaultState(){
       setCountsB: JSON.parse(JSON.stringify(SET_COUNT_B_DEFAULT)),
       downSetCountsB: JSON.parse(JSON.stringify(DOWN_SET_COUNT_B_DEFAULT)),
       manualClassSetCounts: JSON.parse(JSON.stringify(MANUAL_SET_COUNT_DEFAULT)),
+      manualClassSetCountsB: JSON.parse(JSON.stringify(MANUAL_SET_COUNT_B_DEFAULT)),
       minPoints: MIN_POINTS_DEFAULT
     },
     players: PLAYER_SEED.map(function(row,i){
@@ -779,6 +780,13 @@ function migrateAddBeClass(parsed){
   } else {
     Object.keys(MANUAL_SET_COUNT_DEFAULT).forEach(function(cls){
       if(s.manualClassSetCounts[cls]===undefined) s.manualClassSetCounts[cls] = MANUAL_SET_COUNT_DEFAULT[cls];
+    });
+  }
+  if(!s.manualClassSetCountsB){
+    s.manualClassSetCountsB = JSON.parse(JSON.stringify(MANUAL_SET_COUNT_B_DEFAULT));
+  } else {
+    Object.keys(MANUAL_SET_COUNT_B_DEFAULT).forEach(function(cls){
+      if(s.manualClassSetCountsB[cls]===undefined) s.manualClassSetCountsB[cls] = MANUAL_SET_COUNT_B_DEFAULT[cls];
     });
   }
   if(s.minPoints===undefined) s.minPoints = MIN_POINTS_DEFAULT;
@@ -976,6 +984,7 @@ var SET_COUNT_B_DEFAULT = {SA:6,AA:6,AB:6,AC:6,BA:5,BB:5,BC:5,CA:4,CB:4,CC:4,Be:
 var DOWN_SET_COUNT_B_DEFAULT = {SA:5,AA:5,AB:5,AC:5,BA:4,BB:4,BC:4,CA:3,CB:3,CC:3,Be:3};
 var SET_TABLE_OPTIONS = ["A","B"];
 var MANUAL_SET_COUNT_DEFAULT = {P:6,SA:5,A:5,B:4,C:3,Be:2};
+var MANUAL_SET_COUNT_B_DEFAULT = {P:6,SA:6,A:6,B:5,C:4,Be:4};
 var MINUTES_BY_SETS = {2:15,3:20,4:25,5:30,6:35};
 function classSubRank(code){
   if(code==="Be") code="BB";
@@ -1026,14 +1035,36 @@ function setTableSummary(key, useDownSet){
     return g[0]+" "+uniq.join("/")+"セット";
   }).join(" ・ ");
 }
+function manualSetCountDefaultsFor(t){
+  return setTableOf(t)==="B" ? MANUAL_SET_COUNT_B_DEFAULT : MANUAL_SET_COUNT_DEFAULT;
+}
+function manualSetCountTableFor(t){
+  var s = state.settings || {};
+  var stored = setTableOf(t)==="B" ? s.manualClassSetCountsB : s.manualClassSetCounts;
+  return stored || manualSetCountDefaultsFor(t);
+}
+function manualSetTableSummary(key){
+  var ref = {setCountTable:key};
+  var table = manualSetCountTableFor(ref), def = manualSetCountDefaultsFor(ref);
+  return MANUAL_CLASS_OPTIONS.map(function(c){
+    var v = table[c]!=null ? table[c] : def[c];
+    return c+" "+v+"セット";
+  }).join(" ・ ");
+}
+function setTableSummaryFor(t, key){
+  return usePointsAndSets(t) ? setTableSummary(key) : manualSetTableSummary(key);
+}
 function matchFormatFor(playerId, opponentId, useDownSet, t){
   var p = getPlayer(playerId), o = getPlayer(opponentId);
   if(!p || !o) return null;
   if(!usePointsAndSets(t)){
     var mCls = displayClassOf(t, playerId);
     if(!mCls) return null;
-    var mTable = state.settings.manualClassSetCounts || MANUAL_SET_COUNT_DEFAULT;
-    var mSets = mTable[mCls] || MANUAL_SET_COUNT_DEFAULT[mCls] || 3;
+    var mTable = manualSetCountTableFor(t);
+    var mDef = manualSetCountDefaultsFor(t);
+    var mSets = mTable[mCls]!=null ? mTable[mCls] : (mDef[mCls] || 3);
+    var oCls = displayClassOf(t, opponentId);
+    if(mCls==="P" && oCls==="SA") mSets = Math.max(1, mSets-1);
     if(previousChampionOf(t) === playerId) mSets += 1;
     var mMinutes = MINUTES_BY_SETS[mSets] != null ? MINUTES_BY_SETS[mSets] : 30;
     return {sets:mSets, minutes:mMinutes, hasBreak:false};
@@ -2215,21 +2246,31 @@ function renderSettingsSetCounts(){
   renderSetCountTableCard("B")+
   renderSettingsManualClassSetCounts();
 }
-function renderSettingsManualClassSetCounts(){
-  var mc = state.settings.manualClassSetCounts || MANUAL_SET_COUNT_DEFAULT;
+function renderManualSetCountTableCard(key){
+  var isB = key==="B";
+  var ref = {setCountTable:key};
+  var mc = manualSetCountTableFor(ref), def = manualSetCountDefaultsFor(ref);
   var rows = MANUAL_CLASS_OPTIONS.map(function(c){
-    var v = mc[c]!=null ? mc[c] : MANUAL_SET_COUNT_DEFAULT[c];
+    var v = mc[c]!=null ? mc[c] : def[c];
     var minutes = MINUTES_BY_SETS[v] != null ? MINUTES_BY_SETS[v] : "-";
     return '<tr><td>'+badge(c)+'</td>'+
-      '<td><input type="number" class="num" style="width:6rem" min="1" value="'+v+'" data-action="update-manual-class-set-count" data-class="'+c+'"></td>'+
+      '<td><input type="number" class="num" style="width:6rem" min="1" value="'+v+'" data-action="update-manual-class-set-count" data-table="'+key+'" data-class="'+c+'"></td>'+
       '<td class="hint">'+minutes+'分</td></tr>';
   }).join("");
   return '<div class="card">'+
-    '<h3>クラスごとのセット数(ポイント・セット数を使用しない大会用)</h3>'+
-    '<p class="hint">「ポイント・セット数を使用する」を外した大会で、選手に手入力したクラス(P/SA/A/B/C/Be)ごとの必要セット数です。持ち時間はセット数に応じて自動計算されます(前回優勝者は+1セット)。クラス未入力の選手にはセット数・持ち時間は表示されません。</p>'+
+    '<h3>セット数'+key+'・手動クラス(ポイント・セット数を使用しない大会用)'+(isB?'':' — 既定')+'</h3>'+
+    '<p class="hint">'+manualSetTableSummary(key)+'</p>'+
     '<div class="table-wrap"><table class="data"><thead><tr><th>クラス</th><th>セット数</th><th>持ち時間</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
-    '<div style="margin-top:.8rem"><button class="btn btn-sm" data-action="reset-manual-class-set-counts">デフォルトに戻す</button></div>'+
+    '<div style="margin-top:.8rem"><button class="btn btn-sm" data-action="reset-manual-class-set-counts" data-table="'+key+'">セット数'+key+'をデフォルトに戻す</button></div>'+
   '</div>';
+}
+function renderSettingsManualClassSetCounts(){
+  return '<div class="card">'+
+    '<h3>クラスごとのセット数(ポイント・セット数を使用しない大会用)</h3>'+
+    '<p class="hint">「ポイント・セット数を使用する」を外した大会で、選手に手入力したクラス(P/SA/A/B/C/Be)ごとの必要セット数です。ポイント使用時と同様、「セット数A」「セット数B」の2種類があり、どちらを使うかは大会ごとに選択します(大会作成画面または大会画面上部の「基本セット数」)。持ち時間はセット数に応じて自動計算されます(前回優勝者は+1セット)。クラス未入力の選手にはセット数・持ち時間は表示されません。PクラスとSAクラスの対戦では、P側のセット数が1セット少ない「1セットダウン」扱いになります。</p>'+
+  '</div>'+
+  renderManualSetCountTableCard("A")+
+  renderManualSetCountTableCard("B");
 }
 function renderSettingsBounds(){
   var bounds = state.settings.classBounds;
@@ -2368,11 +2409,11 @@ function renderNewTournament(){
         '<input type="checkbox" data-action="use-points-and-sets-toggle" '+(nt.usePointsAndSets!==false?"checked":"")+'>'+
         'ポイント・セット数を使用する(外すと、この大会では勝敗の記録のみを行い、クラスポイントの加減算・セット数/持ち時間の表示・優勝ボーナスなどは行いません)'+
       '</label>'+
-      '<div style="'+(nt.usePointsAndSets!==false?"":"display:none")+';margin-top:.9rem">'+
+      '<div style="margin-top:.9rem">'+
         '<label style="display:block;margin-bottom:.4rem">基本セット数</label>'+
         '<div class="radio-card-row">'+
-          radioCard("setCountTable","A", setTableOf(nt)==="A", "セット数A", setTableSummary("A"))+
-          radioCard("setCountTable","B", setTableOf(nt)==="B", "セット数B", setTableSummary("B"))+
+          radioCard("setCountTable","A", setTableOf(nt)==="A", "セット数A", setTableSummaryFor(nt,"A"))+
+          radioCard("setCountTable","B", setTableOf(nt)==="B", "セット数B", setTableSummaryFor(nt,"B"))+
         '</div>'+
         '<p class="hint">対戦カードに表示されるセット数・持ち時間の基準表です。各表の数値は「設定」→「セット数」タブで変更できます。</p>'+
       '</div>'+
@@ -2821,16 +2862,15 @@ function formatSwitchHTML(t){
       '<input type="number" class="num" min="1" style="width:6rem" value="'+((t.groups&&t.groups.length)||1)+'" data-action="update-group-count" data-tid="'+t.id+'">'+
       '<span class="hint">グループ数を変更すると、出場選手が自動で再割当され、既に入力されている対戦結果はリセットされます</span>'+
     '</div>') : '')+
-  (usePointsAndSets(t) ?
-    ('<div class="form-row" style="align-items:center;gap:.6rem;margin-top:.6rem">'+
-      '<span class="hint">基本セット数</span>'+
-      '<select data-action="update-set-count-table" data-tid="'+t.id+'">'+
-        SET_TABLE_OPTIONS.map(function(k){
-          return '<option value="'+k+'"'+(setTableOf(t)===k?" selected":"")+'>セット数'+k+'</option>';
-        }).join("")+
-      '</select>'+
-      '<span class="hint">'+setTableSummary(setTableOf(t))+'</span>'+
-    '</div>') : '')+
+  '<div class="form-row" style="align-items:center;gap:.6rem;margin-top:.6rem">'+
+    '<span class="hint">基本セット数</span>'+
+    '<select data-action="update-set-count-table" data-tid="'+t.id+'">'+
+      SET_TABLE_OPTIONS.map(function(k){
+        return '<option value="'+k+'"'+(setTableOf(t)===k?" selected":"")+'>セット数'+k+'</option>';
+      }).join("")+
+    '</select>'+
+    '<span class="hint">'+setTableSummaryFor(t, setTableOf(t))+'</span>'+
+  '</div>'+
   qrDetailsHTML(displayUrlFor(t.id))+
   '</div>';
 }
@@ -3213,8 +3253,13 @@ document.addEventListener("click", function(e){
     }
   }
   else if(action==="reset-manual-class-set-counts"){
-    if(confirm("ポイント・セット数を使用しない大会用のセット数設定をデフォルトに戻しますか?")){
-      state.settings.manualClassSetCounts = JSON.parse(JSON.stringify(MANUAL_SET_COUNT_DEFAULT));
+    var rmscKey = t.getAttribute("data-table")==="B" ? "B" : "A";
+    if(confirm("手動クラスのセット数"+rmscKey+"をデフォルトに戻しますか?")){
+      if(rmscKey==="B"){
+        state.settings.manualClassSetCountsB = JSON.parse(JSON.stringify(MANUAL_SET_COUNT_B_DEFAULT));
+      } else {
+        state.settings.manualClassSetCounts = JSON.parse(JSON.stringify(MANUAL_SET_COUNT_DEFAULT));
+      }
       saveState(); render();
     }
   }
@@ -3473,9 +3518,11 @@ document.addEventListener("change", function(e){
   }
   else if(action==="update-manual-class-set-count"){
     var mscCls = t.getAttribute("data-class");
+    var mscKey = t.getAttribute("data-table")==="B" ? "manualClassSetCountsB" : "manualClassSetCounts";
+    var mscDef = t.getAttribute("data-table")==="B" ? MANUAL_SET_COUNT_B_DEFAULT : MANUAL_SET_COUNT_DEFAULT;
     var mscVal = Math.max(1, Math.round(Number(t.value))||1);
-    if(!state.settings.manualClassSetCounts) state.settings.manualClassSetCounts = JSON.parse(JSON.stringify(MANUAL_SET_COUNT_DEFAULT));
-    state.settings.manualClassSetCounts[mscCls] = mscVal;
+    if(!state.settings[mscKey]) state.settings[mscKey] = JSON.parse(JSON.stringify(mscDef));
+    state.settings[mscKey][mscCls] = mscVal;
     saveState(); render();
   }
   else if(action==="update-prev-champion"){
