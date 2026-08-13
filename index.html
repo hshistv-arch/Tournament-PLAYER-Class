@@ -2212,9 +2212,17 @@ function renderEntry(){
   var paid = entered.filter(function(p){ return state.entries[p.id].feePaid; });
   var rows = players.map(function(p){
     var e = state.entries[p.id] || {entered:false, feePaid:false};
-    var clsLabel = p.manualEntryClass || (entryMode==="noPoints" ? coarseClassOf(classOf(p.points)) : classOf(p.points));
+    var clsLabel;
+    if(p.isGuest) clsLabel = p.manualEntryClass || classOf(p.points);
+    else if(entryMode==="noPoints") clsLabel = p.manualEntryClass || coarseClassOf(classOf(p.points));
+    else clsLabel = classOf(p.points);
     var guestTag = p.isGuest ? (' <span class="hint" style="font-size:.65rem">ゲスト'+(p.affiliation?'・'+esc(p.affiliation):'')+'</span>') : '';
-    return '<tr><td>'+esc(p.name)+guestTag+'</td><td>'+badge(clsLabel)+'</td>'+
+    var clsCell = entryMode==="noPoints" ?
+      ('<select data-action="update-entry-class" data-id="'+p.id+'" style="width:5.5rem">'+
+        MANUAL_CLASS_OPTIONS.map(function(c){ return '<option value="'+c+'"'+(clsLabel===c?" selected":"")+'>'+c+'</option>'; }).join("")+
+      '</select>') :
+      badge(clsLabel);
+    return '<tr><td>'+esc(p.name)+guestTag+'</td><td>'+clsCell+'</td>'+
       '<td><input type="checkbox" data-action="toggle-entry" data-id="'+p.id+'" '+(e.entered?"checked":"")+'></td>'+
       '<td><input type="checkbox" data-action="toggle-fee" data-id="'+p.id+'" '+(e.feePaid?"checked":"")+(e.entered?"":" disabled")+'></td></tr>';
   }).join("");
@@ -3459,6 +3467,10 @@ document.addEventListener("change", function(e){
   else if(action==="update-name"){ updatePlayerName(t.getAttribute("data-id"), t.value); }
   else if(action==="update-kana"){ updatePlayerKana(t.getAttribute("data-id"), t.value); }
   else if(action==="update-affiliation"){ updatePlayerAffiliation(t.getAttribute("data-id"), t.value); }
+  else if(action==="update-entry-class"){
+    var pEC = getPlayer(t.getAttribute("data-id"));
+    if(pEC){ pEC.manualEntryClass = t.value; saveState(); render(); }
+  }
   else if(action==="tourname-input"){
     var ntn = ensureNewTournamentState(); ntn.name = t.value;
   }
