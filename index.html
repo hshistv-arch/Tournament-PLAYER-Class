@@ -1720,6 +1720,10 @@ function updatePlayerKana(id, kana){
   var p=getPlayer(id); if(!p) return;
   p.kana=(kana||"").trim(); saveState(); render();
 }
+function updatePlayerAffiliation(id, affiliation){
+  var p=getPlayer(id); if(!p) return;
+  p.affiliation=(affiliation||"").trim(); saveState(); render();
+}
 function deletePlayer(id){
   if(!confirm("この選手をロースターから削除しますか?過去の大会記録の名前表示は保持されます。")) return;
   state.players = state.players.filter(function(p){ return p.id!==id; });
@@ -2086,7 +2090,43 @@ function sortPlayers(players, sortMode){
     return b.points-a.points;
   });
 }
+function renderRosterGuests(){
+  var guests = sortPlayers(state.players.filter(function(p){ return !!p.isGuest; }), route.rosterSort || "name");
+  var rows = guests.map(function(p){
+    return '<tr>'+
+      '<td><input type="text" style="width:8rem" value="'+esc(p.name)+'" data-action="update-name" data-id="'+p.id+'"></td>'+
+      '<td><input type="text" style="width:7rem" value="'+esc(p.kana||"")+'" placeholder="よみがな" data-action="update-kana" data-id="'+p.id+'"></td>'+
+      '<td><input type="text" style="width:8rem" value="'+esc(p.affiliation||"")+'" placeholder="所属" data-action="update-affiliation" data-id="'+p.id+'"></td>'+
+      '<td>'+badge(p.manualEntryClass||"-")+'</td>'+
+      '<td><button class="btn btn-sm btn-ghost btn-danger" data-action="delete-player" data-id="'+p.id+'">削除</button></td>'+
+    '</tr>';
+  }).join("");
+  return ''+
+  '<div class="stat-row">'+
+    '<div class="stat"><div class="label">ゲスト選手数</div><div class="value num">'+guests.length+'</div></div>'+
+  '</div>'+
+  '<div class="card">'+
+    '<h3 style="margin-bottom:.6rem">ゲスト一覧</h3>'+
+    '<p class="hint">「エントリー受付」の「G-SPeCポイントに影響しない試合」から追加された選手です。氏名・読みカナ・所属はその場で編集できます(変更は自動保存されます)。クラスは追加時に選んだものが表示され、こちらの一覧からは変更できません。ポイントには一切影響しません。</p>'+
+    (guests.length ?
+      ('<div class="table-wrap"><table class="data">'+
+        '<thead><tr><th>氏名</th><th>読みカナ</th><th>所属</th><th>クラス</th><th></th></tr></thead>'+
+        '<tbody>'+rows+'</tbody>'+
+      '</table></div>') :
+      '<p class="empty-note">ゲスト選手はまだ登録されていません。</p>')+
+  '</div>';
+}
 function renderRoster(){
+  var rosterTab = route.rosterTab==="guests" ? "guests" : "members";
+  var tabsHTML = '<div class="tabs" style="margin:.8rem 0">'+
+    '<button class="tab'+(rosterTab==="members"?" active":"")+'" data-action="roster-tab" data-tab="members">メンバー</button>'+
+    '<button class="tab'+(rosterTab==="guests"?" active":"")+'" data-action="roster-tab" data-tab="guests">ゲスト</button>'+
+  '</div>';
+  if(rosterTab==="guests"){
+    return '<div class="page-head"><div><h1>選手ロースター</h1><p class="sub">現在の登録選手とクラスポイント</p></div></div>'+
+      tabsHTML+
+      renderRosterGuests();
+  }
   var sortMode = route.rosterSort || "name";
   var players = sortPlayers(nonGuestPlayers(), sortMode);
   var total = players.length;
@@ -2106,6 +2146,7 @@ function renderRoster(){
   }).join("");
   return ''+
   '<div class="page-head"><div><h1>選手ロースター</h1><p class="sub">現在の登録選手とクラスポイント</p></div></div>'+
+  tabsHTML+
   '<div class="stat-row">'+
     '<div class="stat"><div class="label">登録選手数</div><div class="value num">'+total+'</div></div>'+
     '<div class="stat"><div class="label">平均ポイント</div><div class="value num">'+avg+'</div></div>'+
@@ -3247,6 +3288,7 @@ document.addEventListener("click", function(e){
   }
   else if(action==="settings-tab"){ route = {screen:"settings", tab:t.getAttribute("data-tab")}; render(); }
   else if(action==="roster-sort"){ route.rosterSort = t.getAttribute("data-sort"); render(); }
+  else if(action==="roster-tab"){ route.rosterTab = t.getAttribute("data-tab"); render(); }
   else if(action==="entry-sort"){ route.entrySort = t.getAttribute("data-sort"); render(); }
   else if(action==="entry-mode-radio"){ route.entryMode = t.value==="noPoints" ? "noPoints" : "points"; render(); }
   else if(action==="export-roster-csv"){ exportRosterCSV(); }
@@ -3416,6 +3458,7 @@ document.addEventListener("change", function(e){
   if(action==="update-points"){ updatePlayerPoints(t.getAttribute("data-id"), t.value); }
   else if(action==="update-name"){ updatePlayerName(t.getAttribute("data-id"), t.value); }
   else if(action==="update-kana"){ updatePlayerKana(t.getAttribute("data-id"), t.value); }
+  else if(action==="update-affiliation"){ updatePlayerAffiliation(t.getAttribute("data-id"), t.value); }
   else if(action==="tourname-input"){
     var ntn = ensureNewTournamentState(); ntn.name = t.value;
   }
