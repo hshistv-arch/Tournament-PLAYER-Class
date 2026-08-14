@@ -916,6 +916,10 @@ var COARSE_CLASS_MAP = {SA:"A",AA:"A",AB:"A",AC:"A",BA:"B",BB:"B",BC:"B",CA:"C",
 function coarseClassOf(realCls){
   return COARSE_CLASS_MAP[realCls] || realCls;
 }
+var MANUAL_TIER_MAP = {SA:"SA",AA:"A",AB:"A",AC:"A",BA:"B",BB:"B",BC:"B",CA:"C",CB:"C",CC:"C",Be:"Be"};
+function manualTierOf(realCls){
+  return MANUAL_TIER_MAP[realCls] || realCls;
+}
 function entryPointsOf(t, id){
   return (t && t.entryPoints && t.entryPoints[id]!=null) ? t.entryPoints[id] : pointsOf(id);
 }
@@ -967,10 +971,15 @@ function tournamentHasClassInfo(t){
 }
 var MANUAL_CLASS_OPTIONS = ["P","SA","A","B","C","Be"];
 function manualClassSelectHTML(t, playerId, action){
-  if(!playerId) return "";
-  var current = (t && t.manualClasses && t.manualClasses[playerId]) || "";
+  if(!playerId || !t) return "";
+  if(!t.manualClasses) t.manualClasses = {};
+  if(!t.manualClasses[playerId]){
+    var p = getPlayer(playerId);
+    t.manualClasses[playerId] = (p && p.manualEntryClass) || manualTierOf(classOf(p ? p.points : 0));
+    saveState();
+  }
+  var current = t.manualClasses[playerId];
   return '<select data-action="'+action+'" data-tid="'+t.id+'" data-id="'+playerId+'" style="width:5.5rem;flex:none">'+
-    '<option value="">クラス(任意)</option>'+
     MANUAL_CLASS_OPTIONS.map(function(c){ return '<option value="'+c+'"'+(current===c?' selected':'')+'>'+c+'</option>'; }).join("")+
   '</select>';
 }
@@ -2100,7 +2109,9 @@ function renderRosterGuests(){
       '<td><input type="text" style="width:8rem" value="'+esc(p.name)+'" data-action="update-name" data-id="'+p.id+'"></td>'+
       '<td><input type="text" style="width:7rem" value="'+esc(p.kana||"")+'" placeholder="よみがな" data-action="update-kana" data-id="'+p.id+'"></td>'+
       '<td><input type="text" style="width:8rem" value="'+esc(p.affiliation||"")+'" placeholder="所属" data-action="update-affiliation" data-id="'+p.id+'"></td>'+
-      '<td>'+badge(p.manualEntryClass||"-")+'</td>'+
+      '<td><select data-action="update-entry-class" data-id="'+p.id+'" style="width:5.5rem">'+
+        MANUAL_CLASS_OPTIONS.map(function(c){ return '<option value="'+c+'"'+(p.manualEntryClass===c?' selected':'')+'>'+c+'</option>'; }).join("")+
+      '</select></td>'+
       '<td><button class="btn btn-sm btn-ghost btn-danger" data-action="delete-player" data-id="'+p.id+'">削除</button></td>'+
     '</tr>';
   }).join("");
@@ -2110,7 +2121,7 @@ function renderRosterGuests(){
   '</div>'+
   '<div class="card">'+
     '<h3 style="margin-bottom:.6rem">ゲスト一覧</h3>'+
-    '<p class="hint">「エントリー受付」の「G-SPeCポイントに影響しない試合」から追加された選手です。氏名・読みカナ・所属はその場で編集できます(変更は自動保存されます)。クラスは追加時に選んだものが表示され、こちらの一覧からは変更できません。ポイントには一切影響しません。</p>'+
+    '<p class="hint">「エントリー受付」の「G-SPeCポイントに影響しない試合」から追加された選手です。氏名・読みカナ・所属・クラスはその場で編集できます(変更は自動保存されます)。ポイントには一切影響しません。</p>'+
     (guests.length ?
       ('<div class="table-wrap"><table class="data">'+
         '<thead><tr><th>氏名</th><th>読みカナ</th><th>所属</th><th>クラス</th><th></th></tr></thead>'+
@@ -2472,15 +2483,21 @@ function renderNewTournament(){
   }
   var pickRows = pickPool.map(function(p){
     var checked = nt.selectedIds.indexOf(p.id)>=0;
-    var manualClassSelect = (nt.usePointsAndSets===false && checked) ?
-      ('<select data-action="update-manual-class" data-id="'+p.id+'" style="width:6rem;flex:none">'+
-        '<option value="">クラス(任意)</option>'+
+    var manualClassSelect = "";
+    if(nt.usePointsAndSets===false && checked){
+      if(!nt.manualClasses[p.id]) nt.manualClasses[p.id] = p.manualEntryClass || manualTierOf(classOf(p.points));
+      manualClassSelect = '<select data-action="update-manual-class" data-id="'+p.id+'" style="width:6rem;flex:none">'+
         MANUAL_CLASS_OPTIONS.map(function(c){ return '<option value="'+c+'"'+((nt.manualClasses&&nt.manualClasses[p.id]===c)?' selected':'')+'>'+c+'</option>'; }).join("")+
-      '</select>') : '';
+      '</select>';
+    }
+    var showChecklistBadge = !(nt.usePointsAndSets===false && checked);
+    var checklistCls = nt.usePointsAndSets===false
+      ? (checked ? nt.manualClasses[p.id] : (p.manualEntryClass || manualTierOf(classOf(p.points))))
+      : classOf(p.points);
     return '<div style="display:flex;align-items:center;gap:.4rem;padding:.3rem .4rem;border-bottom:1px solid var(--border)'+(checked?';background:var(--surface-2)':'')+'">'+
       '<label class="hint" style="display:flex;align-items:center;gap:.4rem;cursor:pointer;flex:1;min-width:0">'+
         '<input type="checkbox" data-action="toggle-select-participant" data-id="'+p.id+'" '+(checked?"checked":"")+'>'+
-        '<span style="flex:1">'+esc(p.name)+'</span>'+badge(classOf(p.points))+
+        '<span style="flex:1">'+esc(p.name)+'</span>'+(showChecklistBadge?badge(checklistCls):'')+
       '</label>'+manualClassSelect+
     '</div>';
   }).join("");
@@ -2496,10 +2513,13 @@ function renderNewTournament(){
         '<div class="field" style="flex:2;min-width:220px"><label>大会名</label><input type="text" name="name" data-action="tourname-input" value="'+esc(nt.name||"")+'" placeholder="例: 2026年8月度月例大会" required></div>'+
         '<div class="field"><label>開催日</label><input type="date" name="eventDate" data-action="tourdate-input" value="'+esc(nt.eventDate||dateStamp())+'" required></div>'+
       '</div>'+
-      '<label class="hint" style="display:flex;align-items:center;gap:.4rem;cursor:pointer;margin-top:.6rem">'+
-        '<input type="checkbox" data-action="use-points-and-sets-toggle" '+(nt.usePointsAndSets!==false?"checked":"")+'>'+
-        'ポイント・セット数を使用する(外すと、この大会では勝敗の記録のみを行い、クラスポイントの加減算・セット数/持ち時間の表示・優勝ボーナスなどは行いません)'+
-      '</label>'+
+      '<div style="margin-top:.9rem">'+
+        '<label style="display:block;margin-bottom:.4rem">試合の種類</label>'+
+        '<div class="radio-card-row">'+
+          radioCard("pointsMode","points", nt.usePointsAndSets!==false, "G-SPeCポイントに影響する試合", "通常のクラスポイント大会です。勝敗結果に応じてクラスポイントが加減算され、セット数・持ち時間・優勝ボーナスなども通常通り適用されます。")+
+          radioCard("pointsMode","noPoints", nt.usePointsAndSets===false, "G-SPeCポイントに影響しない試合", "親善試合・イベント戦向けです。勝敗の記録のみを行い、クラスポイントの加減算・優勝ボーナスなどは一切行いません。")+
+        '</div>'+
+      '</div>'+
       '<div style="margin-top:.9rem">'+
         '<label style="display:block;margin-bottom:.4rem">基本セット数</label>'+
         '<div class="radio-card-row">'+
@@ -2784,7 +2804,8 @@ function rosterOptionsHTML(currentValue, allowBye, eligibleIds, usedElsewhere){
   var players = pool.sort(function(a,b){ return a.name.localeCompare(b.name,"ja"); });
   var opts = placeholder + players.map(function(p){
     var isUsed = usedElsewhere && usedElsewhere.indexOf(p.id)>=0;
-    return '<option value="'+p.id+'"'+(currentValue===p.id?" selected":"")+(isUsed?' style="background:#ddd;color:#777;"':'')+'>'+esc(p.name)+' ('+classOf(p.points)+')'+(isUsed?' ✓選択済み':'')+'</option>';
+    var clsLabel = p.isGuest ? (p.manualEntryClass || "-") : classOf(p.points);
+    return '<option value="'+p.id+'"'+(currentValue===p.id?" selected":"")+(isUsed?' style="background:#ddd;color:#777;"':'')+'>'+esc(p.name)+' ('+clsLabel+')'+(isUsed?' ✓選択済み':'')+'</option>';
   }).join("");
   return opts;
 }
@@ -2947,10 +2968,16 @@ function formatSwitchHTML(t){
     '</select>'+
     '<span class="hint">形式を変更すると、これまでの対戦結果はリセットされます</span>'+
   '</div>'+
-  '<label class="hint" style="display:flex;align-items:center;gap:.4rem;cursor:pointer;margin-top:.6rem">'+
-    '<input type="checkbox" data-action="use-points-and-sets-toggle-live" data-tid="'+t.id+'" '+(usePointsAndSets(t)?"checked":"")+'>'+
-    'ポイント・セット数を使用する(切り替えると、これまでの対戦結果はリセットされます)'+
-  '</label>'+
+  '<div style="margin-top:.6rem">'+
+    '<span class="hint" style="display:block;margin-bottom:.4rem">試合の種類</span>'+
+    '<div class="radio-card-row">'+
+      '<label class="radio-card'+(usePointsAndSets(t)?' checked':'')+'"><input type="radio" name="pointsModeLive_'+t.id+'" value="points"'+(usePointsAndSets(t)?' checked':'')+' data-action="use-points-and-sets-radio-live" data-tid="'+t.id+'">'+
+        '<div><div class="rc-title">G-SPeCポイントに影響する試合</div><div class="rc-desc">通常のクラスポイント大会です。</div></div></label>'+
+      '<label class="radio-card'+(!usePointsAndSets(t)?' checked':'')+'"><input type="radio" name="pointsModeLive_'+t.id+'" value="noPoints"'+(!usePointsAndSets(t)?' checked':'')+' data-action="use-points-and-sets-radio-live" data-tid="'+t.id+'">'+
+        '<div><div class="rc-title">G-SPeCポイントに影響しない試合</div><div class="rc-desc">親善試合・イベント戦向けです(勝敗記録のみ)。</div></div></label>'+
+    '</div>'+
+    '<span class="hint">切り替えると、これまでの対戦結果はリセットされます</span>'+
+  '</div>'+
   (t.format==="elimPrelim" ?
     ('<div class="form-row" style="align-items:center;gap:.6rem;margin-top:.6rem">'+
       '<span class="hint">予選グループ数</span>'+
@@ -3375,6 +3402,14 @@ document.addEventListener("click", function(e){
   else if(action==="setCountTable-radio"){
     var ntst = ensureNewTournamentState(); ntst.setCountTable = t.value==="B" ? "B" : "A"; render();
   }
+  else if(action==="pointsMode-radio"){
+    var ntpm = ensureNewTournamentState(); ntpm.usePointsAndSets = t.value!=="noPoints"; render();
+  }
+  else if(action==="use-points-and-sets-radio-live"){
+    var tidUpsR = t.getAttribute("data-tid"); var tourUpsR = findTournament(tidUpsR);
+    if(!tourUpsR) return;
+    changeUsePointsAndSets(tourUpsR, t.value!=="noPoints");
+  }
   else if(action==="prelimType-radio"){
     var ntp = ensureNewTournamentState(); ntp.prelimType = t.value; render();
   }
@@ -3489,24 +3524,17 @@ document.addEventListener("change", function(e){
   else if(action==="lb-oneset-toggle"){
     var ntlb = ensureNewTournamentState(); ntlb.lbOneSetDown = t.checked; render();
   }
-  else if(action==="use-points-and-sets-toggle"){
-    var ntups = ensureNewTournamentState(); ntups.usePointsAndSets = t.checked; render();
-  }
   else if(action==="update-manual-class"){
     var ntmc = ensureNewTournamentState();
     ntmc.manualClasses = ntmc.manualClasses || {};
-    var pidmc = t.getAttribute("data-id");
-    if(t.value) ntmc.manualClasses[pidmc] = t.value;
-    else delete ntmc.manualClasses[pidmc];
+    ntmc.manualClasses[t.getAttribute("data-id")] = t.value;
   }
   else if(action==="update-manual-class-live"){
     var tidmcl = t.getAttribute("data-tid");
     var tourmcl = findTournament(tidmcl);
     if(!tourmcl) return;
     tourmcl.manualClasses = tourmcl.manualClasses || {};
-    var pidmcl = t.getAttribute("data-id");
-    if(t.value) tourmcl.manualClasses[pidmcl] = t.value;
-    else delete tourmcl.manualClasses[pidmcl];
+    tourmcl.manualClasses[t.getAttribute("data-id")] = t.value;
     saveState(); render();
   }
   else if(action==="toggle-select-participant"){
@@ -3530,11 +3558,6 @@ document.addEventListener("change", function(e){
     if(!tourED || !t.value) return;
     tourED.eventDate = t.value;
     saveState(); render();
-  }
-  else if(action==="use-points-and-sets-toggle-live"){
-    var tidUps = t.getAttribute("data-tid"); var tourUps = findTournament(tidUps);
-    if(!tourUps) return;
-    changeUsePointsAndSets(tourUps, t.checked);
   }
   else if(action==="update-group-count"){
     var tidGc = t.getAttribute("data-tid"); var tourGc = findTournament(tidGc);
