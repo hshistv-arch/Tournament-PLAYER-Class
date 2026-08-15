@@ -2119,6 +2119,9 @@ function render(){
   var innerScrollers = Array.from(document.querySelectorAll("[data-preserve-scroll]")).map(function(el){
     return {id: el.id, scrollTop: el.scrollTop};
   });
+  var bflowScrollers = Array.from(document.querySelectorAll(".bflow-wrap")).map(function(el){
+    return {scrollLeft: el.scrollLeft, scrollTop: el.scrollTop};
+  });
   renderNav();
   var main = document.getElementById("main");
   var html = "";
@@ -2136,6 +2139,11 @@ function render(){
   innerScrollers.forEach(function(s){
     var el = document.getElementById(s.id);
     if(el) el.scrollTop = s.scrollTop;
+  });
+  var newBflowScrollers = document.querySelectorAll(".bflow-wrap");
+  bflowScrollers.forEach(function(s, i){
+    var el = newBflowScrollers[i];
+    if(el){ el.scrollLeft = s.scrollLeft; el.scrollTop = s.scrollTop; }
   });
 }
 
@@ -2659,7 +2667,7 @@ function renderHistory(){
         '<span class="pill '+t.status+'">'+(STATUS_LABEL[t.status]||t.status)+'</span>'+
         (t.locked?'<span class="pill" style="color:var(--rust-ink);border-color:var(--rust)">🔒 削除ロック中</span>':'')+
         '<button class="btn btn-sm" data-action="nav" data-screen="tournament" data-id="'+t.id+'">開く</button>'+
-        '<a class="btn btn-sm btn-ghost" href="?display=1&id='+t.id+'" target="_blank">別画面に表示</a>'+
+        '<a class="btn btn-sm btn-ghost" href="?display=1&id='+t.id+'" target="_blank">大会結果共有</a>'+
         '<a class="btn btn-sm btn-ghost" href="?stream=1&id='+t.id+'" target="_blank">📺 配信用スコアボード</a>'+
         '<button class="btn btn-sm btn-ghost" data-action="toggle-lock-tournament" data-id="'+t.id+'">'+(t.locked?'🔓 ロック解除':'🔒 削除をロック')+'</button>'+
         (t.locked?'':'<button class="btn btn-sm btn-ghost btn-danger" data-action="delete-tournament" data-id="'+t.id+'">削除</button>')+
@@ -2789,7 +2797,9 @@ function renderDisplayScreen(){
       body = '<div class="page-head"><h1>大会が見つかりません</h1></div><p><a href="?display=1">大会一覧に戻る</a></p>';
     } else {
       var STATUS_LABEL = {assigning:"組み合わせ待ち", prelim:"予選中", finals:"決勝トーナメント中", completed:"終了"};
-      body = '<div class="page-head"><div><h1>'+esc(t.name)+'</h1><p class="sub">'+tournamentFormatLabel(t)+' ・ 開催日: '+eventDateOf(t)+' ・ <span class="pill '+t.status+'">'+(STATUS_LABEL[t.status]||t.status)+'</span></p></div></div>';
+      body = '<div class="page-head"><div><h1>'+esc(t.name)+'</h1><p class="sub">'+tournamentFormatLabel(t)+' ・ 開催日: '+eventDateOf(t)+' ・ <span class="pill '+t.status+'">'+(STATUS_LABEL[t.status]||t.status)+'</span></p>'+
+        '<button class="btn btn-sm btn-ghost" type="button" data-action="copy-url" data-url="'+esc(displayUrlFor(t.id))+'" style="margin-top:.5rem">URLをコピー</button>'+
+      '</div></div>';
       if(t.format==="blockPrelim"){
         body += (t.blocks||[]).map(function(b){ return renderDisplayBlock(t, b); }).join("");
       } else {
@@ -2822,10 +2832,14 @@ function findStreamMatch(t, scope, idx, side, mid){
 }
 function listStreamableMatches(t){
   var list = [];
+  function isFinalistMatch(m){
+    return !!(t.finalists && (t.finalists.indexOf(m.a)>=0 || t.finalists.indexOf(m.b)>=0));
+  }
   function addRounds(rounds, scope, idx, side, sectionLabel, roundLabelFn){
     (rounds||[]).forEach(function(round, ri){
       round.forEach(function(m){
         if(!m.a || !m.b || m.bye) return;
+        if(scope!=="bracket" && isFinalistMatch(m)) return;
         list.push({scope:scope, idx:idx, side:side, mid:m.id, match:m, section:sectionLabel+(roundLabelFn?(" ・ "+roundLabelFn(ri)):"")});
       });
     });
@@ -2834,6 +2848,7 @@ function listStreamableMatches(t){
     (t.blocks||[]).forEach(function(b){
       (b.matches||[]).forEach(function(m){
         if(!m.a || !m.b || m.bye) return;
+        if(isFinalistMatch(m)) return;
         list.push({scope:"block", idx:b.index, side:null, mid:m.id, match:m, section:"予選 ・ ブロック"+(b.index+1)});
       });
     });
@@ -2858,7 +2873,7 @@ function renderStreamPicker(t){
       '<div><div class="hint">'+esc(e.section)+'</div><h3 style="margin:.2rem 0">'+esc(playerName(e.match.a))+' vs '+esc(playerName(e.match.b))+'</h3>'+statusPill+'</div>'+
       '<div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">'+
         '<a class="btn btn-sm" href="'+url+'" target="_blank">スコアボードを開く</a>'+
-        '<button class="btn btn-sm btn-ghost" type="button" data-action="copy-stream-url" data-url="'+esc(url)+'">URLをコピー</button>'+
+        '<button class="btn btn-sm btn-ghost" type="button" data-action="copy-url" data-url="'+esc(url)+'">URLをコピー</button>'+
       '</div>'+
     '</div>';
   }
@@ -3170,7 +3185,7 @@ function renderBlockPrelimTournament(t){
   var STATUS_LABEL = {assigning:"組み合わせ待ち", prelim:"予選中", finals:"決勝トーナメント中", completed:"終了"};
   var header = '<div class="page-head"><div><h1>'+esc(t.name)+'</h1><p class="sub">'+tournamentFormatLabel(t)+' ・ '+
     '<span class="pill '+t.status+'">'+STATUS_LABEL[t.status]+'</span>'+(t.locked?' <span class="pill" style="color:var(--rust-ink);border-color:var(--rust)">🔒 削除ロック中</span>':'')+'</p></div>'+
-    '<div style="display:flex;gap:.5rem"><a class="btn btn-sm btn-ghost" href="?display=1&id='+t.id+'" target="_blank">別画面に表示</a>'+
+    '<div style="display:flex;gap:.5rem;flex-wrap:wrap"><a class="btn btn-sm btn-ghost" href="?display=1&id='+t.id+'" target="_blank">大会結果共有</a>'+
     '<a class="btn btn-sm btn-ghost" href="?stream=1&id='+t.id+'" target="_blank">📺 配信用スコアボード</a>'+
     '<button class="btn btn-sm btn-ghost" data-action="toggle-lock-tournament" data-id="'+t.id+'">'+(t.locked?'🔓 ロック解除':'🔒 削除をロック')+'</button>'+
     '<button class="btn btn-sm" data-action="nav" data-screen="history">一覧へ戻る</button></div></div>';
@@ -3249,7 +3264,7 @@ function renderElimPrelimTournament(t){
   var STATUS_LABEL = {assigning:"組み合わせ待ち", prelim:"予選中", finals:"決勝トーナメント中", completed:"終了"};
   var header = '<div class="page-head"><div><h1>'+esc(t.name)+'</h1><p class="sub">'+tournamentFormatLabel(t)+' ・ '+
     '<span class="pill '+t.status+'">'+STATUS_LABEL[t.status]+'</span>'+(t.locked?' <span class="pill" style="color:var(--rust-ink);border-color:var(--rust)">🔒 削除ロック中</span>':'')+'</p></div>'+
-    '<div style="display:flex;gap:.5rem"><a class="btn btn-sm btn-ghost" href="?display=1&id='+t.id+'" target="_blank">別画面に表示</a>'+
+    '<div style="display:flex;gap:.5rem;flex-wrap:wrap"><a class="btn btn-sm btn-ghost" href="?display=1&id='+t.id+'" target="_blank">大会結果共有</a>'+
     '<a class="btn btn-sm btn-ghost" href="?stream=1&id='+t.id+'" target="_blank">📺 配信用スコアボード</a>'+
     '<button class="btn btn-sm btn-ghost" data-action="toggle-lock-tournament" data-id="'+t.id+'">'+(t.locked?'🔓 ロック解除':'🔒 削除をロック')+'</button>'+
     '<button class="btn btn-sm" data-action="nav" data-screen="history">一覧へ戻る</button></div></div>';
@@ -3419,6 +3434,8 @@ function renderTournamentResultPrint(tid){
     return '<div class="card"><p class="hint">この大会の結果はまだ確定していません。</p>'+
       '<button class="btn btn-sm btn-ghost" data-action="nav" data-screen="history">大会一覧へ戻る</button></div>';
   }
+  route.printScope = route.printScope || "all";
+  var showPrelim = route.printScope !== "finalsOnly";
   var bonusRows = t.finishDeltas.map(function(d){
     return '<tr><td>'+esc(playerName(d.playerId))+'</td><td>'+esc(d.reason)+'</td></tr>';
   }).join("");
@@ -3426,25 +3443,26 @@ function renderTournamentResultPrint(tid){
     '<h3>ボーナス内訳</h3>'+
     '<table class="print-table"><thead><tr><th>氏名</th><th>内容</th></tr></thead><tbody>'+bonusRows+'</tbody></table>'
   ) : "";
-  var prelimHTML = t.format==="blockPrelim" ?
+  var prelimHTML = showPrelim ? (t.format==="blockPrelim" ?
     (t.blocks||[]).map(function(b){ return renderDisplayBlock(t, b); }).join("") :
-    (t.groups||[]).map(function(g){ return renderDisplayGroup(t, g); }).join("");
+    (t.groups||[]).map(function(g){ return renderDisplayGroup(t, g); }).join("")) : "";
   var bracketHTML = t.finals ? renderBracketFlow(padBracketRounds(t.finals), function(ri){ return roundName(ri+1, t.finals.totalRounds); }, {
     resolvable:false, actionName:"", undoActionName:"", scoreScope:"", extraAttrs:"", showUndo:false, hideScoreInput:true, tournament:t
   }) : "";
   return ''+
   '<div class="print-summary">'+
     '<div class="page-head no-print"><div><h1>大会結果(印刷用)</h1><p class="sub">'+esc(t.name)+'の結果サマリーです。印刷ボタンを押すと、この内容のみが印刷されます。</p></div></div>'+
-    '<div class="form-row no-print" style="gap:.5rem;margin-bottom:1rem">'+
+    '<div class="form-row no-print" style="gap:.5rem;margin-bottom:1rem;align-items:center;flex-wrap:wrap">'+
       '<button class="btn btn-primary" data-action="print-page">印刷する</button>'+
       '<button class="btn btn-sm btn-ghost" data-action="nav" data-screen="tournament" data-id="'+t.id+'">大会画面へ戻る</button>'+
+      '<label class="hint" style="display:flex;align-items:center;gap:.35rem;cursor:pointer"><input type="radio" name="printScope" data-action="print-scope-radio" value="all" '+(showPrelim?"checked":"")+'> 予選を含むすべてを印刷</label>'+
+      '<label class="hint" style="display:flex;align-items:center;gap:.35rem;cursor:pointer"><input type="radio" name="printScope" data-action="print-scope-radio" value="finalsOnly" '+(showPrelim?"":"checked")+'> 決勝トーナメントのみ印刷</label>'+
     '</div>'+
     '<h1>'+esc(t.name)+' — 大会結果</h1>'+
     '<p class="hint">開催日: '+eventDateOf(t)+' ・ 出力日: '+dateStamp()+'</p>'+
     '<p>🏆 優勝: '+esc(playerName(t.championId))+' ・ 準優勝: '+esc(playerName(t.runnerUpId))+'</p>'+
     bonusHTML+
-    '<h3 style="margin-top:1.2rem">予選('+(t.format==="blockPrelim"?"リーグ戦":"トーナメント")+')</h3>'+
-    prelimHTML+
+    (showPrelim ? ('<h3 style="margin-top:1.2rem">予選('+(t.format==="blockPrelim"?"リーグ戦":"トーナメント")+')</h3>'+prelimHTML) : '')+
     '<h3 style="margin-top:1.2rem">決勝トーナメント</h3>'+
     bracketHTML+
   '</div>';
@@ -3509,20 +3527,21 @@ document.addEventListener("click", function(e){
   else if(action==="entry-mode-radio"){ route.entryMode = t.value==="noPoints" ? "noPoints" : "points"; render(); }
   else if(action==="export-roster-csv"){ exportRosterCSV(); }
   else if(action==="print-page"){ window.print(); }
+  else if(action==="print-scope-radio"){ route.printScope = t.value==="finalsOnly" ? "finalsOnly" : "all"; render(); }
   else if(action==="close-display-window"){
     window.close();
     setTimeout(function(){
       alert("このタブ/ウインドウを自動では閉じられませんでした。お使いのブラウザの操作(タブ一覧・戻るボタンなど)で閉じてください。");
     }, 300);
   }
-  else if(action==="copy-stream-url"){
-    var streamUrl = t.getAttribute("data-url");
+  else if(action==="copy-url"){
+    var copyUrl = t.getAttribute("data-url");
     var restoreLabel = t.textContent;
     function showCopied(){ t.textContent = "コピーしました!"; setTimeout(function(){ t.textContent = restoreLabel; }, 1500); }
     if(navigator.clipboard && navigator.clipboard.writeText){
-      navigator.clipboard.writeText(streamUrl).then(showCopied).catch(function(){ prompt("以下のURLをコピーしてください:", streamUrl); });
+      navigator.clipboard.writeText(copyUrl).then(showCopied).catch(function(){ prompt("以下のURLをコピーしてください:", copyUrl); });
     } else {
-      prompt("以下のURLをコピーしてください:", streamUrl);
+      prompt("以下のURLをコピーしてください:", copyUrl);
     }
   }
   else if(action==="delete-player"){ deletePlayer(t.getAttribute("data-id")); }
