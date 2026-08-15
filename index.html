@@ -2106,6 +2106,24 @@ function parseCsvLine(line){
   result.push(cur);
   return result;
 }
+function decodeCsvBuffer(buffer){
+  var bytes = new Uint8Array(buffer);
+  if(bytes.length>=3 && bytes[0]===0xEF && bytes[1]===0xBB && bytes[2]===0xBF){
+    return new TextDecoder("utf-8").decode(bytes.subarray(3));
+  }
+  try{
+    return new TextDecoder("utf-8", {fatal:true}).decode(bytes);
+  }catch(e){
+    try{
+      return new TextDecoder("shift-jis").decode(bytes);
+    }catch(e2){
+      return new TextDecoder("utf-8").decode(bytes);
+    }
+  }
+}
+function normalizeNameForMatch(name){
+  return (name||"").replace(/[\s　]+/g, "");
+}
 function importGuestEntriesFromCSV(text){
   var lines = text.replace(/^﻿/, "").split(/\r\n|\n|\r/).filter(function(l){ return l.trim()!==""; });
   if(!lines.length){ alert("CSVにデータがありません。"); return; }
@@ -2119,7 +2137,7 @@ function importGuestEntriesFromCSV(text){
     var affiliation = (cols[2]||"").trim();
     var clsRaw = (cols[3]||"").trim().toUpperCase();
     var cls = MANUAL_CLASS_OPTIONS.indexOf(clsRaw)>=0 ? clsRaw : "Be";
-    var existing = state.players.find(function(p){ return p.name===name; });
+    var existing = state.players.find(function(p){ return normalizeNameForMatch(p.name)===normalizeNameForMatch(name); });
     var id;
     if(existing){
       id = existing.id; matched++;
@@ -3991,8 +4009,8 @@ document.addEventListener("change", function(e){
     if(t.files && t.files[0]){
       var gcsvFile = t.files[0];
       var gcsvReader = new FileReader();
-      gcsvReader.onload = function(){ importGuestEntriesFromCSV(String(gcsvReader.result)); };
-      gcsvReader.readAsText(gcsvFile, "utf-8");
+      gcsvReader.onload = function(){ importGuestEntriesFromCSV(decodeCsvBuffer(gcsvReader.result)); };
+      gcsvReader.readAsArrayBuffer(gcsvFile);
       t.value = "";
     }
   }
