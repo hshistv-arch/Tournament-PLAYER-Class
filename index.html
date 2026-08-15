@@ -247,6 +247,8 @@ details[open] > summary:before{content:"▾ ";}
 .score-input-inline{width:2.5rem; flex:none; text-align:center; padding:.05rem .15rem; border:1px solid var(--border); border-radius:5px; background:var(--bg); font-size:.95rem; font-weight:700; margin:0 .2rem;}
 .score-input-inline.win-mark, .score-num.win-mark{color:var(--loss);}
 .score-num{font-size:.95rem; font-weight:700;}
+.schedule-time-input{width:4.2rem; font-size:.8rem; padding:.15rem .3rem; border:1px solid var(--border); border-radius:5px; background:var(--bg); color:var(--text); font-family:inherit; margin-right:.4rem;}
+.schedule-time-badge{font-size:.8rem; color:var(--muted); margin-right:.4rem; white-space:nowrap;}
 
 .prelim-status-row{display:flex; gap:.7rem; flex-wrap:wrap; align-items:center; margin-bottom:.7rem;}
 .prelim-alive-pill{font-family:var(--font-num); font-weight:700;}
@@ -997,7 +999,7 @@ function tournamentHasClassInfo(t){
   if(usePointsAndSets(t)) return true;
   return !!(t && t.manualClasses && Object.keys(t.manualClasses).some(function(k){ return t.manualClasses[k]; }));
 }
-var MANUAL_CLASS_OPTIONS = ["P","SA","A","B","C","Be"];
+var MANUAL_CLASS_OPTIONS = ["P","LP","SA","A","B","C","Be"];
 function manualClassSelectHTML(t, playerId, action){
   if(!playerId || !t) return "";
   if(!t.manualClasses) t.manualClasses = {};
@@ -1024,8 +1026,8 @@ var DOWN_SET_COUNT_DEFAULT = {SA:4,AA:4,AB:4,AC:4,BA:3,BB:3,BC:3,CA:2,CB:2,CC:2,
 var SET_COUNT_B_DEFAULT = {SA:6,AA:6,AB:6,AC:6,BA:5,BB:5,BC:5,CA:4,CB:4,CC:4,Be:4};
 var DOWN_SET_COUNT_B_DEFAULT = {SA:5,AA:5,AB:5,AC:5,BA:4,BB:4,BC:4,CA:3,CB:3,CC:3,Be:3};
 var SET_TABLE_OPTIONS = ["A","B"];
-var MANUAL_SET_COUNT_DEFAULT = {P:6,SA:5,A:5,B:4,C:3,Be:2};
-var MANUAL_SET_COUNT_B_DEFAULT = {P:6,SA:6,A:6,B:5,C:4,Be:4};
+var MANUAL_SET_COUNT_DEFAULT = {P:6,LP:5,SA:5,A:5,B:4,C:3,Be:2};
+var MANUAL_SET_COUNT_B_DEFAULT = {P:6,LP:6,SA:6,A:6,B:5,C:4,Be:4};
 var MINUTES_BY_SETS = {2:15,3:20,4:25,5:30,6:35};
 function classSubRank(code){
   if(code==="Be") code="BB";
@@ -1125,6 +1127,37 @@ function matchFormatHintHTML(playerId, opponentId, useDownSet, t){
   var f = matchFormatFor(playerId, opponentId, useDownSet, t);
   if(!f) return "";
   return '<span class="hint match-format">'+f.sets+'S/'+f.minutes+'m'+(f.hasBreak?'・Br':'')+'</span>';
+}
+var TIME_SLOT_COLORS = ["#FFD9B3","#B3E5FC","#C8E6C9","#F8BBD0","#D1C4E9","#FFF59D","#B2DFDB","#FFCCBC"];
+function round1ByeWinnerIds(wbRounds){
+  var r0 = (wbRounds && wbRounds[0]) || [];
+  return r0.filter(function(m){ return m.bye; }).map(function(m){ return m.winner; });
+}
+function buildTimeSlotColorMap(t){
+  if(!t || !t.useSchedule || t.format==="blockPrelim") return {};
+  var counts = {};
+  function count(time){ if(time) counts[time] = (counts[time]||0)+1; }
+  (t.groups||[]).forEach(function(g){
+    var wbRounds = (g.wb && g.wb.rounds) || [];
+    var byeWinners = round1ByeWinnerIds(wbRounds);
+    wbRounds.forEach(function(round, ri){
+      round.forEach(function(m){
+        if(m.bye) return;
+        if(ri===0 || (ri===1 && (byeWinners.indexOf(m.a)>=0 || byeWinners.indexOf(m.b)>=0))) count(m.startTime);
+      });
+    });
+  });
+  var times = Object.keys(counts).filter(function(tm){ return counts[tm]>=2; }).sort();
+  var map = {};
+  times.forEach(function(time, i){ map[time] = TIME_SLOT_COLORS[i % TIME_SLOT_COLORS.length]; });
+  return map;
+}
+function scheduleTimeHTML(t, m, scope, extraAttrs, editable, eligible){
+  if(!t || !t.useSchedule || !eligible || m.bye) return "";
+  if(editable){
+    return '<input type="text" inputmode="numeric" class="schedule-time-input" placeholder="13:00" data-action="update-match-time" data-scope="'+scope+'" data-mid="'+m.id+'" '+(extraAttrs||"")+' value="'+esc(m.startTime||"")+'">';
+  }
+  return m.startTime ? '<span class="schedule-time-badge">🕐 '+esc(m.startTime)+'</span>' : "";
 }
 function classRangeLabel(bounds, idx){
   var b = bounds[idx];
@@ -1788,7 +1821,7 @@ function deletePlayer(id){
 // ---------- tournament creation (shape only; players assigned afterward) ----------
 function createTournament(opts){
   var id = "t_"+Date.now();
-  var t = { id:id, name:opts.name, format:opts.format, createdAt:Date.now(), eventDate: opts.eventDate || dateStamp(), status:"assigning", usePointsAndSets: opts.usePointsAndSets!==false, setCountTable: opts.setCountTable==="B" ? "B" : "A", manualClasses: opts.manualClasses ? Object.assign({}, opts.manualClasses) : {} };
+  var t = { id:id, name:opts.name, format:opts.format, createdAt:Date.now(), eventDate: opts.eventDate || dateStamp(), status:"assigning", usePointsAndSets: opts.usePointsAndSets!==false, setCountTable: opts.setCountTable==="B" ? "B" : "A", useSchedule: opts.useSchedule===true, manualClasses: opts.manualClasses ? Object.assign({}, opts.manualClasses) : {} };
   var eligible = eligiblePlayerIdsForNewEvent();
   var basePool = eligible.length ? eligible : state.players.map(function(p){ return p.id; });
   t.eligiblePlayerIds = (opts.selectedIds && opts.selectedIds.length)
@@ -2055,6 +2088,49 @@ function exportRosterCSV(){
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }
+}
+function parseCsvLine(line){
+  var result = [], cur = "", inQuotes = false;
+  for(var i=0;i<line.length;i++){
+    var c = line[i];
+    if(inQuotes){
+      if(c === '"'){
+        if(line[i+1] === '"'){ cur += '"'; i++; } else { inQuotes = false; }
+      } else { cur += c; }
+    } else {
+      if(c === '"'){ inQuotes = true; }
+      else if(c === ','){ result.push(cur); cur = ""; }
+      else { cur += c; }
+    }
+  }
+  result.push(cur);
+  return result;
+}
+function importGuestEntriesFromCSV(text){
+  var lines = text.replace(/^﻿/, "").split(/\r\n|\n|\r/).filter(function(l){ return l.trim()!==""; });
+  if(!lines.length){ alert("CSVにデータがありません。"); return; }
+  if(/^氏名/.test(lines[0])) lines.shift();
+  var added = 0, matched = 0;
+  lines.forEach(function(line){
+    var cols = parseCsvLine(line);
+    var name = (cols[0]||"").trim();
+    if(!name) return;
+    var kana = (cols[1]||"").trim();
+    var affiliation = (cols[2]||"").trim();
+    var clsRaw = (cols[3]||"").trim().toUpperCase();
+    var cls = MANUAL_CLASS_OPTIONS.indexOf(clsRaw)>=0 ? clsRaw : "Be";
+    var existing = state.players.find(function(p){ return p.name===name; });
+    var id;
+    if(existing){
+      id = existing.id; matched++;
+    } else {
+      id = addGuestPlayer(name, kana, cls, affiliation);
+      added++;
+    }
+    state.entries[id] = {entered:true, feePaid:false};
+  });
+  saveState(); render();
+  alert("CSVを取り込みました(新規ゲスト登録: "+added+"名、既存選手のエントリー: "+matched+"名)。参加費受領のチェックは別途行ってください。");
 }
 function exportData(){
   var dataStr = JSON.stringify(state, null, 2);
@@ -2335,6 +2411,12 @@ function renderEntry(){
     '<h3>メンバーを追加</h3>'+
     '<p class="hint">'+addHint+'</p>'+
     addForm+
+    (entryMode==="noPoints" ? (
+      '<div style="margin-top:.9rem;padding-top:.9rem;border-top:1px solid var(--border)">'+
+        '<label class="btn btn-sm btn-ghost" style="cursor:pointer">CSVファイルを取り込む<input type="file" accept=".csv,text/csv" style="display:none" data-action="import-guest-entries-csv"></label>'+
+        '<p class="hint" style="margin-top:.4rem">「氏名,読みカナ,所属,クラス」の列を持つCSVファイルから、まとめてエントリーに追加できます(選手ロースターに未登録の氏名はゲストとして登録されます。既存選手は氏名の完全一致でエントリー済みにします。クラスはP/SA/A/B/C/Beのいずれかで指定してください(省略・不正な値はBeになります)。参加費受領のチェックは含まれないため別途行ってください)。</p>'+
+      '</div>'
+    ) : '')+
   '</div>'+
   '<div class="card">'+
     '<h3 style="margin:0 0 .6rem">エントリー一覧</h3>'+
@@ -2517,6 +2599,7 @@ function ensureNewTournamentState(){
       blockCount:3, advancePerBlock:2,
       usePointsAndSets: true,
       setCountTable: "A",
+      useSchedule: false,
       manualClasses: {},
       useEntryFilter: true,
       selectedIds: eligibleIds.slice(),
@@ -2582,6 +2665,13 @@ function renderNewTournament(){
           radioCard("setCountTable","B", setTableOf(nt)==="B", "セット数B", setTableSummaryFor(nt,"B"))+
         '</div>'+
         '<p class="hint">対戦カードに表示されるセット数・持ち時間の基準表です。各表の数値は「設定」→「セット数」タブで変更できます。</p>'+
+      '</div>'+
+      '<div style="margin-top:.9rem">'+
+        '<label style="display:block;margin-bottom:.4rem">タイムスケジュール</label>'+
+        '<div class="radio-card-row">'+
+          radioCard("useSchedule","no", nt.useSchedule!==true, "作成しない", "従来通り、対戦カードに開始時間の指定は表示されません。")+
+          radioCard("useSchedule","yes", nt.useSchedule===true, "作成する", "各試合に開始時間を指定できるようになります(大会作成後も対戦カードからいつでも編集できます)。")+
+        '</div>'+
       '</div>'+
     '</div>'+
     '<div class="card">'+
@@ -2717,10 +2807,10 @@ function renderDisplayBlock(t, block){
     '<div class="table-wrap"><table class="data"><thead><tr><th>氏名</th>'+(showClass?'<th>クラス</th>':'')+(showPS?'<th>ポイント</th>':'')+'<th>戦績</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
     '<div style="margin-top:.6rem">'+matches+'</div></div>';
 }
-function renderDisplayGroup(t, g){
+function renderDisplayGroup(t, g, timeColorMap){
   var sec = '<div class="card"><h3>グループ'+(g.index+1)+' ・ 勝者側ブラケット</h3>'+
     renderBracketFlow(padBracketRounds(g.wb, roundsNeededForTarget(g.targetSize, (hasLoserBracket(t) && t.advancePerGroupWB!=null) ? t.advancePerGroupWB : t.advancePerGroup)), function(ri){ return "グループ"+(g.index+1)+" "+(ri+1)+"回戦"; }, {
-      resolvable:false, showUndo:false, hideScoreInput:true, actionName:"", undoActionName:"", scoreScope:"", extraAttrs:"", tournament:t
+      resolvable:false, showUndo:false, hideScoreInput:true, actionName:"", undoActionName:"", scoreScope:"", extraAttrs:"", side:"wb", timeColorMap:timeColorMap, tournament:t
     })+
   '</div>';
   if(hasLoserBracket(t)){
@@ -2800,10 +2890,11 @@ function renderDisplayScreen(){
       body = '<div class="page-head"><div><h1>'+esc(t.name)+'</h1><p class="sub">'+tournamentFormatLabel(t)+' ・ 開催日: '+eventDateOf(t)+' ・ <span class="pill '+t.status+'">'+(STATUS_LABEL[t.status]||t.status)+'</span></p>'+
         '<button class="btn btn-sm btn-ghost" type="button" data-action="copy-url" data-url="'+esc(displayUrlFor(t.id))+'" style="margin-top:.5rem">URLをコピー</button>'+
       '</div></div>';
+      var displayTimeColorMap = buildTimeSlotColorMap(t);
       if(t.format==="blockPrelim"){
-        body += (t.blocks||[]).map(function(b){ return renderDisplayBlock(t, b); }).join("");
+        body += (t.blocks||[]).map(function(b){ return renderDisplayBlock(t, b, displayTimeColorMap); }).join("");
       } else {
-        body += (t.groups||[]).map(function(g){ return renderDisplayGroup(t, g); }).join("");
+        body += (t.groups||[]).map(function(g){ return renderDisplayGroup(t, g, displayTimeColorMap); }).join("");
       }
       body += renderDisplayFinals(t);
       body += renderDisplayResult(t);
@@ -2994,6 +3085,17 @@ function rosterOptionsHTML(currentValue, allowBye, eligibleIds, usedElsewhere){
   }).join("");
   return opts;
 }
+function refreshEligibleFromEntries(t){
+  var eligible = eligiblePlayerIdsForNewEvent();
+  var basePool = eligible.length ? eligible : state.players.map(function(p){ return p.id; });
+  var assignedIds = [];
+  (t.format==="blockPrelim" ? (t.blocks||[]) : (t.groups||[])).forEach(function(g){
+    (g.slots||[]).forEach(function(id){ if(id) assignedIds.push(id); });
+  });
+  if(t.finals){ finalsSlotsArray(t).forEach(function(id){ if(id) assignedIds.push(id); }); }
+  t.eligiblePlayerIds = basePool.concat(assignedIds.filter(function(id){ return basePool.indexOf(id)<0; }));
+  saveState(); render();
+}
 function renderEditSlots(t, kind, groupIdx, slots, pairwise){
   var rows;
   var showManualClass = !usePointsAndSets(t);
@@ -3019,7 +3121,10 @@ function renderEditSlots(t, kind, groupIdx, slots, pairwise){
         (showManualClass?manualClassSelectHTML(t, id, "update-manual-class-live"):'')+'</div>';
     }).join("");
   }
-  return '<details open style="margin-bottom:.7rem"><summary class="hint" style="cursor:pointer">出場選手を編集</summary><div style="margin-top:.5rem">'+rows+'</div></details>';
+  return '<details open style="margin-bottom:.7rem"><summary class="hint" style="cursor:pointer">出場選手を編集</summary><div style="margin-top:.5rem">'+
+    '<button class="btn btn-sm btn-ghost" type="button" data-action="refresh-eligible-from-entries" data-tid="'+t.id+'" style="margin-bottom:.5rem">エントリーリストから再取得</button>'+
+    '<p class="hint" style="margin:0 0 .5rem">エントリー受付で新たに追加・変更された選手を、この大会の選択肢に反映します。</p>'+
+    rows+'</div></details>';
 }
 function renderFinalsEditSlots(t){
   var slots = finalsSlotsArray(t);
@@ -3073,6 +3178,7 @@ function bflowSideHTML(m, playerId, opts){
 }
 function renderBracketFlow(rounds, roundLabelFn, opts){
   var counter = 0;
+  var byeWinners = (opts.side==="wb") ? round1ByeWinnerIds(rounds) : [];
   var html = rounds.map(function(roundMatches, ri){
     var n = roundMatches.length;
     var isLast = ri===rounds.length-1;
@@ -3088,7 +3194,11 @@ function renderBracketFlow(rounds, roundLabelFn, opts){
       var undo = (opts.showUndo!==false && m.winner && !m.bye) ?
         '<button class="btn btn-sm btn-ghost no-print" data-action="'+opts.undoActionName+'" data-mid="'+m.id+'" '+opts.extraAttrs+'>取消</button>' : "";
       var noHTML = m.bye ? "" : '<span class="match-no">No.'+counter+'</span>';
-      return '<div class="bflow-match">'+bflowSideHTML(m, m.a, opts)+bflowSideHTML(m, m.b, opts)+'<div class="bflow-match-footer">'+noHTML+undo+'</div></div>';
+      var eligible = opts.side==="wb" && (ri===0 || (ri===1 && (byeWinners.indexOf(m.a)>=0 || byeWinners.indexOf(m.b)>=0)));
+      var scheduleHTML = scheduleTimeHTML(opts.tournament, m, opts.scoreScope, opts.extraAttrs, !opts.hideScoreInput, eligible);
+      var slotColor = (eligible && m.startTime && opts.timeColorMap && opts.timeColorMap[m.startTime]) ? opts.timeColorMap[m.startTime] : "";
+      var matchStyle = slotColor ? ' style="box-shadow:inset 0 0 0 3px '+slotColor+'"' : "";
+      return '<div class="bflow-match"'+matchStyle+'>'+bflowSideHTML(m, m.a, opts)+bflowSideHTML(m, m.b, opts)+'<div class="bflow-match-footer">'+noHTML+scheduleHTML+undo+'</div></div>';
     }).join("");
     return '<div class="bflow-round"><div class="bflow-round-label">'+roundLabelFn(ri, rounds.length)+'</div>'+
       '<div class="bflow-slots">'+connectors+matches+'</div></div>';
@@ -3269,7 +3379,8 @@ function renderElimPrelimTournament(t){
     '<button class="btn btn-sm btn-ghost" data-action="toggle-lock-tournament" data-id="'+t.id+'">'+(t.locked?'🔓 ロック解除':'🔒 削除をロック')+'</button>'+
     '<button class="btn btn-sm" data-action="nav" data-screen="history">一覧へ戻る</button></div></div>';
   var out = header + formatSwitchHTML(t);
-  out += t.groups.map(function(g){ return renderOneGroup(t, g); }).join("");
+  var timeColorMap = buildTimeSlotColorMap(t);
+  out += t.groups.map(function(g){ return renderOneGroup(t, g, timeColorMap); }).join("");
   if(t.status==="assigning"){
     out += '<div class="card"><p class="hint">各枠の選手を選び終えたら、下のボタンで大会を開始してください。</p>'+
       '<button class="btn btn-primary" data-action="confirm-lineup" data-tid="'+t.id+'">組み合わせを確定して大会を開始する</button></div>';
@@ -3286,7 +3397,7 @@ function renderElimPrelimTournament(t){
   out += t.finals ? renderFinalsSection(t) : renderFinalsPlaceholder(t);
   return out;
 }
-function renderOneGroup(t, g){
+function renderOneGroup(t, g, timeColorMap){
   var reached = groupReached(t, g);
   var sec = '<div class="card"><h3>グループ'+(g.index+1)+' ・ 勝者側ブラケット</h3>'+
     renderGroupControls(t, "group", g.index, g.targetSize, "各グループの決勝進出人数", t.advancePerGroup, "update-advance-per-group",
@@ -3303,6 +3414,8 @@ function renderOneGroup(t, g){
       undoActionName: "undo-elim-match",
       scoreScope: "elim",
       extraAttrs: 'data-tid="'+t.id+'" data-side="wb" data-group="'+g.index+'"',
+      side: "wb",
+      timeColorMap: timeColorMap,
       tournament: t
     })+
   '</div>';
@@ -3443,9 +3556,10 @@ function renderTournamentResultPrint(tid){
     '<h3>ボーナス内訳</h3>'+
     '<table class="print-table"><thead><tr><th>氏名</th><th>内容</th></tr></thead><tbody>'+bonusRows+'</tbody></table>'
   ) : "";
+  var printTimeColorMap = showPrelim ? buildTimeSlotColorMap(t) : {};
   var prelimHTML = showPrelim ? (t.format==="blockPrelim" ?
-    (t.blocks||[]).map(function(b){ return renderDisplayBlock(t, b); }).join("") :
-    (t.groups||[]).map(function(g){ return renderDisplayGroup(t, g); }).join("")) : "";
+    (t.blocks||[]).map(function(b){ return renderDisplayBlock(t, b, printTimeColorMap); }).join("") :
+    (t.groups||[]).map(function(g){ return renderDisplayGroup(t, g, printTimeColorMap); }).join("")) : "";
   var bracketHTML = t.finals ? renderBracketFlow(padBracketRounds(t.finals), function(ri){ return roundName(ri+1, t.finals.totalRounds); }, {
     resolvable:false, actionName:"", undoActionName:"", scoreScope:"", extraAttrs:"", showUndo:false, hideScoreInput:true, tournament:t
   }) : "";
@@ -3591,6 +3705,10 @@ document.addEventListener("click", function(e){
   else if(action==="export-data"){ exportData(); }
   else if(action==="delete-tournament"){ deleteTournament(t.getAttribute("data-id")); }
   else if(action==="toggle-lock-tournament"){ toggleLockTournament(t.getAttribute("data-id")); }
+  else if(action==="refresh-eligible-from-entries"){
+    var tidRE=t.getAttribute("data-tid"); var tourRE=findTournament(tidRE);
+    if(tourRE) refreshEligibleFromEntries(tourRE);
+  }
   else if(action==="redraw-finals"){
     var tidr=t.getAttribute("data-tid"); var tourr=findTournament(tidr);
     if(!tourr) return;
@@ -3602,6 +3720,9 @@ document.addEventListener("click", function(e){
   }
   else if(action==="setCountTable-radio"){
     var ntst = ensureNewTournamentState(); ntst.setCountTable = t.value==="B" ? "B" : "A"; render();
+  }
+  else if(action==="useSchedule-radio"){
+    var ntus = ensureNewTournamentState(); ntus.useSchedule = t.value==="yes"; render();
   }
   else if(action==="pointsMode-radio"){
     var ntpm = ensureNewTournamentState(); ntpm.usePointsAndSets = t.value!=="noPoints"; render();
@@ -3866,6 +3987,15 @@ document.addEventListener("change", function(e){
   else if(action==="import-file"){
     if(t.files && t.files[0]) importDataFromFile(t.files[0]);
   }
+  else if(action==="import-guest-entries-csv"){
+    if(t.files && t.files[0]){
+      var gcsvFile = t.files[0];
+      var gcsvReader = new FileReader();
+      gcsvReader.onload = function(){ importGuestEntriesFromCSV(String(gcsvReader.result)); };
+      gcsvReader.readAsText(gcsvFile, "utf-8");
+      t.value = "";
+    }
+  }
   else if(action==="groupCount-input"){
     var ntg = ensureNewTournamentState();
     ntg.groupCount = Math.max(1, Math.round(Number(t.value))||1); render();
@@ -4010,6 +4140,15 @@ document.addEventListener("change", function(e){
     }
     if(match){ match.score = match.score || {a:null,b:null}; match.score[which]=val; saveState(); render(); }
   }
+  else if(action==="update-match-time"){
+    var tidMT=t.getAttribute("data-tid"); var tourMT=findTournament(tidMT);
+    if(!tourMT) return;
+    var scopeMT=t.getAttribute("data-scope");
+    var idxMT = scopeMT==="block" ? Number(t.getAttribute("data-block")) : (scopeMT==="elim" ? Number(t.getAttribute("data-group")) : null);
+    var sideMT = t.getAttribute("data-side");
+    var matchMT = findStreamMatch(tourMT, scopeMT, idxMT, sideMT, t.getAttribute("data-mid"));
+    if(matchMT){ matchMT.startTime = t.value || null; saveState(); render(); }
+  }
 }, false);
 
 document.addEventListener("submit", function(e){
@@ -4052,11 +4191,11 @@ document.addEventListener("submit", function(e){
       var effectiveAdvancePerGroup = hasLoserBracketType(nt.prelimType) ? (nt.advancePerGroupWB+nt.advancePerGroupLB) : nt.advancePerGroup;
       if(hasLoserBracketType(nt.prelimType) && effectiveAdvancePerGroup<1){ alert("決勝進出人数(勝者側+敗者側)は1名以上にしてください。"); return; }
       if(Math.floor(nt.totalParticipants/nt.groupCount) < effectiveAdvancePerGroup){ alert("各グループからの決勝進出人数が、1グループあたりの人数より多くなっています。"); return; }
-      createTournament({name:name, eventDate:nt.eventDate, format:"elimPrelim", prelimType:nt.prelimType, lbOneSetDown:nt.lbOneSetDown, groupCount:nt.groupCount, advancePerGroup:effectiveAdvancePerGroup, advancePerGroupWB:nt.advancePerGroupWB, advancePerGroupLB:nt.advancePerGroupLB, totalParticipants:nt.totalParticipants, selectedIds:nt.selectedIds, usePointsAndSets:nt.usePointsAndSets, setCountTable:nt.setCountTable, manualClasses:nt.manualClasses});
+      createTournament({name:name, eventDate:nt.eventDate, format:"elimPrelim", prelimType:nt.prelimType, lbOneSetDown:nt.lbOneSetDown, groupCount:nt.groupCount, advancePerGroup:effectiveAdvancePerGroup, advancePerGroupWB:nt.advancePerGroupWB, advancePerGroupLB:nt.advancePerGroupLB, totalParticipants:nt.totalParticipants, selectedIds:nt.selectedIds, usePointsAndSets:nt.usePointsAndSets, setCountTable:nt.setCountTable, useSchedule:nt.useSchedule, manualClasses:nt.manualClasses});
     } else {
       if(nt.totalParticipants < nt.blockCount*2){ alert("参加人数がブロック数に対して少なすぎます。"); return; }
       if(Math.floor(nt.totalParticipants/nt.blockCount) < nt.advancePerBlock){ alert("各ブロックからの決勝進出人数が、1ブロックあたりの人数より多くなっています。"); return; }
-      createTournament({name:name, eventDate:nt.eventDate, format:"blockPrelim", groupCount:nt.blockCount, advancePerBlock:nt.advancePerBlock, totalParticipants:nt.totalParticipants, selectedIds:nt.selectedIds, usePointsAndSets:nt.usePointsAndSets, setCountTable:nt.setCountTable, manualClasses:nt.manualClasses});
+      createTournament({name:name, eventDate:nt.eventDate, format:"blockPrelim", groupCount:nt.blockCount, advancePerBlock:nt.advancePerBlock, totalParticipants:nt.totalParticipants, selectedIds:nt.selectedIds, usePointsAndSets:nt.usePointsAndSets, setCountTable:nt.setCountTable, useSchedule:nt.useSchedule, manualClasses:nt.manualClasses});
     }
   }
 }, false);
