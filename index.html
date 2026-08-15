@@ -293,6 +293,24 @@ body.display-mode-active .display-picker-list{display:flex; flex-direction:colum
 body.display-mode-active .display-picker-list a{display:block; padding:.8rem 1rem; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); color:var(--text); text-decoration:none; font-size:1.1rem;}
 body.display-mode-active .display-picker-list a:hover{background:var(--surface-2);}
 
+/* ---- streaming scoreboard (single-match, OBS-friendly overlay) ---- */
+.stream-board{display:table; margin:1.2rem auto; padding:.8rem 1.8rem; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); max-width:min(94vw, 1300px); box-sizing:border-box;}
+.stream-title{text-align:center; font-size:.9rem; color:var(--muted); font-weight:600; margin-bottom:.5rem;}
+.stream-bar{display:flex; align-items:center; justify-content:center; gap:1.1rem; flex-wrap:wrap; row-gap:.4rem;}
+.stream-side{display:flex; align-items:center; gap:.5rem; flex:none; max-width:100%; flex-wrap:wrap; row-gap:.2rem;}
+.stream-name{font-size:1.7rem; font-weight:800; max-width:70vw; overflow-wrap:break-word;}
+.stream-side.winner .stream-name{color:var(--win);}
+.stream-meta{display:flex; align-items:center; gap:.4rem; white-space:nowrap;}
+.stream-sets{font-size:.8rem; color:var(--muted); font-weight:600; white-space:nowrap;}
+.stream-score{font-size:2.2rem; font-weight:900; min-width:1.3ch; text-align:center; font-variant-numeric:tabular-nums; flex:none;}
+.stream-score.win{color:var(--loss);}
+.stream-vs{font-size:.8rem; color:var(--muted); font-weight:700; letter-spacing:.1em; flex:none;}
+body.stream-transparent-active{background:transparent !important; background-image:none !important;}
+body.stream-transparent-active .app-shell, body.stream-transparent-active .main{background:transparent;}
+body.stream-transparent-active .stream-board{background:transparent; border:none; box-shadow:none; margin:0; padding:.5rem 1rem;}
+body.stream-transparent-active .stream-title, body.stream-transparent-active .stream-name, body.stream-transparent-active .stream-sets, body.stream-transparent-active .stream-score, body.stream-transparent-active .stream-vs{text-shadow:0 2px 8px rgba(0,0,0,.75), 0 0 3px rgba(0,0,0,.6);}
+body.stream-transparent-active .badge{text-shadow:none;}
+
 .qr-details{margin-top:.4rem;}
 .qr-details svg{border-radius:6px;}
 .fireworks{position:fixed; inset:0; pointer-events:none; overflow:hidden; z-index:50;}
@@ -600,6 +618,16 @@ function qrToSvg(model, opts){
 }
 function displayUrlFor(tid){
   return location.origin + location.pathname + "?display=1&id=" + tid;
+}
+function streamPickerUrlFor(tid){
+  return location.origin + location.pathname + "?stream=1&id=" + tid;
+}
+function streamScoreboardUrlFor(tid, scope, idx, side, mid, transparent){
+  var u = location.origin + location.pathname + "?stream=1&id="+tid+"&scope="+scope+"&mid="+encodeURIComponent(mid);
+  if(idx!=null) u += "&idx="+idx;
+  if(side) u += "&side="+side;
+  if(transparent) u += "&bg=transparent";
+  return u;
 }
 function qrDetailsHTML(url){
   var model = qrPickAndEncode(url);
@@ -1133,6 +1161,21 @@ var DISPLAY_TID = (function(){
   return m ? decodeURIComponent(m[1]) : null;
 })();
 var DISPLAY_POLL_MS = 6000;
+
+// ---------- stream mode (single-match OBS-friendly scoreboard) ----------
+var STREAM_MODE = /(^|[?&])stream=1(&|$)/.test(location.search);
+function streamParam(name){
+  var m = location.search.match(new RegExp("[?&]"+name+"=([^&]+)"));
+  return m ? decodeURIComponent(m[1]) : null;
+}
+var STREAM_TID = streamParam("id");
+var STREAM_MID = streamParam("mid");
+var STREAM_SCOPE = streamParam("scope");
+var STREAM_IDX_RAW = streamParam("idx");
+var STREAM_IDX = STREAM_IDX_RAW!=null ? Number(STREAM_IDX_RAW) : null;
+var STREAM_SIDE = streamParam("side");
+var STREAM_TRANSPARENT = /(^|[?&])bg=transparent(&|$)/.test(location.search);
+var STREAM_POLL_MS = 4000;
 
 // ---------- generic helpers ----------
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]; }); }
@@ -2068,6 +2111,10 @@ function render(){
     document.getElementById("main").innerHTML = renderDisplayScreen();
     return;
   }
+  if(STREAM_MODE){
+    document.getElementById("main").innerHTML = renderStreamScreen();
+    return;
+  }
   var scrollY = window.scrollY, scrollX = window.scrollX;
   var innerScrollers = Array.from(document.querySelectorAll("[data-preserve-scroll]")).map(function(el){
     return {id: el.id, scrollTop: el.scrollTop};
@@ -2613,6 +2660,7 @@ function renderHistory(){
         (t.locked?'<span class="pill" style="color:var(--rust-ink);border-color:var(--rust)">🔒 削除ロック中</span>':'')+
         '<button class="btn btn-sm" data-action="nav" data-screen="tournament" data-id="'+t.id+'">開く</button>'+
         '<a class="btn btn-sm btn-ghost" href="?display=1&id='+t.id+'" target="_blank">別画面に表示</a>'+
+        '<a class="btn btn-sm btn-ghost" href="?stream=1&id='+t.id+'" target="_blank">📺 配信用スコアボード</a>'+
         '<button class="btn btn-sm btn-ghost" data-action="toggle-lock-tournament" data-id="'+t.id+'">'+(t.locked?'🔓 ロック解除':'🔒 削除をロック')+'</button>'+
         (t.locked?'':'<button class="btn btn-sm btn-ghost btn-danger" data-action="delete-tournament" data-id="'+t.id+'">削除</button>')+
       '</div>'+
@@ -2752,6 +2800,128 @@ function renderDisplayScreen(){
     }
   }
   return closeHTML + body + updatedHTML;
+}
+
+// ---------- stream mode rendering (single-match OBS-friendly scoreboard) ----------
+function findStreamMatch(t, scope, idx, side, mid){
+  if(!t || !mid) return null;
+  if(scope==="block"){
+    var block = (t.blocks||[])[idx];
+    return block ? (block.matches||[]).find(function(m){ return m.id===mid; }) || null : null;
+  }
+  if(scope==="elim"){
+    var g = (t.groups||[])[idx];
+    return g ? findElimMatch(g, side, mid) : null;
+  }
+  if(scope==="bracket"){
+    var found = null;
+    (t.finals ? t.finals.rounds : []).forEach(function(r){ r.forEach(function(m){ if(m.id===mid) found=m; }); });
+    return found;
+  }
+  return null;
+}
+function listStreamableMatches(t){
+  var list = [];
+  function addRounds(rounds, scope, idx, side, sectionLabel, roundLabelFn){
+    (rounds||[]).forEach(function(round, ri){
+      round.forEach(function(m){
+        if(!m.a || !m.b || m.bye) return;
+        list.push({scope:scope, idx:idx, side:side, mid:m.id, match:m, section:sectionLabel+(roundLabelFn?(" ・ "+roundLabelFn(ri)):"")});
+      });
+    });
+  }
+  if(t.format==="blockPrelim"){
+    (t.blocks||[]).forEach(function(b){
+      (b.matches||[]).forEach(function(m){
+        if(!m.a || !m.b || m.bye) return;
+        list.push({scope:"block", idx:b.index, side:null, mid:m.id, match:m, section:"予選 ・ ブロック"+(b.index+1)});
+      });
+    });
+  } else {
+    (t.groups||[]).forEach(function(g){
+      addRounds(g.wb.rounds, "elim", g.index, "wb", "予選 ・ グループ"+(g.index+1)+"・勝者側", function(ri){ return (ri+1)+"回戦"; });
+      if(hasLoserBracket(t)) addRounds(g.lb.rounds, "elim", g.index, "lb", "予選 ・ グループ"+(g.index+1)+"・敗者復活", function(ri){ return (ri+1)+"回戦"; });
+    });
+  }
+  if(t.finals) addRounds(t.finals.rounds, "bracket", null, null, "決勝トーナメント", function(ri){ return roundName(ri+1, t.finals.totalRounds); });
+  return list;
+}
+function renderStreamPicker(t){
+  var closeHTML = '<button type="button" class="display-close-btn" data-action="close-display-window">✕ 閉じる</button>';
+  var entries = listStreamableMatches(t);
+  var live = entries.filter(function(e){ return !e.match.winner; });
+  var done = entries.filter(function(e){ return !!e.match.winner; });
+  function row(e){
+    var url = streamScoreboardUrlFor(t.id, e.scope, e.idx, e.side, e.mid, false);
+    var statusPill = e.match.winner ? '<span class="pill completed">終了</span>' : '<span class="pill prelim">対戦中/これから</span>';
+    return '<div class="tourn-card" style="flex-wrap:wrap">'+
+      '<div><div class="hint">'+esc(e.section)+'</div><h3 style="margin:.2rem 0">'+esc(playerName(e.match.a))+' vs '+esc(playerName(e.match.b))+'</h3>'+statusPill+'</div>'+
+      '<div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">'+
+        '<a class="btn btn-sm" href="'+url+'" target="_blank">スコアボードを開く</a>'+
+        '<button class="btn btn-sm btn-ghost" type="button" data-action="copy-stream-url" data-url="'+esc(url)+'">URLをコピー</button>'+
+      '</div>'+
+    '</div>';
+  }
+  var body = '<div class="page-head"><h1>'+esc(t.name)+' ・ 配信用スコアボード</h1>'+
+    '<p class="sub">配信したい試合を選ぶと、その試合専用の大きなスコアボード画面が開きます。表示されたURLをOBSなどの配信ソフトの「ブラウザソース」に設定するか、別のディスプレイ・タブレットに映してYouTube Live配信の映像として利用できます。</p></div>';
+  if(!entries.length){
+    body += '<p class="empty-note">まだ組み合わせが決まっている対戦がありません。</p>';
+  } else {
+    if(live.length) body += '<h3>対戦中・これから</h3><div style="display:flex;flex-direction:column;gap:.6rem;margin-bottom:1.4rem">'+live.map(row).join("")+'</div>';
+    if(done.length) body += '<h3>終了した対戦</h3><div style="display:flex;flex-direction:column;gap:.6rem">'+done.map(row).join("")+'</div>';
+  }
+  return closeHTML + body;
+}
+function renderStreamScoreboard(t, match, stageLabel){
+  var aId = match.a, bId = match.b;
+  var score = match.score || {a:null,b:null};
+  function scoreDisplay(id, side){
+    if(match.winner===id) return '<span class="stream-score win">W</span>';
+    var v = score[side];
+    return '<span class="stream-score">'+(v==null?"-":v)+'</span>';
+  }
+  function side(id, oppId, sideKey, reverse){
+    var fmt = matchFormatFor(id, oppId, false, t);
+    var setsLabel = fmt ? (fmt.sets+"セット") : "";
+    var nameHTML = '<span class="stream-name">'+esc(playerName(id))+'</span>';
+    var metaHTML = '<span class="stream-meta">'+classBadgeOrEmpty(t, id)+(setsLabel?('<span class="stream-sets">'+esc(setsLabel)+'</span>'):'')+'</span>';
+    return '<div class="stream-side'+(match.winner===id?' winner':'')+(reverse?' reverse':'')+'">'+
+      (reverse ? (metaHTML+nameHTML) : (nameHTML+metaHTML))+
+    '</div>';
+  }
+  var updatedHTML = STREAM_TRANSPARENT ? "" : '<div class="display-updated">🔄 自動更新 '+displayTimeStamp()+'</div>';
+  var closeHTML = STREAM_TRANSPARENT ? "" : '<button type="button" class="display-close-btn" data-action="close-display-window">✕ 閉じる</button>';
+  return closeHTML+
+    '<div class="stream-board">'+
+      '<div class="stream-title">'+esc(t.name)+(stageLabel?(' ・ '+esc(stageLabel)):'')+'</div>'+
+      '<div class="stream-bar">'+
+        side(aId, bId, "a", false)+
+        scoreDisplay(aId,"a")+
+        '<div class="stream-vs">VS</div>'+
+        scoreDisplay(bId,"b")+
+        side(bId, aId, "b", true)+
+      '</div>'+
+    '</div>'+updatedHTML;
+}
+function renderStreamScreen(){
+  if(!STREAM_TID){
+    var closeHTML0 = '<button type="button" class="display-close-btn" data-action="close-display-window">✕ 閉じる</button>';
+    var list = state.tournaments.slice().sort(function(a,b){ return b.createdAt-a.createdAt; });
+    if(!list.length) return closeHTML0+'<div class="page-head"><h1>配信用スコアボード</h1><p class="sub">まだ大会がありません。</p></div>';
+    var items = list.map(function(t){
+      return '<a href="?stream=1&id='+t.id+'">'+esc(t.name)+' ・ 開催日: '+eventDateOf(t)+'</a>';
+    }).join("");
+    return closeHTML0+'<div class="page-head"><h1>配信する大会を選択してください</h1></div><div class="display-picker-list">'+items+'</div>';
+  }
+  var t = findTournament(STREAM_TID);
+  if(!t) return '<div class="page-head"><h1>大会が見つかりません</h1></div><p><a href="?stream=1">大会一覧に戻る</a></p>';
+  if(!STREAM_MID || !STREAM_SCOPE) return renderStreamPicker(t);
+  var match = findStreamMatch(t, STREAM_SCOPE, STREAM_IDX, STREAM_SIDE, STREAM_MID);
+  if(!match) return '<div class="page-head"><h1>対戦が見つかりません</h1></div><p><a href="?stream=1&id='+t.id+'">配信する対戦を選び直す</a></p>';
+  var streamEntry = listStreamableMatches(t).find(function(e){
+    return e.scope===STREAM_SCOPE && e.mid===STREAM_MID && e.idx===STREAM_IDX && e.side===STREAM_SIDE;
+  });
+  return renderStreamScoreboard(t, match, streamEntry ? streamEntry.section : "");
 }
 
 function matchRow(match, tprefix, extraActionData, matchNo, resolvable, t){
@@ -3001,6 +3171,7 @@ function renderBlockPrelimTournament(t){
   var header = '<div class="page-head"><div><h1>'+esc(t.name)+'</h1><p class="sub">'+tournamentFormatLabel(t)+' ・ '+
     '<span class="pill '+t.status+'">'+STATUS_LABEL[t.status]+'</span>'+(t.locked?' <span class="pill" style="color:var(--rust-ink);border-color:var(--rust)">🔒 削除ロック中</span>':'')+'</p></div>'+
     '<div style="display:flex;gap:.5rem"><a class="btn btn-sm btn-ghost" href="?display=1&id='+t.id+'" target="_blank">別画面に表示</a>'+
+    '<a class="btn btn-sm btn-ghost" href="?stream=1&id='+t.id+'" target="_blank">📺 配信用スコアボード</a>'+
     '<button class="btn btn-sm btn-ghost" data-action="toggle-lock-tournament" data-id="'+t.id+'">'+(t.locked?'🔓 ロック解除':'🔒 削除をロック')+'</button>'+
     '<button class="btn btn-sm" data-action="nav" data-screen="history">一覧へ戻る</button></div></div>';
   var out = header + formatSwitchHTML(t);
@@ -3079,6 +3250,7 @@ function renderElimPrelimTournament(t){
   var header = '<div class="page-head"><div><h1>'+esc(t.name)+'</h1><p class="sub">'+tournamentFormatLabel(t)+' ・ '+
     '<span class="pill '+t.status+'">'+STATUS_LABEL[t.status]+'</span>'+(t.locked?' <span class="pill" style="color:var(--rust-ink);border-color:var(--rust)">🔒 削除ロック中</span>':'')+'</p></div>'+
     '<div style="display:flex;gap:.5rem"><a class="btn btn-sm btn-ghost" href="?display=1&id='+t.id+'" target="_blank">別画面に表示</a>'+
+    '<a class="btn btn-sm btn-ghost" href="?stream=1&id='+t.id+'" target="_blank">📺 配信用スコアボード</a>'+
     '<button class="btn btn-sm btn-ghost" data-action="toggle-lock-tournament" data-id="'+t.id+'">'+(t.locked?'🔓 ロック解除':'🔒 削除をロック')+'</button>'+
     '<button class="btn btn-sm" data-action="nav" data-screen="history">一覧へ戻る</button></div></div>';
   var out = header + formatSwitchHTML(t);
@@ -3342,6 +3514,16 @@ document.addEventListener("click", function(e){
     setTimeout(function(){
       alert("このタブ/ウインドウを自動では閉じられませんでした。お使いのブラウザの操作(タブ一覧・戻るボタンなど)で閉じてください。");
     }, 300);
+  }
+  else if(action==="copy-stream-url"){
+    var streamUrl = t.getAttribute("data-url");
+    var restoreLabel = t.textContent;
+    function showCopied(){ t.textContent = "コピーしました!"; setTimeout(function(){ t.textContent = restoreLabel; }, 1500); }
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(streamUrl).then(showCopied).catch(function(){ prompt("以下のURLをコピーしてください:", streamUrl); });
+    } else {
+      prompt("以下のURLをコピーしてください:", streamUrl);
+    }
   }
   else if(action==="delete-player"){ deletePlayer(t.getAttribute("data-id")); }
   else if(action==="reset-entries"){
@@ -3864,9 +4046,14 @@ document.addEventListener("submit", function(e){
 state = loadState();
 saveLocalOnly();
 if(DISPLAY_MODE){ document.body.classList.add("display-mode-active"); }
+if(STREAM_MODE){
+  document.body.classList.add("display-mode-active");
+  if(STREAM_TRANSPARENT) document.body.classList.add("stream-transparent-active");
+}
 render();
 syncFromServer();
 if(DISPLAY_MODE){ setInterval(syncFromServer, DISPLAY_POLL_MS); }
+if(STREAM_MODE){ setInterval(syncFromServer, STREAM_POLL_MS); }
 
 })();
 </script>
