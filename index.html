@@ -231,6 +231,7 @@ details[open] > summary:before{content:"▾ ";}
 .bflow-match-footer{flex:none; height:24px; display:flex; align-items:center; justify-content:space-between; padding:0 .4rem; border-top:1px solid var(--border); background:var(--surface-2);}
 .bflow-match-footer .btn{padding:.05rem .4rem; font-size:.66rem; margin-left:auto;}
 .match-no{font-size:.66rem; color:var(--muted); font-family:var(--font-num);}
+.slot-no{font-size:.75rem; font-weight:700; color:var(--rust-ink); background:color-mix(in srgb, var(--rust) 16%, transparent); border-radius:999px; padding:.1rem .5rem; flex:none; font-family:var(--font-num);}
 
 /* ---- simple round list (losers bracket) ---- */
 .simple-bracket{display:flex; gap:1.6rem; overflow-x:auto; padding:.3rem .1rem 1rem;}
@@ -1131,7 +1132,7 @@ function matchFormatHintHTML(playerId, opponentId, useDownSet, t){
 var TIME_SLOT_COLORS = ["#FFD9B3","#B3E5FC","#C8E6C9","#F8BBD0","#D1C4E9","#FFF59D","#B2DFDB","#FFCCBC"];
 function round1ByeWinnerIds(wbRounds){
   var r0 = (wbRounds && wbRounds[0]) || [];
-  return r0.filter(function(m){ return m.bye; }).map(function(m){ return m.winner; });
+  return r0.filter(function(m){ return m.bye && m.winner; }).map(function(m){ return m.winner; });
 }
 function buildTimeSlotColorMap(t){
   if(!t || !t.useSchedule || t.format==="blockPrelim") return {};
@@ -1153,7 +1154,7 @@ function buildTimeSlotColorMap(t){
   return map;
 }
 function scheduleTimeHTML(t, m, scope, extraAttrs, editable, eligible){
-  if(!t || !t.useSchedule || !eligible || m.bye) return "";
+  if(!t || !t.useSchedule || !eligible || (m.bye && m.winner)) return "";
   if(editable){
     return '<input type="text" inputmode="numeric" class="schedule-time-input" placeholder="13:00" data-action="update-match-time" data-scope="'+scope+'" data-mid="'+m.id+'" '+(extraAttrs||"")+' value="'+esc(m.startTime||"")+'">';
   }
@@ -1636,6 +1637,12 @@ function finalizeElimPrelim(t){
   });
   applyAdvanceBonusAndBuildFinals(t, advancers);
 }
+function preserveScheduleTimes(oldRounds, newRounds){
+  if(!oldRounds || !newRounds) return;
+  var times = {};
+  oldRounds.forEach(function(round){ round.forEach(function(m){ if(m.startTime) times[m.id] = m.startTime; }); });
+  newRounds.forEach(function(round){ round.forEach(function(m){ if(times[m.id]) m.startTime = times[m.id]; }); });
+}
 function rebuildGroupFromSlots(t, g){
   if(g.wb){
     g.wb.rounds.forEach(function(round){ round.forEach(function(m){ if(m.winner && !m.bye) undoMatchDeltas(m); }); });
@@ -1646,7 +1653,9 @@ function rebuildGroupFromSlots(t, g){
   if(g.penaltyDeltas){
     Object.keys(g.penaltyDeltas).forEach(function(id){ var p=getPlayer(id); if(p) p.points -= g.penaltyDeltas[id]; });
   }
+  var oldWbRounds = g.wb ? g.wb.rounds : null;
   g.wb = buildBracketFromSlots(g.slots);
+  preserveScheduleTimes(oldWbRounds, g.wb.rounds);
   g.lb = hasLoserBracket(t) ? {rounds:[]} : null;
   g.losses={}; g.eliminated={}; g.penaltyDeltas={};
   g.threshold = hasLoserBracket(t) ? 2 : 1;
@@ -2432,7 +2441,7 @@ function renderEntry(){
     (entryMode==="noPoints" ? (
       '<div style="margin-top:.9rem;padding-top:.9rem;border-top:1px solid var(--border)">'+
         '<label class="btn btn-sm btn-ghost" style="cursor:pointer">CSVファイルを取り込む<input type="file" accept=".csv,text/csv" style="display:none" data-action="import-guest-entries-csv"></label>'+
-        '<p class="hint" style="margin-top:.4rem">「氏名,読みカナ,所属,クラス」の列を持つCSVファイルから、まとめてエントリーに追加できます(選手ロースターに未登録の氏名はゲストとして登録されます。既存選手は氏名の完全一致でエントリー済みにします。クラスはP/SA/A/B/C/Beのいずれかで指定してください(省略・不正な値はBeになります)。参加費受領のチェックは含まれないため別途行ってください)。</p>'+
+        '<p class="hint" style="margin-top:.4rem">「氏名,読みカナ,所属,クラス」の列を持つCSVファイルから、まとめてエントリーに追加できます(選手ロースターに未登録の氏名はゲストとして登録されます。既存選手は氏名で照合してエントリー済みにします(半角・全角スペースの違いは無視されます)。クラスはP/LP/SA/A/B/C/Beのいずれかで指定してください(省略・不正な値はBeになります)。参加費受領のチェックは含まれないため別途行ってください)。</p>'+
       '</div>'
     ) : '')+
   '</div>'+
@@ -2522,7 +2531,7 @@ function renderManualSetCountTableCard(key){
 function renderSettingsManualClassSetCounts(){
   return '<div class="card">'+
     '<h3>クラスごとのセット数(ポイント・セット数を使用しない大会用)</h3>'+
-    '<p class="hint">「ポイント・セット数を使用する」を外した大会で、選手に手入力したクラス(P/SA/A/B/C/Be)ごとの必要セット数です。ポイント使用時と同様、「セット数A」「セット数B」の2種類があり、どちらを使うかは大会ごとに選択します(大会作成画面または大会画面上部の「基本セット数」)。持ち時間はセット数に応じて自動計算されます(前回優勝者は+1セット)。クラス未入力の選手にはセット数・持ち時間は表示されません。PクラスとSAクラスの対戦では、P側のセット数が1セット少ない「1セットダウン」扱いになります。</p>'+
+    '<p class="hint">「ポイント・セット数を使用する」を外した大会で、選手に手入力したクラス(P/LP/SA/A/B/C/Be)ごとの必要セット数です。ポイント使用時と同様、「セット数A」「セット数B」の2種類があり、どちらを使うかは大会ごとに選択します(大会作成画面または大会画面上部の「基本セット数」)。持ち時間はセット数に応じて自動計算されます(前回優勝者は+1セット)。クラス未入力の選手にはセット数・持ち時間は表示されません。PクラスとSAクラスの対戦では、P側のセット数が1セット少ない「1セットダウン」扱いになります。</p>'+
   '</div>'+
   renderManualSetCountTableCard("A")+
   renderManualSetCountTableCard("B");
@@ -3125,16 +3134,20 @@ function renderEditSlots(t, kind, groupIdx, slots, pairwise){
     for(var i=0;i<slots.length;i+=2){
       rows += '<div class="form-row" style="align-items:center;flex-wrap:wrap;gap:.5rem">'+
         '<span class="hint num" style="width:4rem;flex:none">第'+(i/2+1)+'試合</span>'+
+        '<span class="slot-no">No.'+(i+1)+'</span>'+
         '<select data-action="assign-slot" data-kind="'+kind+'" data-idx="'+groupIdx+'" data-slot="'+i+'" data-tid="'+t.id+'" style="flex:1;min-width:120px">'+rosterOptionsHTML(slots[i], true, t.eligiblePlayerIds, usedElsewhere(i))+'</select>'+
         (showManualClass?manualClassSelectHTML(t, slots[i], "update-manual-class-live"):'')+
         '<span class="hint" style="flex:none">vs</span>'+
+        '<span class="slot-no">No.'+(i+2)+'</span>'+
         '<select data-action="assign-slot" data-kind="'+kind+'" data-idx="'+groupIdx+'" data-slot="'+(i+1)+'" data-tid="'+t.id+'" style="flex:1;min-width:120px">'+rosterOptionsHTML(slots[i+1], true, t.eligiblePlayerIds, usedElsewhere(i+1))+'</select>'+
         (showManualClass?manualClassSelectHTML(t, slots[i+1], "update-manual-class-live"):'')+
       '</div>';
     }
   } else {
     rows = slots.map(function(id, si){
-      return '<div class="form-row" style="margin:.2rem 0;flex-wrap:wrap;align-items:center;gap:.5rem"><select data-action="assign-slot" data-kind="'+kind+'" data-idx="'+groupIdx+'" data-slot="'+si+'" data-tid="'+t.id+'" style="flex:1;min-width:160px">'+
+      return '<div class="form-row" style="margin:.2rem 0;flex-wrap:wrap;align-items:center;gap:.5rem">'+
+        '<span class="slot-no">No.'+(si+1)+'</span>'+
+        '<select data-action="assign-slot" data-kind="'+kind+'" data-idx="'+groupIdx+'" data-slot="'+si+'" data-tid="'+t.id+'" style="flex:1;min-width:160px">'+
         rosterOptionsHTML(id, false, t.eligiblePlayerIds, usedElsewhere(si))+'</select>'+
         (showManualClass?manualClassSelectHTML(t, id, "update-manual-class-live"):'')+'</div>';
     }).join("");
