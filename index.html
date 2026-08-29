@@ -2225,6 +2225,14 @@ function render(){
   var bflowScrollers = Array.from(document.querySelectorAll(".bflow-wrap")).map(function(el){
     return {scrollLeft: el.scrollLeft, scrollTop: el.scrollTop};
   });
+  var focusInfo = null;
+  var activeEl = document.activeElement;
+  if(activeEl && activeEl.getAttribute && activeEl.getAttribute("data-action")){
+    var activeAction = activeEl.getAttribute("data-action");
+    if(document.querySelectorAll('[data-action="'+activeAction+'"]').length===1){
+      focusInfo = {action: activeAction, selectionStart: activeEl.selectionStart, selectionEnd: activeEl.selectionEnd};
+    }
+  }
   renderNav();
   var main = document.getElementById("main");
   var html = "";
@@ -2248,6 +2256,15 @@ function render(){
     var el = newBflowScrollers[i];
     if(el){ el.scrollLeft = s.scrollLeft; el.scrollTop = s.scrollTop; }
   });
+  if(focusInfo){
+    var toFocus = document.querySelector('[data-action="'+focusInfo.action+'"]');
+    if(toFocus){
+      toFocus.focus();
+      if(typeof focusInfo.selectionStart==="number" && toFocus.setSelectionRange){
+        try{ toFocus.setSelectionRange(focusInfo.selectionStart, focusInfo.selectionEnd); }catch(e){}
+      }
+    }
+  }
 }
 
 function sortPlayers(players, sortMode){
@@ -2376,13 +2393,22 @@ function renderRosterPrint(){
     '</table>'+
   '</div>';
 }
+function entrySearchMatches(p, q){
+  if(!q) return true;
+  var nq = normalizeNameForMatch(q).toLowerCase();
+  var nameNorm = normalizeNameForMatch(p.name||"").toLowerCase();
+  var kanaNorm = normalizeNameForMatch(p.kana||"").toLowerCase();
+  return nameNorm.indexOf(nq)>=0 || kanaNorm.indexOf(nq)>=0;
+}
 function renderEntry(){
   var sortMode = route.entrySort || "name";
   var entryMode = route.entryMode==="noPoints" ? "noPoints" : "points";
+  var searchQuery = route.entrySearch || "";
   var players = sortPlayers(state.players, sortMode);
   var entered = players.filter(function(p){ var e=state.entries[p.id]; return e && e.entered; });
   var paid = entered.filter(function(p){ return state.entries[p.id].feePaid; });
-  var rows = players.map(function(p){
+  var visiblePlayers = players.filter(function(p){ return entrySearchMatches(p, searchQuery); });
+  var rows = visiblePlayers.map(function(p){
     var e = state.entries[p.id] || {entered:false, feePaid:false};
     var clsLabel;
     if(p.isGuest) clsLabel = p.manualEntryClass || classOf(p.points);
@@ -2451,10 +2477,12 @@ function renderEntry(){
       '<button class="tab'+(sortMode==="name"?" active":"")+'" data-action="entry-sort" data-sort="name">名前順</button>'+
       '<button class="tab'+(sortMode==="order"?" active":"")+'" data-action="entry-sort" data-sort="order">登録順</button>'+
     '</div>'+
+    '<div class="field" style="max-width:20rem;margin-bottom:.8rem"><label>名前で検索</label><input type="text" placeholder="氏名または読みカナ" data-action="entry-search-input" value="'+esc(searchQuery)+'"></div>'+
+    (searchQuery && !visiblePlayers.length ? '<p class="empty-note">「'+esc(searchQuery)+'」に一致する選手が見つかりません。</p>' : (
     '<div class="table-wrap"><table class="data">'+
       '<thead><tr><th>氏名</th><th>クラス</th><th>エントリー</th><th>参加費受領</th></tr></thead>'+
       '<tbody>'+rows+'</tbody>'+
-    '</table></div>'+
+    '</table></div>'))+
     '<div style="margin-top:.8rem"><button class="btn btn-sm btn-ghost" data-action="reset-entries">エントリーをリセット</button></div>'+
   '</div>';
 }
@@ -3853,6 +3881,24 @@ document.addEventListener("click", function(e){
     if(!confirm("この結果を取り消しますか?後続の対戦結果も一緒に取り消されます。")) return;
     correctBracketMatch(tour5, mid4);
     saveState(); render();
+  }
+}, false);
+
+document.addEventListener("input", function(e){
+  var t = e.target;
+  var action = t.getAttribute && t.getAttribute("data-action");
+  if(action==="entry-search-input"){
+    if(e.isComposing) return;
+    route.entrySearch = t.value;
+    render();
+  }
+}, false);
+document.addEventListener("compositionend", function(e){
+  var t = e.target;
+  var action = t.getAttribute && t.getAttribute("data-action");
+  if(action==="entry-search-input"){
+    route.entrySearch = t.value;
+    render();
   }
 }, false);
 
