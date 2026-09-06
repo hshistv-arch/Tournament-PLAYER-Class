@@ -2771,6 +2771,9 @@ function renderNewTournament(){
           )+
         '</div>'+
         '<p class="hint">グループ数を2以上にすると、予選のブラケットが複数に分かれ、各グループの勝ち残り上位が決勝トーナメントに進出します。シングルエリミネーションは仕組み上、勝ち残り数が2の累乗単位(8→4→2など)で絞り込まれます。</p>'+
+        (Math.ceil(nt.totalParticipants/Math.max(1,nt.groupCount))>=9 ?
+          '<p class="hint" style="color:var(--loss)">⚠ 1グループあたりの人数が9名以上になっています。1トーナメント(1グループ)は8名以下での作成を推奨します。予選グループ数を増やすか、参加人数をご確認ください。</p>'
+        : '')+
       '</div>'+
       '<div style="'+(nt.format==="blockPrelim"?"":"display:none")+';margin-top:.9rem">'+
         '<div class="form-row">'+
@@ -2870,7 +2873,7 @@ function renderDisplayGroup(t, g, timeColorMap){
   '</div>';
   if(hasLoserBracket(t)){
     sec += '<div class="card"><h3>グループ'+(g.index+1)+' ・ 敗者復活ブロック</h3>'+
-      renderSimpleRounds(g.lb.rounds, null, {
+      renderSimpleRounds(lbRoundsForDisplay(g), null, {
         resolvable:false, showUndo:false, hideScoreInput:true, actionName:"", undoActionName:"", scoreScope:"", extraAttrs:"",
         useDownSet: t.lbOneSetDown!==false, tournament:t
       })+
@@ -3206,8 +3209,9 @@ function renderFinalsEditSlots(t){
 }
 
 // ---------- connected bracket visual ----------
-function bflowSideHTML(m, playerId, opts){
-  if(!playerId) return m.bye ? '<div class="bflow-side bye">(不戦)</div>' : '<div class="bflow-side bye">(未定)</div>';
+function bflowSideHTML(m, playerId, opts, slotNo){
+  var slotNoHTML = slotNo ? '<span class="slot-no bflow-slot-no">No.'+slotNo+'</span>' : "";
+  if(!playerId) return m.bye ? '<div class="bflow-side bye">'+slotNoHTML+'(不戦)</div>' : '<div class="bflow-side bye">'+slotNoHTML+'(未定)</div>';
   var isWinner = m.winner===playerId;
   var resolved = !!m.winner;
   var cls = "bflow-side"+(isWinner?" winner":"");
@@ -3215,7 +3219,7 @@ function bflowSideHTML(m, playerId, opts){
   var badgeHTML = classBadgeOrEmpty(opts.tournament, playerId);
   var oppId = playerId===m.a ? m.b : m.a;
   if(m.bye){
-    return '<div class="'+cls+' bye">'+esc(playerName(playerId))+(badgeHTML?(' '+badgeHTML):'')+(showPS?'<span class="pts num">不戦勝</span>':'')+'</div>';
+    return '<div class="'+cls+' bye">'+slotNoHTML+esc(playerName(playerId))+(badgeHTML?(' '+badgeHTML):'')+(showPS?'<span class="pts num">不戦勝</span>':'')+'</div>';
   }
   var canClick = !resolved && opts.resolvable;
   var attrs = canClick ? ('data-action="'+opts.actionName+'" data-mid="'+m.id+'" data-winner="'+playerId+'" '+opts.extraAttrs) : "";
@@ -3233,11 +3237,15 @@ function bflowSideHTML(m, playerId, opts){
         '<input type="number" class="num score-input-inline" min="0" data-action="update-score" data-scope="'+opts.scoreScope+'" data-which="'+which+'" data-mid="'+m.id+'" '+opts.extraAttrs+' value="'+(val==null?"":val)+'" placeholder="-">';
     }
   }
-  return '<div class="'+cls+'" '+attrs+'><span class="pname">'+esc(playerName(playerId))+'</span>'+badgeHTML+matchFormatHintHTML(playerId, oppId, opts.useDownSet, opts.tournament)+scoreHTML+(showPS?('<span class="pts num">'+entryPointsOf(opts.tournament, playerId)+'</span>'):'')+'</div>';
+  var byeAdvancerHTML = (m.round===2 && opts.round1ByeWinners && opts.round1ByeWinners.indexOf(playerId)>=0) ? '<span class="pts">(1回戦不戦勝)</span>' : "";
+  return '<div class="'+cls+'" '+attrs+'>'+slotNoHTML+'<span class="pname">'+esc(playerName(playerId))+'</span>'+badgeHTML+matchFormatHintHTML(playerId, oppId, opts.useDownSet, opts.tournament)+scoreHTML+byeAdvancerHTML+(showPS?('<span class="pts num">'+entryPointsOf(opts.tournament, playerId)+'</span>'):'')+'</div>';
 }
 function renderBracketFlow(rounds, roundLabelFn, opts){
   var counter = 0;
+  var nonByeR1Counter = 0;
   var byeWinners = (opts.side==="wb") ? round1ByeWinnerIds(rounds) : [];
+  opts.round1ByeWinners = byeWinners;
+  var showLbDest = opts.side==="wb" && opts.tournament && hasLoserBracket(opts.tournament);
   var html = rounds.map(function(roundMatches, ri){
     var n = roundMatches.length;
     var isLast = ri===rounds.length-1;
@@ -3248,16 +3256,23 @@ function renderBracketFlow(rounds, roundLabelFn, opts){
         connectors += '<div class="bflow-connector" style="top:'+topA.toFixed(3)+'%;height:'+(topB-topA).toFixed(3)+'%;"></div>';
       }
     }
-    var matches = roundMatches.map(function(m){
+    var matches = roundMatches.map(function(m, mi){
       counter++;
       var undo = (opts.showUndo!==false && m.winner && !m.bye) ?
         '<button class="btn btn-sm btn-ghost no-print" data-action="'+opts.undoActionName+'" data-mid="'+m.id+'" '+opts.extraAttrs+'>取消</button>' : "";
       var noHTML = m.bye ? "" : '<span class="match-no">No.'+counter+'</span>';
+      var lbDestHTML = "";
+      if(ri===0 && showLbDest && !m.bye){
+        nonByeR1Counter++;
+        lbDestHTML = '<span class="hint" style="font-size:.7rem">→敗者復活 No.'+Math.ceil(nonByeR1Counter/2)+'</span>';
+      }
       var eligible = opts.side==="wb" && (ri===0 || (ri===1 && (byeWinners.indexOf(m.a)>=0 || byeWinners.indexOf(m.b)>=0)));
       var scheduleHTML = scheduleTimeHTML(opts.tournament, m, opts.scoreScope, opts.extraAttrs, !opts.hideScoreInput, eligible);
       var slotColor = (eligible && m.startTime && opts.timeColorMap && opts.timeColorMap[m.startTime]) ? opts.timeColorMap[m.startTime] : "";
       var matchStyle = slotColor ? ' style="box-shadow:inset 0 0 0 3px '+slotColor+'"' : "";
-      return '<div class="bflow-match"'+matchStyle+'>'+bflowSideHTML(m, m.a, opts)+bflowSideHTML(m, m.b, opts)+'<div class="bflow-match-footer">'+noHTML+scheduleHTML+undo+'</div></div>';
+      var slotNoA = (ri===0 && opts.side==="wb") ? mi*2+1 : null;
+      var slotNoB = (ri===0 && opts.side==="wb") ? mi*2+2 : null;
+      return '<div class="bflow-match"'+matchStyle+'>'+bflowSideHTML(m, m.a, opts, slotNoA)+bflowSideHTML(m, m.b, opts, slotNoB)+'<div class="bflow-match-footer">'+noHTML+lbDestHTML+scheduleHTML+undo+'</div></div>';
     }).join("");
     return '<div class="bflow-round"><div class="bflow-round-label">'+roundLabelFn(ri, rounds.length)+'</div>'+
       '<div class="bflow-slots">'+connectors+matches+'</div></div>';
@@ -3265,7 +3280,7 @@ function renderBracketFlow(rounds, roundLabelFn, opts){
   return '<div class="bflow-wrap"><div class="bflow">'+html+'</div></div>';
 }
 function simpleSideHTML(m, playerId, opts){
-  if(!playerId) return '<div class="simple-side bye">(不戦)</div>';
+  if(!playerId) return m.bye ? '<div class="simple-side bye">(不戦)</div>' : '<div class="simple-side bye">(未定)</div>';
   var isWinner = m.winner===playerId;
   var resolved = !!m.winner;
   var cls = "simple-side"+(isWinner?" winner":"");
@@ -3291,6 +3306,19 @@ function simpleSideHTML(m, playerId, opts){
     }
   }
   return '<div class="'+cls+'" '+attrs+'>'+esc(playerName(playerId))+badgeHTML+matchFormatHintHTML(playerId, oppId2, opts.useDownSet, opts.tournament)+scoreHTML+(showPS?('<span class="pts num">'+entryPointsOf(opts.tournament, playerId)+'</span>'):'')+'</div>';
+}
+function lbPlaceholderRounds(g){
+  var r0 = (g.wb && g.wb.rounds && g.wb.rounds[0]) || [];
+  var loserCount = r0.filter(function(m){ return !m.bye; }).length;
+  if(loserCount<1) return [];
+  var round = [];
+  for(var i=0;i<loserCount;i+=2){
+    round.push({id:"lb_ph_m"+(i/2), round:1, a:null, b:null, winner:null, deltas:null, bye:false, score:{a:null,b:null}});
+  }
+  return [round];
+}
+function lbRoundsForDisplay(g){
+  return (g.lb && g.lb.rounds && g.lb.rounds.length) ? g.lb.rounds : lbPlaceholderRounds(g);
 }
 function renderSimpleRounds(rounds, roundLabelFn, opts){
   if(!rounds.length) return '<p class="empty-note">敗者復活ブロックの組み合わせはまだありません。</p>';
@@ -3483,7 +3511,7 @@ function renderOneGroup(t, g, timeColorMap){
       (t.prelimType==="round1Double"
         ? '1回戦で敗れた選手だけが入ります。ここで勝てば勝ち残り、負ければ失格です(2回戦以降の敗者は復活できません)。'
         : '1敗した選手が入り、ここでもう1敗すると失格になります。')+'</p>'+
-      renderSimpleRounds(g.lb.rounds, null, {
+      renderSimpleRounds(lbRoundsForDisplay(g), null, {
         resolvable: t.status==="prelim" && !reached,
         actionName: "resolve-elim-match",
         undoActionName: "undo-elim-match",
