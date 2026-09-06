@@ -1177,6 +1177,20 @@ function distributeCount(total, groups){
   for(var i=0;i<groups;i++) sizes.push(base + (i<rem?1:0));
   return sizes;
 }
+function playersActiveInOtherTournaments(excludeTournamentId){
+  var active = {};
+  state.tournaments.forEach(function(t){
+    if(t.id===excludeTournamentId || t.status==="completed") return;
+    var groups = t.format==="blockPrelim" ? t.blocks : t.groups;
+    (groups||[]).forEach(function(g){
+      (g.slots||[]).forEach(function(id){ if(id) active[id]=true; });
+    });
+    if(t.finals){
+      finalsSlotsArray(t).forEach(function(id){ if(id) active[id]=true; });
+    }
+  });
+  return active;
+}
 function eligiblePlayerIdsForNewEvent(){
   return state.players.filter(function(p){
     var e = state.entries[p.id];
@@ -2670,6 +2684,7 @@ function renderNewTournament(){
   var useFilter = nt.useEntryFilter!==false;
   var pickPool = ((useFilter && eligibleCount) ? state.players.filter(function(p){ return eligibleIds.indexOf(p.id)>=0; }) : state.players.slice())
     .sort(function(a,b){ var ka=a.kana||a.name, kb=b.kana||b.name; return ka.localeCompare(kb,"ja"); });
+  var activeElsewhere = playersActiveInOtherTournaments();
   function radioCard(name, value, checked, title, desc){
     return '<label class="radio-card'+(checked?' checked':'')+'"><input type="radio" name="'+name+'" value="'+value+'"'+(checked?' checked':'')+' data-action="'+name+'-radio">'+
       '<div><div class="rc-title">'+title+'</div><div class="rc-desc">'+desc+'</div></div></label>';
@@ -2687,10 +2702,11 @@ function renderNewTournament(){
     var checklistCls = nt.usePointsAndSets===false
       ? (checked ? nt.manualClasses[p.id] : (p.manualEntryClass || manualTierOf(classOf(p.points))))
       : classOf(p.points);
-    return '<div style="display:flex;align-items:center;gap:.4rem;padding:.3rem .4rem;border-bottom:1px solid var(--border)'+(checked?';background:var(--surface-2)':'')+'">'+
-      '<label class="hint" style="display:flex;align-items:center;gap:.4rem;cursor:pointer;flex:1;min-width:0">'+
+    var isActiveElsewhere = !!activeElsewhere[p.id];
+    return '<div style="display:flex;align-items:center;gap:.4rem;padding:.3rem .4rem;border-bottom:1px solid var(--border)'+(isActiveElsewhere?';background:#ddd;color:#777':checked?';background:var(--surface-2)':'')+'">'+
+      '<label class="hint" style="display:flex;align-items:center;gap:.4rem;cursor:pointer;flex:1;min-width:0'+(isActiveElsewhere?';color:#777':'')+'">'+
         '<input type="checkbox" data-action="toggle-select-participant" data-id="'+p.id+'" '+(checked?"checked":"")+'>'+
-        '<span style="flex:1">'+esc(p.name)+'</span>'+(showChecklistBadge?badge(checklistCls):'')+
+        '<span style="flex:1">'+esc(p.name)+'</span>'+(isActiveElsewhere?'<span class="hint" style="font-size:.7rem;color:#777">(他大会で対戦中)</span>':'')+(showChecklistBadge?badge(checklistCls):'')+
       '</label>'+manualClassSelect+
     '</div>';
   }).join("");
@@ -2750,6 +2766,7 @@ function renderNewTournament(){
           "② 予選リーグ戦(ブロック総当たり)+決勝トーナメント",
           "参加者をブロックに分けて総当たり戦を行い、各ブロック上位が決勝トーナメントに進出します。")+
       '</div>'+
+      (nt.totalParticipants<=12 ? '<p class="hint">参加人数が12名までの場合は、全員がより多く対戦できる「② 予選リーグ戦」の採用がおすすめです。</p>' : '')+
       '<div style="'+(nt.format==="elimPrelim"?"":"display:none")+';margin-top:.9rem">'+
         '<div class="radio-card-row">'+
           radioCard("prelimType","single", nt.prelimType==="single", "予選: シングルエリミネーション", "1敗で失格。通常のノックアウト方式です。")+
@@ -2771,9 +2788,6 @@ function renderNewTournament(){
           )+
         '</div>'+
         '<p class="hint">グループ数を2以上にすると、予選のブラケットが複数に分かれ、各グループの勝ち残り上位が決勝トーナメントに進出します。シングルエリミネーションは仕組み上、勝ち残り数が2の累乗単位(8→4→2など)で絞り込まれます。</p>'+
-        (Math.ceil(nt.totalParticipants/Math.max(1,nt.groupCount))>=9 ?
-          '<p class="hint" style="color:var(--loss)">⚠ 1グループあたりの人数が9名以上になっています。1トーナメント(1グループ)は8名以下での作成を推奨します。予選グループ数を増やすか、参加人数をご確認ください。</p>'
-        : '')+
       '</div>'+
       '<div style="'+(nt.format==="blockPrelim"?"":"display:none")+';margin-top:.9rem">'+
         '<div class="form-row">'+
@@ -3131,15 +3145,17 @@ function renderTournamentScreen(id){
 }
 
 // ---------- 組み合わせ割当 ----------
-function rosterOptionsHTML(currentValue, allowBye, eligibleIds, usedElsewhere){
+function rosterOptionsHTML(currentValue, allowBye, eligibleIds, usedElsewhere, activeElsewhereSet){
   var placeholder = allowBye ? ('<option value=""'+(currentValue?"":" selected")+'>(不戦/空き)</option>')
                               : ('<option value=""'+(currentValue?"":" selected")+'>(未定)</option>');
   var pool = (eligibleIds && eligibleIds.length) ? state.players.filter(function(p){ return eligibleIds.indexOf(p.id)>=0; }) : state.players.slice();
   var players = pool.sort(function(a,b){ return a.name.localeCompare(b.name,"ja"); });
   var opts = placeholder + players.map(function(p){
     var isUsed = usedElsewhere && usedElsewhere.indexOf(p.id)>=0;
+    var isActiveElsewhere = !isUsed && activeElsewhereSet && activeElsewhereSet[p.id] && p.id!==currentValue;
     var clsLabel = p.isGuest ? (p.manualEntryClass || "-") : classOf(p.points);
-    return '<option value="'+p.id+'"'+(currentValue===p.id?" selected":"")+(isUsed?' style="background:#ddd;color:#777;"':'')+'>'+esc(p.name)+' ('+clsLabel+')'+(isUsed?' ✓選択済み':'')+'</option>';
+    var label = esc(p.name)+' ('+clsLabel+')'+(isUsed?' ✓選択済み':'')+(isActiveElsewhere?' (他大会で対戦中)':'');
+    return '<option value="'+p.id+'"'+(currentValue===p.id?" selected":"")+((isUsed||isActiveElsewhere)?' style="background:#ddd;color:#777;"':'')+'>'+label+'</option>';
   }).join("");
   return opts;
 }
@@ -3157,6 +3173,7 @@ function refreshEligibleFromEntries(t){
 function renderEditSlots(t, kind, groupIdx, slots, pairwise){
   var rows;
   var showManualClass = !usePointsAndSets(t);
+  var activeElsewhereSet = playersActiveInOtherTournaments(t.id);
   function usedElsewhere(si){
     return slots.filter(function(id, idx){ return idx!==si && id; });
   }
@@ -3166,11 +3183,11 @@ function renderEditSlots(t, kind, groupIdx, slots, pairwise){
       rows += '<div class="form-row" style="align-items:center;flex-wrap:wrap;gap:.5rem">'+
         '<span class="hint num" style="width:4rem;flex:none">第'+(i/2+1)+'試合</span>'+
         '<span class="slot-no">No.'+(i+1)+'</span>'+
-        '<select data-action="assign-slot" data-kind="'+kind+'" data-idx="'+groupIdx+'" data-slot="'+i+'" data-tid="'+t.id+'" style="flex:1;min-width:120px">'+rosterOptionsHTML(slots[i], true, t.eligiblePlayerIds, usedElsewhere(i))+'</select>'+
+        '<select data-action="assign-slot" data-kind="'+kind+'" data-idx="'+groupIdx+'" data-slot="'+i+'" data-tid="'+t.id+'" style="flex:1;min-width:120px">'+rosterOptionsHTML(slots[i], true, t.eligiblePlayerIds, usedElsewhere(i), activeElsewhereSet)+'</select>'+
         (showManualClass?manualClassSelectHTML(t, slots[i], "update-manual-class-live"):'')+
         '<span class="hint" style="flex:none">vs</span>'+
         '<span class="slot-no">No.'+(i+2)+'</span>'+
-        '<select data-action="assign-slot" data-kind="'+kind+'" data-idx="'+groupIdx+'" data-slot="'+(i+1)+'" data-tid="'+t.id+'" style="flex:1;min-width:120px">'+rosterOptionsHTML(slots[i+1], true, t.eligiblePlayerIds, usedElsewhere(i+1))+'</select>'+
+        '<select data-action="assign-slot" data-kind="'+kind+'" data-idx="'+groupIdx+'" data-slot="'+(i+1)+'" data-tid="'+t.id+'" style="flex:1;min-width:120px">'+rosterOptionsHTML(slots[i+1], true, t.eligiblePlayerIds, usedElsewhere(i+1), activeElsewhereSet)+'</select>'+
         (showManualClass?manualClassSelectHTML(t, slots[i+1], "update-manual-class-live"):'')+
       '</div>';
     }
@@ -3179,7 +3196,7 @@ function renderEditSlots(t, kind, groupIdx, slots, pairwise){
       return '<div class="form-row" style="margin:.2rem 0;flex-wrap:wrap;align-items:center;gap:.5rem">'+
         '<span class="slot-no">No.'+(si+1)+'</span>'+
         '<select data-action="assign-slot" data-kind="'+kind+'" data-idx="'+groupIdx+'" data-slot="'+si+'" data-tid="'+t.id+'" style="flex:1;min-width:160px">'+
-        rosterOptionsHTML(id, false, t.eligiblePlayerIds, usedElsewhere(si))+'</select>'+
+        rosterOptionsHTML(id, false, t.eligiblePlayerIds, usedElsewhere(si), activeElsewhereSet)+'</select>'+
         (showManualClass?manualClassSelectHTML(t, id, "update-manual-class-live"):'')+'</div>';
     }).join("");
   }
@@ -3192,16 +3209,17 @@ function renderFinalsEditSlots(t){
   var slots = finalsSlotsArray(t);
   var rows = "";
   var showManualClass = !usePointsAndSets(t);
+  var activeElsewhereSet = playersActiveInOtherTournaments(t.id);
   function usedElsewhere(si){
     return slots.filter(function(id, idx){ return idx!==si && id; });
   }
   for(var i=0;i<slots.length;i+=2){
     rows += '<div class="form-row" style="align-items:center;flex-wrap:wrap;gap:.5rem">'+
       '<span class="hint num" style="width:4rem;flex:none">第'+(i/2+1)+'試合</span>'+
-      '<select data-action="assign-finals-slot" data-tid="'+t.id+'" data-slot="'+i+'" style="flex:1;min-width:120px">'+rosterOptionsHTML(slots[i], true, t.finalists, usedElsewhere(i))+'</select>'+
+      '<select data-action="assign-finals-slot" data-tid="'+t.id+'" data-slot="'+i+'" style="flex:1;min-width:120px">'+rosterOptionsHTML(slots[i], true, t.finalists, usedElsewhere(i), activeElsewhereSet)+'</select>'+
       (showManualClass?manualClassSelectHTML(t, slots[i], "update-manual-class-live"):'')+
       '<span class="hint" style="flex:none">vs</span>'+
-      '<select data-action="assign-finals-slot" data-tid="'+t.id+'" data-slot="'+(i+1)+'" style="flex:1;min-width:120px">'+rosterOptionsHTML(slots[i+1], true, t.finalists, usedElsewhere(i+1))+'</select>'+
+      '<select data-action="assign-finals-slot" data-tid="'+t.id+'" data-slot="'+(i+1)+'" style="flex:1;min-width:120px">'+rosterOptionsHTML(slots[i+1], true, t.finalists, usedElsewhere(i+1), activeElsewhereSet)+'</select>'+
       (showManualClass?manualClassSelectHTML(t, slots[i+1], "update-manual-class-live"):'')+
     '</div>';
   }
