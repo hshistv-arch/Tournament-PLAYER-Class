@@ -1317,13 +1317,14 @@ function buildBracket(ids){
 function roundIsDone(round){
   return round.every(function(m){ return !!m.winner || (m.bye && !m.a && !m.b); });
 }
-function maybeAdvanceRounds(bracket){
+function maybeAdvanceRounds(bracket, stopAtSize){
   while(true){
     var last = bracket.rounds[bracket.rounds.length-1];
     var allDone = roundIsDone(last);
     if(!allDone) break;
     if(bracket.rounds.length>=bracket.totalRounds) break;
     var winners = last.map(function(m){ return m.winner; });
+    if(stopAtSize!=null && winners.length<=stopAtSize) break;
     var nextRound=[];
     for(var i=0;i<winners.length;i+=2){
       var a=winners[i], b=winners[i+1];
@@ -1623,7 +1624,7 @@ function advanceLB(prelim, maxRounds){
   }
 }
 function advanceElimGroup(t, g){
-  maybeAdvanceRounds(g.wb);
+  maybeAdvanceRounds(g.wb, hasLoserBracket(t) ? t.advancePerGroupWB : null);
   if(t.prelimType==="double") advanceLB(g);
   else if(t.prelimType==="round1Double") advanceLB(g, 1);
 }
@@ -4577,6 +4578,7 @@ document.addEventListener("change", function(e){
     }
     tourAGWB.advancePerGroupWB = vAGWB;
     tourAGWB.advancePerGroup = tourAGWB.advancePerGroupWB + tourAGWB.advancePerGroupLB;
+    (tourAGWB.groups||[]).forEach(function(gAGWB){ advanceElimGroup(tourAGWB, gAGWB); recomputeElimGroup(tourAGWB, gAGWB); });
     saveState(); render();
   }
   else if(action==="update-advance-per-group-lb"){
