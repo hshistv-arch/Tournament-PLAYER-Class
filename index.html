@@ -921,7 +921,7 @@ function pushStateToServer(){
     setSyncStatus("error");
   });
 }
-function syncFromServer(){
+function syncFromServer(cb){
   setSyncStatus("syncing");
   fetch(SYNC_URL, {cache:"no-store"}).then(function(r){
     if(!r.ok) throw new Error("HTTP "+r.status);
@@ -931,12 +931,14 @@ function syncFromServer(){
       state = applyRosterUpdate(migrateAddBeClass(migrateBestBorC(serverState)));
       state.entries = state.entries || {};
       state.currentTournamentId = state.currentTournamentId || null;
-      render();
+      if(!cb) render();
     }
     saveState();
+    if(cb) cb();
   }).catch(function(e){
     console.warn("initial sync fetch failed", e);
     setSyncStatus("offline");
+    if(cb) cb();
   });
 }
 
@@ -2863,8 +2865,11 @@ function renderNewTournament(){
       '</div>'+
     '</div>'+
     '<div class="card">'+
-      '<h3>出場選手を選択</h3>'+
-      '<p class="hint">チェックした選手が参加人数・組み合わせに使われます。欠席者はチェックを外してください。</p>'+
+      '<div class="form-row" style="align-items:center;justify-content:space-between;gap:.5rem">'+
+        '<h3 style="margin:0">出場選手を選択</h3>'+
+        '<button class="btn btn-sm btn-ghost" type="button" data-action="reload-new-tournament-participants">🔄 エントリー状況を再読み込み</button>'+
+      '</div>'+
+      '<p class="hint">チェックした選手が参加人数・組み合わせに使われます。欠席者はチェックを外してください。この画面を開いた後にエントリー・参加費受領・抽選番号を変更した場合は、上の「🔄 エントリー状況を再読み込み」で最新の状態を反映できます(すでにチェック・変更した内容は失われます)。</p>'+
       '<label class="hint" style="display:flex;align-items:center;gap:.4rem;cursor:pointer;margin-bottom:.5rem">'+
         '<input type="checkbox" data-action="entry-filter-toggle" '+(useFilter?"checked":"")+'>'+
         'エントリー受付でチェック済みの選手のみ表示する(外すとロースター全員が対象になります)'+
@@ -4186,6 +4191,15 @@ document.addEventListener("click", function(e){
   else if(action==="prelimType-radio"){
     var ntp = ensureNewTournamentState(); ntp.prelimType = t.value;
     render();
+  }
+  else if(action==="reload-new-tournament-participants"){
+    syncFromServer(function(){
+      var ntRl = ensureNewTournamentState();
+      var freshEligible = eligiblePlayerIdsForNewEvent();
+      ntRl.selectedIds = freshEligible.slice();
+      ntRl.totalParticipants = Math.max(2, freshEligible.length || 8);
+      render();
+    });
   }
   else if(action==="confirm-lineup"){
     var tidc=t.getAttribute("data-tid"); var tourc=findTournament(tidc);
