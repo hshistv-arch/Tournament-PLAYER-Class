@@ -925,6 +925,12 @@ function pushStateToServer(){
   });
 }
 function syncFromServer(cb){
+  if(syncDirty || syncInFlight){
+    // ローカルでの変更がまだサーバーに反映されていない間は、定期的な取得で
+    // その変更を上書きしてしまわないよう、今回の同期はスキップする
+    if(cb) cb();
+    return;
+  }
   setSyncStatus("syncing");
   fetch(SYNC_URL, {cache:"no-store"}).then(function(r){
     if(!r.ok) throw new Error("HTTP "+r.status);
@@ -2531,10 +2537,14 @@ function renderEntry(){
   var sortMode = route.entrySort || "name";
   var entryMode = route.entryMode==="noPoints" ? "noPoints" : "points";
   var searchQuery = route.entrySearch || "";
+  var onlyEntered = route.entryOnlyEntered===true;
   var players = sortPlayers(state.players, sortMode);
   var entered = players.filter(function(p){ var e=state.entries[p.id]; return e && e.entered; });
   var paid = entered.filter(function(p){ return state.entries[p.id].feePaid; });
-  var visiblePlayers = players.filter(function(p){ return entrySearchMatches(p, searchQuery); });
+  var visiblePlayers = players.filter(function(p){
+    if(onlyEntered){ var e=state.entries[p.id]; if(!e || !e.entered) return false; }
+    return entrySearchMatches(p, searchQuery);
+  });
   var rows = visiblePlayers.map(function(p){
     var e = state.entries[p.id] || {entered:false, feePaid:false};
     var clsLabel;
@@ -2579,7 +2589,9 @@ function renderEntry(){
     'ロースター未登録の選手をその場でエントリーに追加できます。氏名・読みカナ・所属・クラスを入力してください(G-SPeCポイントに影響しないエントリーのため、選手ロースターには追加されません)。' :
     'ロースター未登録の選手をその場でエントリーに追加できます。氏名・読みカナ・初期ポイントを入力してください(通常の選手として選手ロースターにも登録されます)。';
   return ''+
-  '<div class="page-head"><div><h1>エントリー受付</h1><p class="sub">大会を作成する前に、出場する選手のエントリーと参加費受領を確認します。</p></div></div>'+
+  '<div class="page-head" style="align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem"><div><h1>エントリー受付</h1><p class="sub">大会を作成する前に、出場する選手のエントリーと参加費受領を確認します。</p></div>'+
+    '<button class="btn btn-sm btn-ghost" type="button" data-action="refresh-entries-from-server">🔄 更新</button>'+
+  '</div>'+
   '<div class="stat-row">'+
     '<div class="stat"><div class="label">エントリー済み</div><div class="value num">'+entered.length+'</div></div>'+
     '<div class="stat"><div class="label">参加費受領済み</div><div class="value num">'+paid.length+'</div></div>'+
@@ -2609,7 +2621,11 @@ function renderEntry(){
       '<button class="tab'+(sortMode==="order"?" active":"")+'" data-action="entry-sort" data-sort="order">登録順</button>'+
     '</div>'+
     '<div class="field" style="max-width:20rem;margin-bottom:.8rem"><label>名前で検索</label><input type="text" placeholder="氏名または読みカナ" data-action="entry-search-input" value="'+esc(searchQuery)+'"></div>'+
-    (searchQuery && !visiblePlayers.length ? '<p class="empty-note">「'+esc(searchQuery)+'」に一致する選手が見つかりません。</p>' : (
+    '<label class="hint" style="display:flex;align-items:center;gap:.4rem;cursor:pointer;margin-bottom:.8rem">'+
+      '<input type="checkbox" data-action="toggle-entry-only-filter" '+(onlyEntered?"checked":"")+'>'+
+      'エントリー済みの選手のみ表示する'+
+    '</label>'+
+    (!visiblePlayers.length && (searchQuery || onlyEntered) ? '<p class="empty-note">'+(searchQuery ? '「'+esc(searchQuery)+'」に一致する選手が見つかりません。' : 'エントリー済みの選手がいません。')+'</p>' : (
     '<div class="table-wrap"><table class="data">'+
       '<thead><tr><th>氏名</th><th>クラス</th><th>エントリー</th><th>参加費受領</th><th>抽選番号</th></tr></thead>'+
       '<tbody>'+rows+'</tbody>'+
@@ -4234,6 +4250,9 @@ document.addEventListener("click", function(e){
     var ntp = ensureNewTournamentState(); ntp.prelimType = t.value;
     render();
   }
+  else if(action==="refresh-entries-from-server"){
+    syncFromServer(render);
+  }
   else if(action==="reload-new-tournament-participants"){
     syncFromServer(function(){
       var ntRl = ensureNewTournamentState();
@@ -4450,6 +4469,10 @@ document.addEventListener("change", function(e){
     state.entries[id].entered = t.checked;
     if(!t.checked){ state.entries[id].feePaid = false; state.entries[id].drawNumber = null; }
     saveState(); render();
+  }
+  else if(action==="toggle-entry-only-filter"){
+    route.entryOnlyEntered = t.checked;
+    render();
   }
   else if(action==="toggle-fee"){
     var id2=t.getAttribute("data-id");
