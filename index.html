@@ -3121,7 +3121,7 @@ function renderDrawScreen(){
       var matched = state.players.filter(function(p){ return entrySearchMatches(p, qrSearch); })
         .sort(function(a,b){ var ka=a.kana||a.name, kb=b.kana||b.name; return ka.localeCompare(kb,"ja"); });
       if(!matched.length){
-        listHTML = '<p class="empty-note">「'+esc(qrSearch)+'」に一致する選手が見つかりません。</p>';
+        listHTML = '<p class="empty-note">「'+esc(qrSearch)+'」に一致する選手が見つかりません。ご自身の名前が無い場合は運営までご連絡ください。</p>';
       } else {
         listHTML = '<div class="draw-list">'+matched.map(function(p){
           var e = state.entries[p.id];
