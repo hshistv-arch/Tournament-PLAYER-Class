@@ -3707,6 +3707,7 @@ function renderBlockPrelimTournament(t){
     '<a class="btn btn-sm btn-ghost" href="?stream=1&id='+t.id+'" target="_blank">📺 配信用スコアボード</a>'+
     '<button class="btn btn-sm btn-ghost" data-action="toggle-lock-tournament" data-id="'+t.id+'">'+(t.locked?'🔓 ロック解除':'🔒 削除をロック')+'</button>'+
     (t.status!=="assigning"?'<button class="btn btn-sm btn-ghost" data-action="revert-to-assigning" data-tid="'+t.id+'">↩ 組み合わせ待ちに戻す</button>':'')+
+    '<button class="btn btn-sm btn-ghost" data-action="refresh-entries-from-server">🔄 更新</button>'+
     '<button class="btn btn-sm" data-action="nav" data-screen="history">一覧へ戻る</button></div></div>';
   var out = header + formatSwitchHTML(t);
   out += t.blocks.map(function(block){ return renderOneBlock(t, block); }).join("");
@@ -3800,6 +3801,7 @@ function renderElimPrelimTournament(t){
     '<a class="btn btn-sm btn-ghost" href="?stream=1&id='+t.id+'" target="_blank">📺 配信用スコアボード</a>'+
     '<button class="btn btn-sm btn-ghost" data-action="toggle-lock-tournament" data-id="'+t.id+'">'+(t.locked?'🔓 ロック解除':'🔒 削除をロック')+'</button>'+
     (t.status!=="assigning"?'<button class="btn btn-sm btn-ghost" data-action="revert-to-assigning" data-tid="'+t.id+'">↩ 組み合わせ待ちに戻す</button>':'')+
+    '<button class="btn btn-sm btn-ghost" data-action="refresh-entries-from-server">🔄 更新</button>'+
     '<button class="btn btn-sm" data-action="nav" data-screen="history">一覧へ戻る</button></div></div>';
   var out = header + formatSwitchHTML(t);
   var timeColorMap = buildTimeSlotColorMap(t);
