@@ -2619,7 +2619,7 @@ function renderEntry(){
       '<button class="btn btn-sm btn-ghost" data-action="reset-entries">エントリーをリセット</button>'+
       '<button class="btn btn-sm btn-ghost" data-action="reset-draw-numbers">🎲 抽選番号をリセット</button>'+
     '</div>'+
-    '<details style="margin-top:.6rem"><summary class="hint" style="cursor:pointer">📱 スマホ用抽選画面を開く</summary><div style="margin-top:.5rem">'+qrDetailsHTML(drawUrlFor())+'</div></details>'+
+    '<details style="margin-top:.6rem"><summary class="hint" style="cursor:pointer">📱 スマホ用エントリー・抽選画面を開く</summary><div style="margin-top:.5rem"><p class="hint">選手が各自のスマートフォンでこのQRコード・URLを開き、名前を検索して自分でエントリー・抽選ができます(参加費受領のチェックはこの管理画面から行ってください)。</p>'+qrDetailsHTML(drawUrlFor())+'</div></details>'+
   '</div>';
 }
 
@@ -3089,21 +3089,33 @@ function renderDrawScreen(){
         '<div class="draw-list">'+frows+'</div>';
     }
   } else {
-    var entered = state.players.filter(function(p){ var e=state.entries[p.id]; return e && e.entered; })
-      .sort(function(a,b){ var ka=a.kana||a.name, kb=b.kana||b.name; return ka.localeCompare(kb,"ja"); });
-    if(!entered.length){
-      body = '<div class="page-head"><h1>抽選</h1><p class="sub">現在エントリー済みの選手がいません。</p></div>';
+    var qrSearch = route.entrySearch || "";
+    var searchHTML = '<div class="field" style="max-width:24rem;margin:.5rem 0 1rem"><label>名前で検索</label><input type="text" placeholder="氏名または読みカナ" data-action="entry-search-input" value="'+esc(qrSearch)+'"></div>';
+    var listHTML;
+    if(!qrSearch){
+      listHTML = '<p class="hint">お名前を検索すると、ご自身の名前が表示されます。</p>';
     } else {
-      var rows = entered.map(function(p){
-        var e = state.entries[p.id];
-        var right = e.drawNumber
-          ? '<span class="slot-no draw-number-big">No.'+e.drawNumber+'</span>'
-          : '<button type="button" class="btn btn-primary" data-action="draw-entry-number" data-id="'+p.id+'">🎲 抽選する</button>';
-        return '<div class="draw-row"><span class="draw-name">'+esc(p.name)+'</span>'+right+'</div>';
-      }).join("");
-      body = '<div class="page-head"><h1>抽選</h1><p class="sub">自分の名前の隣のボタンを押すと、抽選番号が決まります(一度押すと番号は変わりません)。</p></div>'+
-        '<div class="draw-list">'+rows+'</div>';
+      var matched = state.players.filter(function(p){ return entrySearchMatches(p, qrSearch); })
+        .sort(function(a,b){ var ka=a.kana||a.name, kb=b.kana||b.name; return ka.localeCompare(kb,"ja"); });
+      if(!matched.length){
+        listHTML = '<p class="empty-note">「'+esc(qrSearch)+'」に一致する選手が見つかりません。</p>';
+      } else {
+        listHTML = '<div class="draw-list">'+matched.map(function(p){
+          var e = state.entries[p.id];
+          var right;
+          if(!e || !e.entered){
+            right = '<button type="button" class="btn btn-primary" data-action="qr-self-enter" data-id="'+p.id+'">エントリーする</button>';
+          } else if(!e.drawNumber){
+            right = '<span style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap"><span class="hint" style="color:var(--win);font-weight:700">✓ エントリー済み</span><button type="button" class="btn btn-sm btn-primary" data-action="draw-entry-number" data-id="'+p.id+'">🎲 抽選する</button></span>';
+          } else {
+            right = '<span style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap"><span class="hint" style="color:var(--win);font-weight:700">✓ エントリー済み</span><span class="slot-no draw-number-big">No.'+e.drawNumber+'</span></span>';
+          }
+          return '<div class="draw-row"><span class="draw-name">'+esc(p.name)+'</span>'+right+'</div>';
+        }).join("")+'</div>';
+      }
     }
+    body = '<div class="page-head"><h1>エントリー・抽選</h1><p class="sub">お名前を検索して「エントリーする」を押してください。エントリー後、その場で抽選番号を引けます。</p></div>'+
+      searchHTML + listHTML;
   }
   return closeHTML + body + updatedHTML;
 }
@@ -4110,6 +4122,13 @@ document.addEventListener("click", function(e){
     var eDraw = state.entries[idDraw];
     if(!eDraw || !eDraw.entered || eDraw.drawNumber) return;
     eDraw.drawNumber = Math.floor(Math.random()*999)+1;
+    saveState(); render();
+  }
+  else if(action==="qr-self-enter"){
+    var idQE=t.getAttribute("data-id");
+    if(!getPlayer(idQE)) return;
+    state.entries[idQE] = state.entries[idQE] || {entered:false, feePaid:false};
+    state.entries[idQE].entered = true;
     saveState(); render();
   }
   else if(action==="reset-draw-numbers"){
