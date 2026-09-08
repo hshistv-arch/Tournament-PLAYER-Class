@@ -2338,6 +2338,26 @@ function renderNav(){
   }).join("");
 }
 
+function captureFocusInfo(){
+  var activeEl = document.activeElement;
+  if(activeEl && activeEl.getAttribute && activeEl.getAttribute("data-action")){
+    var activeAction = activeEl.getAttribute("data-action");
+    if(document.querySelectorAll('[data-action="'+activeAction+'"]').length===1){
+      return {action: activeAction, selectionStart: activeEl.selectionStart, selectionEnd: activeEl.selectionEnd};
+    }
+  }
+  return null;
+}
+function restoreFocusInfo(focusInfo){
+  if(!focusInfo) return;
+  var toFocus = document.querySelector('[data-action="'+focusInfo.action+'"]');
+  if(toFocus){
+    toFocus.focus();
+    if(typeof focusInfo.selectionStart==="number" && toFocus.setSelectionRange){
+      try{ toFocus.setSelectionRange(focusInfo.selectionStart, focusInfo.selectionEnd); }catch(e){}
+    }
+  }
+}
 function render(){
   if(DISPLAY_MODE){
     document.getElementById("main").innerHTML = renderDisplayScreen();
@@ -2348,7 +2368,9 @@ function render(){
     return;
   }
   if(DRAW_MODE){
+    var drawFocusInfo = captureFocusInfo();
     document.getElementById("main").innerHTML = renderDrawScreen();
+    restoreFocusInfo(drawFocusInfo);
     return;
   }
   var scrollY = window.scrollY, scrollX = window.scrollX;
@@ -2358,14 +2380,7 @@ function render(){
   var bflowScrollers = Array.from(document.querySelectorAll(".bflow-wrap")).map(function(el){
     return {scrollLeft: el.scrollLeft, scrollTop: el.scrollTop};
   });
-  var focusInfo = null;
-  var activeEl = document.activeElement;
-  if(activeEl && activeEl.getAttribute && activeEl.getAttribute("data-action")){
-    var activeAction = activeEl.getAttribute("data-action");
-    if(document.querySelectorAll('[data-action="'+activeAction+'"]').length===1){
-      focusInfo = {action: activeAction, selectionStart: activeEl.selectionStart, selectionEnd: activeEl.selectionEnd};
-    }
-  }
+  var focusInfo = captureFocusInfo();
   renderNav();
   var main = document.getElementById("main");
   var html = "";
@@ -2389,15 +2404,7 @@ function render(){
     var el = newBflowScrollers[i];
     if(el){ el.scrollLeft = s.scrollLeft; el.scrollTop = s.scrollTop; }
   });
-  if(focusInfo){
-    var toFocus = document.querySelector('[data-action="'+focusInfo.action+'"]');
-    if(toFocus){
-      toFocus.focus();
-      if(typeof focusInfo.selectionStart==="number" && toFocus.setSelectionRange){
-        try{ toFocus.setSelectionRange(focusInfo.selectionStart, focusInfo.selectionEnd); }catch(e){}
-      }
-    }
-  }
+  restoreFocusInfo(focusInfo);
 }
 
 function sortPlayers(players, sortMode){
