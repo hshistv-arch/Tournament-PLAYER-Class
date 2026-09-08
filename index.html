@@ -232,6 +232,9 @@ details[open] > summary:before{content:"▾ ";}
 .bflow-match-footer .btn{padding:.05rem .4rem; font-size:.66rem; margin-left:auto;}
 .match-no{font-size:.66rem; color:var(--muted); font-family:var(--font-num);}
 .slot-no{font-size:.75rem; font-weight:700; color:var(--rust-ink); background:color-mix(in srgb, var(--rust) 16%, transparent); border-radius:999px; padding:.1rem .5rem; flex:none; font-family:var(--font-num);}
+.finals-card{font-size:.85rem; font-weight:700; padding:.25rem .55rem; border-radius:6px; border:1px solid var(--border); background:var(--surface); font-family:var(--font-num); display:inline-block; min-width:2.6rem; text-align:center;}
+.finals-card.spade{color:var(--text);}
+.finals-card.heart{color:var(--loss);}
 
 /* ---- simple round list (losers bracket) ---- */
 .simple-bracket{display:flex; gap:1.6rem; overflow-x:auto; padding:.3rem .1rem 1rem;}
@@ -3074,14 +3077,15 @@ function renderDrawScreen(){
     if(!t || !t.finalists || !t.finalists.length){
       body = '<div class="page-head"><h1>決勝抽選</h1><p class="sub">この大会の決勝進出者はまだ確定していません。</p></div>';
     } else {
+      var half = finalsCardHalfSize(t);
       var frows = t.finalists.map(function(id){
-        var num = finalsDrawNumberOf(t, id);
-        var right = num
-          ? '<span class="slot-no draw-number-big">No.'+num+'</span>'
-          : '<button type="button" class="btn btn-primary" data-action="draw-finals-number" data-tid="'+t.id+'" data-id="'+id+'">🎲 抽選する</button>';
+        var card = finalsCardOf(t, id);
+        var right = card
+          ? '<span class="finals-card draw-number-big '+card.suit+'">'+finalsCardLabel(card)+'</span>'
+          : '<button type="button" class="btn btn-primary" data-action="draw-finals-number" data-tid="'+t.id+'" data-id="'+id+'">🃏 カードを引く</button>';
         return '<div class="draw-row"><span class="draw-name">'+esc(playerName(id))+'</span>'+right+'</div>';
       }).join("");
-      body = '<div class="page-head"><h1>決勝抽選</h1><p class="sub">'+esc(t.name)+'・自分の名前の隣のボタンを押すと、抽選番号が決まります(一度押すと番号は変わりません)。</p></div>'+
+      body = '<div class="page-head"><h1>決勝抽選</h1><p class="sub">'+esc(t.name)+'・自分の名前の隣のボタンを押すと、スペード・ハート(1〜'+half+')のカードを1枚引きます(一度引くとカードは変わりません)。同じ数字のスペードとハートを引いた人同士が1回戦の対戦相手になります。</p></div>'+
         '<div class="draw-list">'+frows+'</div>';
     }
   } else {
@@ -3396,22 +3400,23 @@ function renderFinalsEditSlots(t){
 function renderFinalsDrawSection(t){
   var finalists = t.finalists || [];
   if(!finalists.length) return "";
+  var half = finalsCardHalfSize(t);
   var rows = finalists.map(function(id){
-    var num = finalsDrawNumberOf(t, id);
-    var right = num
-      ? '<span class="slot-no">No.'+num+'</span>'
-      : '<button class="btn btn-sm" type="button" data-action="draw-finals-number" data-tid="'+t.id+'" data-id="'+id+'">🎲 抽選する</button>';
+    var card = finalsCardOf(t, id);
+    var right = card
+      ? '<span class="finals-card '+card.suit+'">'+finalsCardLabel(card)+'</span>'
+      : '<button class="btn btn-sm" type="button" data-action="draw-finals-number" data-tid="'+t.id+'" data-id="'+id+'">🃏 カードを引く</button>';
     return '<div class="form-row" style="align-items:center;justify-content:space-between;gap:.5rem"><span>'+esc(playerName(id))+'</span>'+right+'</div>';
   }).join("");
   var allDrawn = finalsDrawAllDrawn(t);
-  return '<details style="margin-bottom:.7rem"><summary class="hint" style="cursor:pointer">🎲 抽選で組み合わせを決める</summary><div style="margin-top:.5rem">'+
-    '<p class="hint">決勝進出者ごとに抽選番号を決め、若い番号順で組み合わせを作成します。スマホ用の抽選画面も使えます。</p>'+
+  return '<details open style="margin-bottom:.7rem"><summary class="hint" style="cursor:pointer">🃏 トランプ抽選で組み合わせを決める</summary><div style="margin-top:.5rem">'+
+    '<p class="hint">決勝進出者ごとにスペード・ハート(1〜'+half+')のカードを1枚引きます。同じ数字のスペードとハートを引いた者同士が1回戦の対戦相手になります。スマホ用の抽選画面も使えます。</p>'+
     rows+
     '<div class="form-row" style="gap:.5rem;margin-top:.5rem;flex-wrap:wrap">'+
       '<button class="btn btn-sm btn-primary" type="button" data-action="apply-finals-draw" data-tid="'+t.id+'"'+(allDrawn?'':' disabled')+'>抽選結果を組み合わせに反映</button>'+
-      '<button class="btn btn-sm btn-ghost" type="button" data-action="reset-finals-draw-numbers" data-tid="'+t.id+'">抽選番号をリセット</button>'+
+      '<button class="btn btn-sm btn-ghost" type="button" data-action="reset-finals-draw-numbers" data-tid="'+t.id+'">カードをリセット</button>'+
     '</div>'+
-    (allDrawn ? '' : '<p class="hint">全員が抽選するまで反映ボタンは押せません。</p>')+
+    (allDrawn ? '' : '<p class="hint">全員が引くまで反映ボタンは押せません。</p>')+
     '<div style="margin-top:.5rem">'+qrDetailsHTML(drawUrlFor(t.id))+'</div>'+
   '</div></details>';
 }
@@ -3989,28 +3994,48 @@ function redrawFinals(t){
   t.finals = buildBracketFromSlots(shuffled);
   t.status = "finals";
 }
-function finalsDrawNumberOf(t, id){ return (t.finalsDrawNumbers && t.finalsDrawNumbers[id]) || null; }
+function finalsCardHalfSize(t){
+  var size=1; while(size<(t.finalists||[]).length) size*=2;
+  return Math.max(1, size/2);
+}
+function finalsCardOf(t, id){ return (t.finalsDrawCards && t.finalsDrawCards[id]) || null; }
+function finalsCardLabel(card){ return (card.suit==="spade" ? "♠" : "♥")+card.number; }
 function finalsDrawAllDrawn(t){
   if(!t.finalists || !t.finalists.length) return false;
-  return t.finalists.every(function(id){ return !!finalsDrawNumberOf(t, id); });
+  return t.finalists.every(function(id){ return !!finalsCardOf(t, id); });
 }
-function resetFinalsDrawNumbers(t){
-  t.finalsDrawNumbers = {};
+function resetFinalsDrawCards(t){
+  t.finalsDrawCards = {};
+}
+function drawFinalsCardFor(t, id){
+  if(!t.finalists || t.finalists.indexOf(id)<0) return;
+  if(!t.finalsDrawCards) t.finalsDrawCards = {};
+  if(t.finalsDrawCards[id]) return;
+  var half = finalsCardHalfSize(t);
+  var taken = {};
+  Object.keys(t.finalsDrawCards).forEach(function(pid){
+    var c = t.finalsDrawCards[pid];
+    taken[c.suit+c.number] = true;
+  });
+  var remaining = [];
+  ["spade","heart"].forEach(function(suit){
+    for(var n=1;n<=half;n++){ if(!taken[suit+n]) remaining.push({suit:suit, number:n}); }
+  });
+  if(!remaining.length) return;
+  t.finalsDrawCards[id] = remaining[Math.floor(Math.random()*remaining.length)];
 }
 function applyFinalsDraw(t){
   if(!t.finalists || !t.finalists.length) return;
   if(t.status==="completed") reverseFinalize(t);
-  var draws = t.finalsDrawNumbers || {};
-  var sorted = t.finalists.slice().sort(function(a, b){
-    var da = draws[a], db = draws[b];
-    if(da!=null && db!=null) return da - db;
-    if(da!=null) return -1;
-    if(db!=null) return 1;
-    return pointsOf(b) - pointsOf(a);
+  var half = finalsCardHalfSize(t);
+  var slots = new Array(half*2).fill(null);
+  var draws = t.finalsDrawCards || {};
+  t.finalists.forEach(function(id){
+    var card = draws[id];
+    if(!card) return;
+    var idx = (card.number-1)*2 + (card.suit==="spade" ? 0 : 1);
+    if(idx>=0 && idx<slots.length) slots[idx] = id;
   });
-  var size=1; while(size<sorted.length) size*=2;
-  var order = seedOrder(size);
-  var slots = order.map(function(seedIdx){ return sorted[seedIdx-1] || null; });
   rebuildFinalsFromSlots(t, slots);
 }
 function finalsHasProgress(t){
@@ -4084,7 +4109,7 @@ document.addEventListener("click", function(e){
     var idDraw=t.getAttribute("data-id");
     var eDraw = state.entries[idDraw];
     if(!eDraw || !eDraw.entered || eDraw.drawNumber) return;
-    eDraw.drawNumber = Math.floor(Math.random()*9999)+1;
+    eDraw.drawNumber = Math.floor(Math.random()*999)+1;
     saveState(); render();
   }
   else if(action==="reset-draw-numbers"){
@@ -4155,16 +4180,13 @@ document.addEventListener("click", function(e){
     var tidfd=t.getAttribute("data-tid"); var tourfd=findTournament(tidfd);
     if(!tourfd || !tourfd.finalists) return;
     var idfd=t.getAttribute("data-id");
-    if(tourfd.finalists.indexOf(idfd)<0) return;
-    if(!tourfd.finalsDrawNumbers) tourfd.finalsDrawNumbers = {};
-    if(tourfd.finalsDrawNumbers[idfd]) return;
-    tourfd.finalsDrawNumbers[idfd] = Math.floor(Math.random()*9999)+1;
+    drawFinalsCardFor(tourfd, idfd);
     saveState(); render();
   }
   else if(action==="reset-finals-draw-numbers"){
     var tidfr=t.getAttribute("data-tid"); var tourfr=findTournament(tidfr);
     if(!tourfr) return;
-    if(confirm("決勝の抽選番号をリセットしますか?")){ resetFinalsDrawNumbers(tourfr); saveState(); render(); }
+    if(confirm("決勝のカード抽選をリセットしますか?")){ resetFinalsDrawCards(tourfr); saveState(); render(); }
   }
   else if(action==="apply-finals-draw"){
     var tidfa=t.getAttribute("data-tid"); var tourfa=findTournament(tidfa);
