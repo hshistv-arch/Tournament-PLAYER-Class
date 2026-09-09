@@ -1633,7 +1633,7 @@ function advanceLB(prelim, maxRounds){
   }
 }
 function advanceElimGroup(t, g){
-  maybeAdvanceRounds(g.wb, hasLoserBracket(t) ? t.advancePerGroupWB : null);
+  maybeAdvanceRounds(g.wb, hasLoserBracket(t) ? t.advancePerGroupWB : t.advancePerGroup);
   if(t.prelimType==="double") advanceLB(g);
   else if(t.prelimType==="round1Double") advanceLB(g, 1);
 }
@@ -4639,6 +4639,7 @@ document.addEventListener("change", function(e){
       unwindFinalsIfNeeded(tourAG);
     }
     tourAG.advancePerGroup = vAG;
+    (tourAG.groups||[]).forEach(function(gAG){ advanceElimGroup(tourAG, gAG); recomputeElimGroup(tourAG, gAG); });
     saveState(); render();
   }
   else if(action==="update-advance-per-group-wb"){
