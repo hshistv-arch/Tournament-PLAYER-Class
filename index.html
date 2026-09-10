@@ -1986,12 +1986,18 @@ function finalizeTournamentSetup(t, opts){
   t.usePointsAndSets = opts.usePointsAndSets!==false;
   t.setCountTable = opts.setCountTable==="B" ? "B" : "A";
   t.useSchedule = opts.useSchedule===true;
-  t.manualClasses = opts.manualClasses ? Object.assign({}, opts.manualClasses) : {};
   var eligible = eligiblePlayerIdsForTournament(t, t.usePointsAndSets);
   var basePool = eligible.length ? eligible : state.players.map(function(p){ return p.id; });
   t.eligiblePlayerIds = (opts.selectedIds && opts.selectedIds.length)
     ? basePool.concat(opts.selectedIds.filter(function(id){ return basePool.indexOf(id)<0; }))
     : basePool;
+  t.manualClasses = {};
+  if(!t.usePointsAndSets){
+    t.eligiblePlayerIds.forEach(function(id){
+      var p = getPlayer(id);
+      if(p) t.manualClasses[id] = p.manualEntryClass || manualTierOf(classOf(p.points));
+    });
+  }
   if(opts.format==="blockPrelim"){
     var sizes = distributeCount(opts.totalParticipants, opts.groupCount);
     var perGroupIds = null;
@@ -2603,7 +2609,7 @@ function renderTournamentEntrySection(t){
       '<td>'+drawCell+'</td></tr>';
   }).join("");
   function modeCard(value, checked, title, desc){
-    return '<label class="radio-card'+(checked?' checked':'')+'"><input type="radio" name="entryMode" value="'+value+'"'+(checked?' checked':'')+' data-action="entry-mode-radio">'+
+    return '<label class="radio-card'+(checked?' checked':'')+'"><input type="radio" name="entryMode" value="'+value+'"'+(checked?' checked':'')+' data-action="entry-mode-radio" data-tid="'+t.id+'">'+
       '<div><div class="rc-title">'+title+'</div><div class="rc-desc">'+desc+'</div></div></label>';
   }
   var addForm = entryMode==="noPoints" ?
@@ -2864,7 +2870,6 @@ function ensureTournamentSetupState(t){
   route.tournamentSetup = route.tournamentSetup || {};
   var nt = route.tournamentSetup[t.id];
   if(!nt){
-    var eligibleIds = eligiblePlayerIdsForTournament(t, true);
     nt = route.tournamentSetup[t.id] = {
       format:"elimPrelim", prelimType:"single", lbOneSetDown:true,
       advancePerGroup:4,
@@ -2873,54 +2878,23 @@ function ensureTournamentSetupState(t){
       usePointsAndSets: true,
       setCountTable: "A",
       useSchedule: false,
-      manualClasses: {},
-      useEntryFilter: true,
-      selectedIds: eligibleIds.slice(),
-      totalParticipants: Math.max(2, eligibleIds.length || 8),
-      participantsTouched: false
+      totalParticipants: 8
     };
-  } else if(!nt.participantsTouched){
-    // 出場選手を選択欄をまだ一度も手で触っていない間は、エントリー状況の変化(チェック・参加費受領・抽選)を都度自動で反映する
-    var freshEligible = eligiblePlayerIdsForTournament(t, nt.usePointsAndSets);
-    nt.selectedIds = freshEligible.slice();
-    nt.totalParticipants = Math.max(2, freshEligible.length || 8);
   }
+  // 出場選手はエントリー受付(エントリー・参加費受領済み)の状況をそのまま使う
+  var eligibleIds = eligiblePlayerIdsForTournament(t, nt.usePointsAndSets);
+  nt.selectedIds = eligibleIds.slice();
+  if(eligibleIds.length) nt.totalParticipants = eligibleIds.length;
   return nt;
 }
 function renderTournamentSetupSection(t){
   var nt = ensureTournamentSetupState(t);
   var autoBracketSize = smallestBracketSizeFor(Math.max(2, nt.totalParticipants||2));
-  var eligibleIds = eligiblePlayerIdsForTournament(t, nt.usePointsAndSets);
-  var eligibleCount = eligibleIds.length;
-  var useFilter = nt.useEntryFilter!==false;
-  var pickPool = ((useFilter && eligibleCount) ? state.players.filter(function(p){ return eligibleIds.indexOf(p.id)>=0; }) : state.players.filter(function(p){ return nt.usePointsAndSets===false || !p.isGuest; }))
-    .sort(function(a,b){ var ka=a.kana||a.name, kb=b.kana||b.name; return ka.localeCompare(kb,"ja"); });
-  var activeElsewhere = playersActiveInOtherTournaments();
+  var eligibleCount = nt.selectedIds.length;
   function radioCard(name, value, checked, title, desc){
     return '<label class="radio-card'+(checked?' checked':'')+'"><input type="radio" name="'+name+'" value="'+value+'"'+(checked?' checked':'')+' data-action="'+name+'-radio" data-tid="'+t.id+'">'+
       '<div><div class="rc-title">'+title+'</div><div class="rc-desc">'+desc+'</div></div></label>';
   }
-  var pickRows = pickPool.map(function(p){
-    var checked = nt.selectedIds.indexOf(p.id)>=0;
-    var manualClassSelect = "";
-    if(nt.usePointsAndSets===false && checked){
-      if(!nt.manualClasses[p.id]) nt.manualClasses[p.id] = p.manualEntryClass || manualTierOf(classOf(p.points));
-      manualClassSelect = '<select data-action="update-manual-class" data-tid="'+t.id+'" data-id="'+p.id+'" style="width:6rem;flex:none">'+
-        MANUAL_CLASS_OPTIONS.map(function(c){ return '<option value="'+c+'"'+((nt.manualClasses&&nt.manualClasses[p.id]===c)?' selected':'')+'>'+c+'</option>'; }).join("")+
-      '</select>';
-    }
-    var showChecklistBadge = !(nt.usePointsAndSets===false && checked);
-    var checklistCls = nt.usePointsAndSets===false
-      ? (checked ? nt.manualClasses[p.id] : (p.manualEntryClass || manualTierOf(classOf(p.points))))
-      : classOf(p.points);
-    var isActiveElsewhere = !!activeElsewhere[p.id];
-    return '<div style="display:flex;align-items:center;gap:.4rem;padding:.3rem .4rem;border-bottom:1px solid var(--border)'+(isActiveElsewhere?';background:#ddd;color:#777':checked?';background:var(--surface-2)':'')+'">'+
-      '<label class="hint" style="display:flex;align-items:center;gap:.4rem;cursor:pointer;flex:1;min-width:0'+(isActiveElsewhere?';color:#777':'')+'">'+
-        '<input type="checkbox" data-action="toggle-select-participant" data-tid="'+t.id+'" data-id="'+p.id+'" '+(checked?"checked":"")+'>'+
-        '<span style="flex:1">'+esc(p.name)+'</span>'+(isActiveElsewhere?'<span class="hint" style="font-size:.7rem;color:#777">(他大会で対戦中)</span>':'')+(showChecklistBadge?badge(checklistCls):'')+
-      '</label>'+manualClassSelect+
-    '</div>';
-  }).join("");
   return ''+
   '<div class="card"><h3 style="margin-top:0">試合形式を選択して大会を開始する</h3><p class="hint">出場選手の割当は大会開始後、トーナメント表/ブロック表の中で行います。</p></div>'+
   '<div class="card"><p class="hint">このエントリー受付でエントリー・参加費受領済みの選手: <b class="num">'+eligibleCount+'</b>名'+
@@ -2950,20 +2924,6 @@ function renderTournamentSetupSection(t){
           radioCard("useSchedule","yes", nt.useSchedule===true, "作成する", "各試合に開始時間を指定できるようになります(大会開始後も対戦カードからいつでも編集できます)。")+
         '</div>'+
       '</div>'+
-    '</div>'+
-    '<div class="card">'+
-      '<div class="form-row" style="align-items:center;justify-content:space-between;gap:.5rem">'+
-        '<h3 style="margin:0">出場選手を選択</h3>'+
-        '<button class="btn btn-sm btn-ghost" type="button" data-action="reload-new-tournament-participants" data-tid="'+t.id+'">🔄 エントリー状況を再読み込み</button>'+
-      '</div>'+
-      '<p class="hint">チェックした選手が参加人数・組み合わせに使われます。欠席者はチェックを外してください。この画面を開いた後にエントリー・参加費受領・抽選番号を変更した場合は、上の「🔄 エントリー状況を再読み込み」で最新の状態を反映できます(すでにチェック・変更した内容は失われます)。</p>'+
-      '<label class="hint" style="display:flex;align-items:center;gap:.4rem;cursor:pointer;margin-bottom:.5rem">'+
-        '<input type="checkbox" data-action="entry-filter-toggle" data-tid="'+t.id+'" '+(useFilter?"checked":"")+'>'+
-        'エントリー受付でチェック済みの選手のみ表示する(外すとロースター全員が対象になります)'+
-      '</label>'+
-      (useFilter && eligibleCount===0 ? '<p class="hint">エントリー受付でチェック済みの選手がいないため、ロースター全員を表示しています。</p>' : '')+
-      '<p class="hint num">選択中: '+nt.selectedIds.length+'名</p>'+
-      '<div class="table-wrap" id="participant-picker-scroll" data-preserve-scroll style="max-height:16rem;overflow-y:auto">'+pickRows+'</div>'+
     '</div>'+
     '<div class="card">'+
       '<h3>① 試合形式</h3>'+
@@ -3008,12 +2968,12 @@ function renderTournamentSetupSection(t){
     '</div>'+
     '<div class="card">'+
       '<h3>参加人数</h3>'+
-      (nt.selectedIds.length>0 ?
-        '<p class="hint">総参加人数: <b class="num">'+nt.totalParticipants+'</b>名(上の「出場選手を選択」でのチェック数から自動設定されます)</p>'
+      (eligibleCount>0 ?
+        '<p class="hint">総参加人数: <b class="num">'+nt.totalParticipants+'</b>名(エントリー受付でエントリー・参加費受領済みの人数から自動設定されます)</p>'
         :
         '<div class="form-row"><div class="field"><label>総参加人数</label><input type="number" data-action="totalParticipants-input" data-tid="'+t.id+'" value="'+nt.totalParticipants+'" min="2" style="width:7rem"></div></div>'
       )+
-      '<p class="hint">出場選手は上のチェックから自動でトーナメント表/ブロック表に割り当てられます(大会開始後にも組み替え可能です)。</p>'+
+      '<p class="hint">出場選手はエントリー受付の内容からトーナメント表/ブロック表に自動で割り当てられます(大会開始後にも組み替え可能です)。</p>'+
     '</div>'+
     '<div style="display:flex;gap:.6rem;margin-top:.2rem"><button type="submit" class="btn btn-primary">大会を開始する</button></div>'+
   '</form>';
@@ -4221,7 +4181,12 @@ document.addEventListener("click", function(e){
   else if(action==="roster-sort"){ route.rosterSort = t.getAttribute("data-sort"); render(); }
   else if(action==="roster-tab"){ route.rosterTab = t.getAttribute("data-tab"); render(); }
   else if(action==="entry-sort"){ route.entrySort = t.getAttribute("data-sort"); render(); }
-  else if(action==="entry-mode-radio"){ route.entryMode = t.value==="noPoints" ? "noPoints" : "points"; render(); }
+  else if(action==="entry-mode-radio"){
+    route.entryMode = t.value==="noPoints" ? "noPoints" : "points";
+    var tidEM=t.getAttribute("data-tid"); var tourEM=findTournament(tidEM);
+    if(tourEM){ var ntem = ensureTournamentSetupState(tourEM); ntem.usePointsAndSets = t.value!=="noPoints"; }
+    render();
+  }
   else if(action==="export-roster-csv"){ exportRosterCSV(); }
   else if(action==="print-page"){ window.print(); }
   else if(action==="print-scope-radio"){ route.printScope = t.value==="finalsOnly" ? "finalsOnly" : "all"; render(); }
@@ -4380,16 +4345,6 @@ document.addEventListener("click", function(e){
   else if(action==="refresh-entries-from-server"){
     syncFromServer(render);
   }
-  else if(action==="reload-new-tournament-participants"){
-    var tidRl=t.getAttribute("data-tid"); var tourRl=findTournament(tidRl); if(!tourRl) return;
-    syncFromServer(function(){
-      var ntRl = ensureTournamentSetupState(tourRl);
-      var freshEligible = eligiblePlayerIdsForTournament(tourRl, ntRl.usePointsAndSets);
-      ntRl.selectedIds = freshEligible.slice();
-      ntRl.totalParticipants = Math.max(2, freshEligible.length || 8);
-      render();
-    });
-  }
   else if(action==="confirm-lineup"){
     var tidc=t.getAttribute("data-tid"); var tourc=findTournament(tidc);
     if(tourc) confirmLineup(tourc);
@@ -4533,12 +4488,6 @@ document.addEventListener("change", function(e){
     var tidLB=t.getAttribute("data-tid"); var tourLB=findTournament(tidLB); if(!tourLB) return;
     var ntlb = ensureTournamentSetupState(tourLB); ntlb.lbOneSetDown = t.checked; render();
   }
-  else if(action==="update-manual-class"){
-    var tidMC=t.getAttribute("data-tid"); var tourMC=findTournament(tidMC); if(!tourMC) return;
-    var ntmc = ensureTournamentSetupState(tourMC);
-    ntmc.manualClasses = ntmc.manualClasses || {};
-    ntmc.manualClasses[t.getAttribute("data-id")] = t.value;
-  }
   else if(action==="update-manual-class-live"){
     var tidmcl = t.getAttribute("data-tid");
     var tourmcl = findTournament(tidmcl);
@@ -4546,17 +4495,6 @@ document.addEventListener("change", function(e){
     tourmcl.manualClasses = tourmcl.manualClasses || {};
     tourmcl.manualClasses[t.getAttribute("data-id")] = t.value;
     saveState(); render();
-  }
-  else if(action==="toggle-select-participant"){
-    var tidSel=t.getAttribute("data-tid"); var tourSel=findTournament(tidSel); if(!tourSel) return;
-    var ntsel = ensureTournamentSetupState(tourSel);
-    var pid = t.getAttribute("data-id");
-    var idx = ntsel.selectedIds.indexOf(pid);
-    if(t.checked && idx<0) ntsel.selectedIds.push(pid);
-    else if(!t.checked && idx>=0) ntsel.selectedIds.splice(idx,1);
-    if(ntsel.selectedIds.length>0) ntsel.totalParticipants = ntsel.selectedIds.length;
-    ntsel.participantsTouched = true;
-    render();
   }
   else if(action==="change-format"){
     var tidCF = t.getAttribute("data-tid"); var tourCF = findTournament(tidCF);
@@ -4596,17 +4534,6 @@ document.addEventListener("change", function(e){
       arrTB.splice(idxTB,1);
     }
     saveState(); render();
-  }
-  else if(action==="entry-filter-toggle"){
-    var tidEF=t.getAttribute("data-tid"); var tourEF=findTournament(tidEF); if(!tourEF) return;
-    var ntef = ensureTournamentSetupState(tourEF);
-    ntef.useEntryFilter = t.checked;
-    var eligibleIdsEF = eligiblePlayerIdsForTournament(tourEF, ntef.usePointsAndSets);
-    var poolEF = (ntef.useEntryFilter && eligibleIdsEF.length) ? eligibleIdsEF : state.players.map(function(p){ return p.id; });
-    ntef.selectedIds = ntef.selectedIds.filter(function(id){ return poolEF.indexOf(id)>=0; });
-    if(ntef.selectedIds.length>0) ntef.totalParticipants = ntef.selectedIds.length;
-    ntef.participantsTouched = true;
-    render();
   }
   else if(action==="toggle-entry"){
     var tidTE=t.getAttribute("data-tid"); var tourTE=findTournament(tidTE); if(!tourTE) return;
@@ -4921,11 +4848,11 @@ document.addEventListener("submit", function(e){
       var effectiveAdvancePerGroup = hasLoserBracketType(nt.prelimType) ? (nt.advancePerGroupWB+nt.advancePerGroupLB) : nt.advancePerGroup;
       if(hasLoserBracketType(nt.prelimType) && effectiveAdvancePerGroup<1){ alert("決勝進出人数(勝者側+敗者側)は1名以上にしてください。"); return; }
       if(bracketSize < effectiveAdvancePerGroup){ alert("決勝進出人数がフォーマットの人数より多くなっています。"); return; }
-      finalizeTournamentSetup(tourTS, {format:"elimPrelim", prelimType:nt.prelimType, lbOneSetDown:nt.lbOneSetDown, bracketSize:bracketSize, advancePerGroup:effectiveAdvancePerGroup, advancePerGroupWB:nt.advancePerGroupWB, advancePerGroupLB:nt.advancePerGroupLB, totalParticipants:nt.totalParticipants, selectedIds:nt.selectedIds, usePointsAndSets:nt.usePointsAndSets, setCountTable:nt.setCountTable, useSchedule:nt.useSchedule, manualClasses:nt.manualClasses});
+      finalizeTournamentSetup(tourTS, {format:"elimPrelim", prelimType:nt.prelimType, lbOneSetDown:nt.lbOneSetDown, bracketSize:bracketSize, advancePerGroup:effectiveAdvancePerGroup, advancePerGroupWB:nt.advancePerGroupWB, advancePerGroupLB:nt.advancePerGroupLB, totalParticipants:nt.totalParticipants, selectedIds:nt.selectedIds, usePointsAndSets:nt.usePointsAndSets, setCountTable:nt.setCountTable, useSchedule:nt.useSchedule});
     } else {
       if(nt.totalParticipants < nt.blockCount*2){ alert("参加人数がブロック数に対して少なすぎます。"); return; }
       if(Math.floor(nt.totalParticipants/nt.blockCount) < nt.advancePerBlock){ alert("各ブロックからの決勝進出人数が、1ブロックあたりの人数より多くなっています。"); return; }
-      finalizeTournamentSetup(tourTS, {format:"blockPrelim", groupCount:nt.blockCount, advancePerBlock:nt.advancePerBlock, totalParticipants:nt.totalParticipants, selectedIds:nt.selectedIds, usePointsAndSets:nt.usePointsAndSets, setCountTable:nt.setCountTable, useSchedule:nt.useSchedule, manualClasses:nt.manualClasses});
+      finalizeTournamentSetup(tourTS, {format:"blockPrelim", groupCount:nt.blockCount, advancePerBlock:nt.advancePerBlock, totalParticipants:nt.totalParticipants, selectedIds:nt.selectedIds, usePointsAndSets:nt.usePointsAndSets, setCountTable:nt.setCountTable, useSchedule:nt.useSchedule});
     }
   }
 }, false);
