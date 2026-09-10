@@ -2673,11 +2673,14 @@ function renderTournamentEntrySection(t){
       '<button class="btn btn-sm btn-ghost" data-action="reset-draw-numbers" data-tid="'+t.id+'">🎲 抽選番号をリセット</button>'+
     '</div>'+
     '<details style="margin-top:.6rem"><summary class="hint" style="cursor:pointer">📱 スマホ用エントリー・抽選画面を開く</summary><div style="margin-top:.5rem">'+
-      '<p class="hint">①マンスリー大会用: 選手ロースターから名前を検索して自分でエントリー・抽選ができます(他の選手のクラスポイントには影響する通常の大会向けです)。</p>'+
-      qrDetailsHTML(drawUrlFor(t.id))+
-      '<p class="hint" style="margin-top:.8rem">②イベント用: G-SPeCポイントに影響しないイベント参加者向けです。最初に氏名・読みカナ・所属・クラスを登録すると、以降はその端末で自動的に呼び出され、他の参加者の名前は表示されません。</p>'+
-      qrDetailsHTML(drawUrlFor(t.id, "event"))+
-      '<p class="hint" style="margin-top:.6rem">参加費受領のチェックはいずれもこの管理画面から行ってください。</p>'+
+      (entryMode==="noPoints" ? (
+        '<p class="hint">②イベント用: G-SPeCポイントに影響しないイベント参加者向けです。最初に氏名・読みカナ・所属・クラスを登録すると、以降はその端末で自動的に呼び出され、他の参加者の名前は表示されません。</p>'+
+        qrDetailsHTML(drawUrlFor(t.id, "event"))
+      ) : (
+        '<p class="hint">①マンスリー大会用: 選手ロースターから名前を検索して自分でエントリー・抽選ができます(他の選手のクラスポイントには影響する通常の大会向けです)。</p>'+
+        qrDetailsHTML(drawUrlFor(t.id))
+      ))+
+      '<p class="hint" style="margin-top:.6rem">参加費受領のチェックはこの管理画面から行ってください。</p>'+
     '</div></details>'+
   '</div>';
 }
