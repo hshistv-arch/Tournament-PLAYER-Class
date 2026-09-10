@@ -1232,10 +1232,12 @@ function playersActiveInOtherTournaments(excludeTournamentId){
   });
   return active;
 }
-function eligiblePlayerIdsForNewEvent(){
+function eligiblePlayerIdsForNewEvent(usePoints){
   return state.players.filter(function(p){
     var e = state.entries[p.id];
-    return e && e.entered && e.feePaid;
+    if(!e || !e.entered || !e.feePaid) return false;
+    if(usePoints!==false && p.isGuest) return false;
+    return true;
   }).map(function(p){ return p.id; });
 }
 
@@ -1963,7 +1965,7 @@ function deletePlayer(id){
 function createTournament(opts){
   var id = "t_"+Date.now();
   var t = { id:id, name:opts.name, format:opts.format, createdAt:Date.now(), eventDate: opts.eventDate || dateStamp(), status:"assigning", usePointsAndSets: opts.usePointsAndSets!==false, setCountTable: opts.setCountTable==="B" ? "B" : "A", useSchedule: opts.useSchedule===true, manualClasses: opts.manualClasses ? Object.assign({}, opts.manualClasses) : {} };
-  var eligible = eligiblePlayerIdsForNewEvent();
+  var eligible = eligiblePlayerIdsForNewEvent(t.usePointsAndSets);
   var basePool = eligible.length ? eligible : state.players.map(function(p){ return p.id; });
   t.eligiblePlayerIds = (opts.selectedIds && opts.selectedIds.length)
     ? basePool.concat(opts.selectedIds.filter(function(id){ return basePool.indexOf(id)<0; }))
@@ -2839,10 +2841,10 @@ function ensureNewTournamentState(){
 function renderNewTournament(){
   var nt = ensureNewTournamentState();
   var autoBracketSize = smallestBracketSizeFor(Math.max(2, nt.totalParticipants||2));
-  var eligibleIds = eligiblePlayerIdsForNewEvent();
+  var eligibleIds = eligiblePlayerIdsForNewEvent(nt.usePointsAndSets);
   var eligibleCount = eligibleIds.length;
   var useFilter = nt.useEntryFilter!==false;
-  var pickPool = ((useFilter && eligibleCount) ? state.players.filter(function(p){ return eligibleIds.indexOf(p.id)>=0; }) : state.players.slice())
+  var pickPool = ((useFilter && eligibleCount) ? state.players.filter(function(p){ return eligibleIds.indexOf(p.id)>=0; }) : state.players.filter(function(p){ return nt.usePointsAndSets===false || !p.isGuest; }))
     .sort(function(a,b){ var ka=a.kana||a.name, kb=b.kana||b.name; return ka.localeCompare(kb,"ja"); });
   var activeElsewhere = playersActiveInOtherTournaments();
   function radioCard(name, value, checked, title, desc){
@@ -3408,7 +3410,7 @@ function rosterOptionsHTML(currentValue, allowBye, eligibleIds, usedElsewhere, a
   return opts;
 }
 function refreshEligibleFromEntries(t){
-  var eligible = eligiblePlayerIdsForNewEvent();
+  var eligible = eligiblePlayerIdsForNewEvent(t.usePointsAndSets);
   var basePool = eligible.length ? eligible : state.players.map(function(p){ return p.id; });
   var assignedIds = [];
   (t.format==="blockPrelim" ? (t.blocks||[]) : (t.groups||[])).forEach(function(g){
@@ -4315,7 +4317,7 @@ document.addEventListener("click", function(e){
   else if(action==="reload-new-tournament-participants"){
     syncFromServer(function(){
       var ntRl = ensureNewTournamentState();
-      var freshEligible = eligiblePlayerIdsForNewEvent();
+      var freshEligible = eligiblePlayerIdsForNewEvent(ntRl.usePointsAndSets);
       ntRl.selectedIds = freshEligible.slice();
       ntRl.totalParticipants = Math.max(2, freshEligible.length || 8);
       render();
@@ -4533,7 +4535,7 @@ document.addEventListener("change", function(e){
   else if(action==="entry-filter-toggle"){
     var ntef = ensureNewTournamentState();
     ntef.useEntryFilter = t.checked;
-    var eligibleIdsEF = eligiblePlayerIdsForNewEvent();
+    var eligibleIdsEF = eligiblePlayerIdsForNewEvent(ntef.usePointsAndSets);
     var poolEF = (ntef.useEntryFilter && eligibleIdsEF.length) ? eligibleIdsEF : state.players.map(function(p){ return p.id; });
     ntef.selectedIds = ntef.selectedIds.filter(function(id){ return poolEF.indexOf(id)>=0; });
     if(ntef.selectedIds.length>0) ntef.totalParticipants = ntef.selectedIds.length;
