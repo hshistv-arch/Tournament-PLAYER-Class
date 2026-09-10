@@ -634,8 +634,8 @@ function displayUrlFor(tid){
 function streamPickerUrlFor(tid){
   return location.origin + location.pathname + "?stream=1&id=" + tid;
 }
-function drawUrlFor(tid){
-  return location.origin + location.pathname + "?draw=1" + (tid ? ("&tid="+encodeURIComponent(tid)) : "");
+function drawUrlFor(tid, eventMode){
+  return location.origin + location.pathname + "?draw=1" + (tid ? ("&tid="+encodeURIComponent(tid)) : "") + (eventMode ? "&event=1" : "");
 }
 function streamScoreboardUrlFor(tid, scope, idx, side, mid, transparent){
   var u = location.origin + location.pathname + "?stream=1&id="+tid+"&scope="+scope+"&mid="+encodeURIComponent(mid);
@@ -759,6 +759,13 @@ function defaultState(){
 }
 
 var STORAGE_KEY = "billiards_tourney_state_v4";
+var EVENT_PLAYER_KEY = "billiards_event_player_id_v1";
+function getStoredEventPlayerId(){
+  try{ return localStorage.getItem(EVENT_PLAYER_KEY); }catch(e){ return null; }
+}
+function setStoredEventPlayerId(id){
+  try{ if(id) localStorage.setItem(EVENT_PLAYER_KEY, id); else localStorage.removeItem(EVENT_PLAYER_KEY); }catch(e){}
+}
 var state = null;
 
 function migrateBestBorC(parsed){
@@ -1262,6 +1269,7 @@ var STREAM_POLL_MS = 4000;
 // ---------- draw mode (mobile-friendly lottery-number screen) ----------
 var DRAW_MODE = /(^|[?&])draw=1(&|$)/.test(location.search);
 var DRAW_TID = streamParam("tid");
+var DRAW_EVENT_MODE = /(^|[?&])event=1(&|$)/.test(location.search);
 var DRAW_POLL_MS = 4000;
 
 // ---------- generic helpers ----------
@@ -2642,7 +2650,13 @@ function renderEntry(){
       '<button class="btn btn-sm btn-ghost" data-action="reset-entries">エントリーをリセット</button>'+
       '<button class="btn btn-sm btn-ghost" data-action="reset-draw-numbers">🎲 抽選番号をリセット</button>'+
     '</div>'+
-    '<details style="margin-top:.6rem"><summary class="hint" style="cursor:pointer">📱 スマホ用エントリー・抽選画面を開く</summary><div style="margin-top:.5rem"><p class="hint">選手が各自のスマートフォンでこのQRコード・URLを開き、名前を検索して自分でエントリー・抽選ができます(参加費受領のチェックはこの管理画面から行ってください)。</p>'+qrDetailsHTML(drawUrlFor())+'</div></details>'+
+    '<details style="margin-top:.6rem"><summary class="hint" style="cursor:pointer">📱 スマホ用エントリー・抽選画面を開く</summary><div style="margin-top:.5rem">'+
+      '<p class="hint">①マンスリー大会用: 選手ロースターから名前を検索して自分でエントリー・抽選ができます(他の選手のクラスポイントには影響する通常の大会向けです)。</p>'+
+      qrDetailsHTML(drawUrlFor())+
+      '<p class="hint" style="margin-top:.8rem">②イベント用: G-SPeCポイントに影響しないイベント参加者向けです。最初に氏名・読みカナ・所属・クラスを登録すると、以降はその端末で自動的に呼び出され、他の参加者の名前は表示されません。</p>'+
+      qrDetailsHTML(drawUrlFor(null, true))+
+      '<p class="hint" style="margin-top:.6rem">参加費受領のチェックはいずれもこの管理画面から行ってください。</p>'+
+    '</div></details>'+
   '</div>';
 }
 
@@ -3111,6 +3125,35 @@ function renderDrawScreen(){
       body = '<div class="page-head"><h1>決勝抽選</h1><p class="sub">'+esc(t.name)+'・自分の名前の隣のボタンを押すと、スペード・ハート(1〜'+half+')のカードを1枚引きます(一度引くとカードは変わりません)。同じ数字のスペードとハートを引いた人同士が1回戦の対戦相手になります。</p></div>'+
         '<div class="draw-list">'+frows+'</div>';
     }
+  } else if(DRAW_EVENT_MODE){
+    var storedId = getStoredEventPlayerId();
+    var storedPlayer = storedId ? getPlayer(storedId) : null;
+    if(!storedPlayer || !storedPlayer.isGuest){
+      if(storedId && !storedPlayer) setStoredEventPlayerId(null);
+      body = '<div class="page-head"><h1>イベントエントリー・抽選</h1><p class="sub">G-SPeCポイントに影響しないイベントへの参加登録です。氏名・読みカナ・所属・クラスを入力して登録してください(次回からはこの端末で自動的に呼び出され、再登録は不要です)。</p></div>'+
+        '<div class="card"><form data-form="qr-event-register" class="form-row">'+
+          '<div class="field"><label>氏名</label><input type="text" name="name" placeholder="例: 山田 太郎" required></div>'+
+          '<div class="field"><label>読みカナ</label><input type="text" name="kana" placeholder="例: ヤマダ タロウ"></div>'+
+          '<div class="field"><label>所属</label><input type="text" name="affiliation" placeholder="例: ○○クラブ"></div>'+
+          '<div class="field"><label>クラス</label><select name="cls" style="width:6rem">'+
+            MANUAL_CLASS_OPTIONS.map(function(c){ return '<option value="'+c+'">'+c+'</option>'; }).join("")+
+          '</select></div>'+
+          '<button type="submit" class="btn btn-primary">登録してエントリー</button>'+
+        '</form></div>';
+    } else {
+      var eEv = state.entries[storedPlayer.id] || {entered:false, feePaid:false};
+      var rightEv;
+      if(!eEv.entered){
+        rightEv = '<button type="button" class="btn btn-primary" data-action="qr-self-enter" data-id="'+storedPlayer.id+'">エントリーする</button>';
+      } else if(!eEv.drawNumber){
+        rightEv = '<button type="button" class="btn btn-sm btn-primary" data-action="draw-entry-number" data-id="'+storedPlayer.id+'">🎲 抽選する</button>';
+      } else {
+        rightEv = '<span class="slot-no draw-number-big">No.'+eEv.drawNumber+'</span>';
+      }
+      body = '<div class="page-head"><h1>イベントエントリー・抽選</h1><p class="sub">ご登録済みです。ご自身の情報のみ表示されます。</p></div>'+
+        '<div class="draw-list"><div class="draw-row"><span class="draw-name">'+esc(storedPlayer.name)+'</span>'+rightEv+'</div></div>'+
+        '<p class="hint" style="margin-top:1rem"><button type="button" class="btn btn-sm btn-ghost" data-action="qr-event-forget">別の名前で登録し直す</button></p>';
+    }
   } else {
     var qrSearch = route.entrySearch || "";
     var searchHTML = '<div class="field" style="max-width:24rem;margin:.5rem 0 1rem"><label>名前で検索</label><input type="text" placeholder="氏名または読みカナ" data-action="entry-search-input" value="'+esc(qrSearch)+'"></div>';
@@ -3118,23 +3161,10 @@ function renderDrawScreen(){
     if(!qrSearch){
       listHTML = '<p class="hint">お名前を検索すると、ご自身の名前が表示されます。</p>';
     } else {
-      var matched = state.players.filter(function(p){ return entrySearchMatches(p, qrSearch); })
+      var matched = state.players.filter(function(p){ return !p.isGuest && entrySearchMatches(p, qrSearch); })
         .sort(function(a,b){ var ka=a.kana||a.name, kb=b.kana||b.name; return ka.localeCompare(kb,"ja"); });
       if(!matched.length){
-        listHTML = '<p class="empty-note">「'+esc(qrSearch)+'」に一致する選手が見つかりません。</p>'+
-          '<div class="card" style="margin-top:.8rem">'+
-            '<h3 style="margin-top:0">新規登録してエントリー</h3>'+
-            '<p class="hint">ロースターに見つからない場合は、こちらから新規に登録してエントリーできます(G-SPeCポイントには影響しない、イベント大会出場選手としての登録です)。</p>'+
-            '<form data-form="qr-self-register" class="form-row">'+
-              '<div class="field"><label>氏名</label><input type="text" name="name" placeholder="例: 山田 太郎" value="'+esc(qrSearch)+'" required></div>'+
-              '<div class="field"><label>読みカナ</label><input type="text" name="kana" placeholder="例: ヤマダ タロウ"></div>'+
-              '<div class="field"><label>所属</label><input type="text" name="affiliation" placeholder="例: ○○クラブ"></div>'+
-              '<div class="field"><label>クラス</label><select name="cls" style="width:6rem">'+
-                MANUAL_CLASS_OPTIONS.map(function(c){ return '<option value="'+c+'">'+c+'</option>'; }).join("")+
-              '</select></div>'+
-              '<button type="submit" class="btn btn-primary">登録してエントリー</button>'+
-            '</form>'+
-          '</div>';
+        listHTML = '<p class="empty-note">「'+esc(qrSearch)+'」に一致する選手が見つかりません。ご自身の名前が無い場合は運営までご連絡ください。</p>';
       } else {
         listHTML = '<div class="draw-list">'+matched.map(function(p){
           var e = state.entries[p.id];
@@ -4169,6 +4199,12 @@ document.addEventListener("click", function(e){
     state.entries[idQE].entered = true;
     saveState(); render();
   }
+  else if(action==="qr-event-forget"){
+    if(confirm("登録をやり直しますか?(これまでの登録・エントリー内容はそのまま残ります)")){
+      setStoredEventPlayerId(null);
+      render();
+    }
+  }
   else if(action==="reset-draw-numbers"){
     if(confirm("全員の抽選番号をリセットしますか?エントリー状況・参加費受領は維持されます。")){
       Object.keys(state.entries).forEach(function(id){ state.entries[id].drawNumber = null; });
@@ -4751,12 +4787,13 @@ document.addEventListener("submit", function(e){
     }
     form.reset();
   }
-  else if(form.getAttribute("data-form")==="qr-self-register"){
+  else if(form.getAttribute("data-form")==="qr-event-register"){
     e.preventDefault();
     var fdQR = new FormData(form);
     var newQRId = addGuestPlayer(fdQR.get("name"), fdQR.get("kana"), fdQR.get("cls"), fdQR.get("affiliation"));
     if(newQRId){
       state.entries[newQRId] = {entered:true, feePaid:false};
+      setStoredEventPlayerId(newQRId);
       saveState(); render();
     }
   }
