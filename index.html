@@ -3130,13 +3130,14 @@ function renderDrawScreen(){
     var storedPlayer = storedId ? getPlayer(storedId) : null;
     if(!storedPlayer || !storedPlayer.isGuest){
       if(storedId && !storedPlayer) setStoredEventPlayerId(null);
-      body = '<div class="page-head"><h1>イベントエントリー・抽選</h1><p class="sub">G-SPeCポイントに影響しないイベントへの参加登録です。氏名・読みカナ・所属・クラスを入力して登録してください(次回からはこの端末で自動的に呼び出され、再登録は不要です)。</p></div>'+
+      var qef = route.qrEventForm || {};
+      body = '<div class="page-head"><h1>イベントエントリー・抽選</h1><p class="sub">参加登録です。氏名・読みカナ・所属・クラスを入力して登録してください(次回からはこの端末で自動的に呼び出され、再登録は不要です)。</p></div>'+
         '<div class="card"><form data-form="qr-event-register" class="form-row">'+
-          '<div class="field"><label>氏名</label><input type="text" name="name" placeholder="例: 山田 太郎" required></div>'+
-          '<div class="field"><label>読みカナ</label><input type="text" name="kana" placeholder="例: ヤマダ タロウ"></div>'+
-          '<div class="field"><label>所属</label><input type="text" name="affiliation" placeholder="例: ○○クラブ"></div>'+
-          '<div class="field"><label>クラス</label><select name="cls" style="width:6rem">'+
-            MANUAL_CLASS_OPTIONS.map(function(c){ return '<option value="'+c+'">'+c+'</option>'; }).join("")+
+          '<div class="field"><label>氏名</label><input type="text" name="name" data-action="qr-event-name-input" placeholder="例: 山田 太郎" value="'+esc(qef.name||"")+'" required></div>'+
+          '<div class="field"><label>読みカナ</label><input type="text" name="kana" data-action="qr-event-kana-input" placeholder="例: ヤマダ タロウ" value="'+esc(qef.kana||"")+'"></div>'+
+          '<div class="field"><label>所属</label><input type="text" name="affiliation" data-action="qr-event-affiliation-input" placeholder="例: ○○クラブ" value="'+esc(qef.affiliation||"")+'"></div>'+
+          '<div class="field"><label>クラス</label><select name="cls" data-action="qr-event-cls-select" style="width:6rem">'+
+            MANUAL_CLASS_OPTIONS.map(function(c){ return '<option value="'+c+'"'+(c===(qef.cls||"P")?" selected":"")+'>'+c+'</option>'; }).join("")+
           '</select></div>'+
           '<button type="submit" class="btn btn-primary">登録してエントリー</button>'+
         '</form></div>';
@@ -4412,12 +4413,19 @@ document.addEventListener("click", function(e){
   }
 }, false);
 
+var QR_EVENT_FORM_FIELDS = {"qr-event-name-input":"name", "qr-event-kana-input":"kana", "qr-event-affiliation-input":"affiliation"};
 document.addEventListener("input", function(e){
   var t = e.target;
   var action = t.getAttribute && t.getAttribute("data-action");
   if(action==="entry-search-input"){
     if(e.isComposing) return;
     route.entrySearch = t.value;
+    render();
+  }
+  else if(QR_EVENT_FORM_FIELDS[action]){
+    if(e.isComposing) return;
+    route.qrEventForm = route.qrEventForm || {};
+    route.qrEventForm[QR_EVENT_FORM_FIELDS[action]] = t.value;
     render();
   }
 }, false);
@@ -4428,13 +4436,23 @@ document.addEventListener("compositionend", function(e){
     route.entrySearch = t.value;
     render();
   }
+  else if(QR_EVENT_FORM_FIELDS[action]){
+    route.qrEventForm = route.qrEventForm || {};
+    route.qrEventForm[QR_EVENT_FORM_FIELDS[action]] = t.value;
+    render();
+  }
 }, false);
 
 document.addEventListener("change", function(e){
   var t = e.target;
   var action = t.getAttribute && t.getAttribute("data-action");
   if(!action) return;
-  if(action==="update-points"){ updatePlayerPoints(t.getAttribute("data-id"), t.value); }
+  if(action==="qr-event-cls-select"){
+    route.qrEventForm = route.qrEventForm || {};
+    route.qrEventForm.cls = t.value;
+    render();
+  }
+  else if(action==="update-points"){ updatePlayerPoints(t.getAttribute("data-id"), t.value); }
   else if(action==="update-name"){ updatePlayerName(t.getAttribute("data-id"), t.value); }
   else if(action==="update-kana"){ updatePlayerKana(t.getAttribute("data-id"), t.value); }
   else if(action==="update-affiliation"){ updatePlayerAffiliation(t.getAttribute("data-id"), t.value); }
@@ -4794,6 +4812,7 @@ document.addEventListener("submit", function(e){
     if(newQRId){
       state.entries[newQRId] = {entered:true, feePaid:false};
       setStoredEventPlayerId(newQRId);
+      route.qrEventForm = null;
       saveState(); render();
     }
   }
