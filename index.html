@@ -2419,6 +2419,18 @@ function restoreFocusInfo(focusInfo){
     }
   }
 }
+// window.scrollTo()を再描画直後に呼ぶだけでは、モバイル端末側の非同期なスクロール位置の
+// 再調整(フォーカス喪失時の自動スクロールなど)で直後に上書きされてしまうことがあるため、
+// 次以降の描画フレームでも念のため再度スクロール位置を指定し直す
+function reassertScroll(x, y){
+  window.scrollTo(x, y);
+  if(window.requestAnimationFrame){
+    requestAnimationFrame(function(){
+      window.scrollTo(x, y);
+      requestAnimationFrame(function(){ window.scrollTo(x, y); });
+    });
+  }
+}
 function render(){
   if(DISPLAY_MODE){
     document.getElementById("main").innerHTML = renderDisplayScreen();
@@ -2432,7 +2444,7 @@ function render(){
     var drawScrollY = window.scrollY, drawScrollX = window.scrollX;
     var drawFocusInfo = captureFocusInfo();
     document.getElementById("main").innerHTML = renderDrawScreen();
-    window.scrollTo(drawScrollX, drawScrollY);
+    reassertScroll(drawScrollX, drawScrollY);
     restoreFocusInfo(drawFocusInfo);
     return;
   }
@@ -2456,7 +2468,7 @@ function render(){
   else if(route.screen==="tournament") html = renderTournamentScreen(route.id);
   else html = renderRoster();
   main.innerHTML = html;
-  window.scrollTo(scrollX, scrollY);
+  reassertScroll(scrollX, scrollY);
   innerScrollers.forEach(function(s){
     var el = document.getElementById(s.id);
     if(el) el.scrollTop = s.scrollTop;
