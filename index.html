@@ -950,7 +950,7 @@ function syncFromServer(cb){
       state = applyRosterUpdate(migrateAddBeClass(migrateBestBorC(serverState)));
       state.entries = state.entries || {};
       state.currentTournamentId = state.currentTournamentId || null;
-      if(!cb) render();
+      if(!cb && !isComposingText) render();
     }
     saveState();
     if(cb) cb();
@@ -1281,6 +1281,11 @@ var DRAW_TID = streamParam("tid");
 var DRAW_EVENT_MODE = /(^|[?&])event=1(&|$)/.test(location.search);
 var DRAW_FINALS_MODE = /(^|[?&])finals=1(&|$)/.test(location.search);
 var DRAW_POLL_MS = 4000;
+// IME変換中に定期同期の再描画が入力欄を作り直してしまうと、変換中の文字が消えてしまうため、
+// 変換中は自動更新による再描画を見送る(compositionend時の再描画で最新の内容には追いつく)
+var isComposingText = false;
+document.addEventListener("compositionstart", function(){ isComposingText = true; }, false);
+document.addEventListener("compositionend", function(){ isComposingText = false; }, false);
 
 // ---------- generic helpers ----------
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]; }); }
@@ -2405,8 +2410,10 @@ function render(){
     return;
   }
   if(DRAW_MODE){
+    var drawScrollY = window.scrollY, drawScrollX = window.scrollX;
     var drawFocusInfo = captureFocusInfo();
     document.getElementById("main").innerHTML = renderDrawScreen();
+    window.scrollTo(drawScrollX, drawScrollY);
     restoreFocusInfo(drawFocusInfo);
     return;
   }
@@ -2903,13 +2910,6 @@ function renderTournamentSetupSection(t){
   '<form data-form="tournament-setup" data-tid="'+t.id+'">'+
     '<div class="card">'+
       '<div style="margin-top:0">'+
-        '<label style="display:block;margin-bottom:.4rem">試合の種類</label>'+
-        '<div class="radio-card-row">'+
-          radioCard("pointsMode","points", nt.usePointsAndSets!==false, "G-SPeCポイントに影響する試合", "通常のクラスポイント大会です。勝敗結果に応じてクラスポイントが加減算され、セット数・持ち時間・優勝ボーナスなども通常通り適用されます。")+
-          radioCard("pointsMode","noPoints", nt.usePointsAndSets===false, "G-SPeCポイントに影響しない試合", "親善試合・イベント戦向けです。勝敗の記録のみを行い、クラスポイントの加減算・優勝ボーナスなどは一切行いません。")+
-        '</div>'+
-      '</div>'+
-      '<div style="margin-top:.9rem">'+
         '<label style="display:block;margin-bottom:.4rem">基本セット数</label>'+
         '<div class="radio-card-row">'+
           radioCard("setCountTable","A", setTableOf(nt)==="A", "セット数A", setTableSummaryFor(nt,"A"))+
@@ -4327,10 +4327,6 @@ document.addEventListener("click", function(e){
   else if(action==="useSchedule-radio"){
     var tidUS=t.getAttribute("data-tid"); var tourUS=findTournament(tidUS); if(!tourUS) return;
     var ntus = ensureTournamentSetupState(tourUS); ntus.useSchedule = t.value==="yes"; render();
-  }
-  else if(action==="pointsMode-radio"){
-    var tidPM=t.getAttribute("data-tid"); var tourPM=findTournament(tidPM); if(!tourPM) return;
-    var ntpm = ensureTournamentSetupState(tourPM); ntpm.usePointsAndSets = t.value!=="noPoints"; render();
   }
   else if(action==="use-points-and-sets-radio-live"){
     var tidUpsR = t.getAttribute("data-tid"); var tourUpsR = findTournament(tidUpsR);
