@@ -2380,21 +2380,40 @@ function renderNav(){
   }).join("");
 }
 
+// data-*属性をすべて使って要素を一意に特定するセレクタを作る(同じdata-actionが並ぶ一覧の行(チェックボックスなど)でも
+// 再描画後に同じ行の要素へフォーカスを戻せるようにするため。data-id等がなく複数該当する場合はnullを返す)
+function elementDataSelector(el){
+  if(!el || !el.attributes) return null;
+  var parts = [];
+  for(var i=0;i<el.attributes.length;i++){
+    var attr = el.attributes[i];
+    if(attr.name.indexOf("data-")===0) parts.push('['+attr.name+'="'+attr.value.replace(/"/g,'\\"')+'"]');
+  }
+  // 同じdata-action・data-tidを共有するラジオボタンの組(例: 「はい/いいえ」)はvalue属性でのみ区別できるため、
+  // ラジオボタンに限りvalue属性も判定材料に加える(テキスト系inputは入力中に値が変わるため対象外)
+  if(el.tagName==="INPUT" && el.type==="radio"){
+    var valueAttr = el.getAttribute("value");
+    if(valueAttr!=null) parts.push('[value="'+valueAttr.replace(/"/g,'\\"')+'"]');
+  }
+  if(!parts.length) return null;
+  return el.tagName.toLowerCase()+parts.join("");
+}
 function captureFocusInfo(){
   var activeEl = document.activeElement;
-  if(activeEl && activeEl.getAttribute && activeEl.getAttribute("data-action")){
-    var activeAction = activeEl.getAttribute("data-action");
-    if(document.querySelectorAll('[data-action="'+activeAction+'"]').length===1){
-      return {action: activeAction, selectionStart: activeEl.selectionStart, selectionEnd: activeEl.selectionEnd};
-    }
-  }
-  return null;
+  if(!activeEl || !activeEl.getAttribute || !activeEl.getAttribute("data-action")) return null;
+  var selector = elementDataSelector(activeEl);
+  if(!selector) return null;
+  try{
+    if(document.querySelectorAll(selector).length!==1) return null;
+  }catch(e){ return null; }
+  return {selector: selector, selectionStart: activeEl.selectionStart, selectionEnd: activeEl.selectionEnd};
 }
 function restoreFocusInfo(focusInfo){
   if(!focusInfo) return;
-  var toFocus = document.querySelector('[data-action="'+focusInfo.action+'"]');
+  var toFocus;
+  try{ toFocus = document.querySelector(focusInfo.selector); }catch(e){ return; }
   if(toFocus){
-    toFocus.focus();
+    toFocus.focus({preventScroll:true});
     if(typeof focusInfo.selectionStart==="number" && toFocus.setSelectionRange){
       try{ toFocus.setSelectionRange(focusInfo.selectionStart, focusInfo.selectionEnd); }catch(e){}
     }
