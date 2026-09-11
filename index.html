@@ -2450,7 +2450,7 @@ function render(){
   }
   var scrollY = window.scrollY, scrollX = window.scrollX;
   var innerScrollers = Array.from(document.querySelectorAll("[data-preserve-scroll]")).map(function(el){
-    return {id: el.id, scrollTop: el.scrollTop};
+    return {id: el.id, scrollTop: el.scrollTop, scrollLeft: el.scrollLeft};
   });
   var bflowScrollers = Array.from(document.querySelectorAll(".bflow-wrap")).map(function(el){
     return {scrollLeft: el.scrollLeft, scrollTop: el.scrollTop};
@@ -2468,16 +2468,25 @@ function render(){
   else if(route.screen==="tournament") html = renderTournamentScreen(route.id);
   else html = renderRoster();
   main.innerHTML = html;
+  function applyInnerScrolls(){
+    innerScrollers.forEach(function(s){
+      var el = document.getElementById(s.id);
+      if(el){ el.scrollTop = s.scrollTop; el.scrollLeft = s.scrollLeft; }
+    });
+    var newBflowScrollers = document.querySelectorAll(".bflow-wrap");
+    bflowScrollers.forEach(function(s, i){
+      var el = newBflowScrollers[i];
+      if(el){ el.scrollLeft = s.scrollLeft; el.scrollTop = s.scrollTop; }
+    });
+  }
   reassertScroll(scrollX, scrollY);
-  innerScrollers.forEach(function(s){
-    var el = document.getElementById(s.id);
-    if(el) el.scrollTop = s.scrollTop;
-  });
-  var newBflowScrollers = document.querySelectorAll(".bflow-wrap");
-  bflowScrollers.forEach(function(s, i){
-    var el = newBflowScrollers[i];
-    if(el){ el.scrollLeft = s.scrollLeft; el.scrollTop = s.scrollTop; }
-  });
+  applyInnerScrolls();
+  if(window.requestAnimationFrame){
+    requestAnimationFrame(function(){
+      applyInnerScrolls();
+      requestAnimationFrame(applyInnerScrolls);
+    });
+  }
   restoreFocusInfo(focusInfo);
 }
 
@@ -2707,7 +2716,7 @@ function renderTournamentEntrySection(t){
       'エントリー済みの選手のみ表示する'+
     '</label>'+
     (!visiblePlayers.length && (searchQuery || onlyEntered) ? '<p class="empty-note">'+(searchQuery ? '「'+esc(searchQuery)+'」に一致する選手が見つかりません。' : 'エントリー済みの選手がいません。')+'</p>' : (
-    '<div class="table-wrap"><table class="data">'+
+    '<div class="table-wrap" id="entry-table-scroll" data-preserve-scroll><table class="data">'+
       '<thead><tr><th>氏名</th><th>クラス</th><th>エントリー</th><th>参加費受領</th><th>抽選番号</th></tr></thead>'+
       '<tbody>'+rows+'</tbody>'+
     '</table></div>'))+
