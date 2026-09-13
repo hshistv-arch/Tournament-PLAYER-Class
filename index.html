@@ -1296,12 +1296,20 @@ document.addEventListener("compositionend", function(){ isComposingText = false;
 // タップがブラウザ側でキャンセル扱いになり「エントリーする」「🎲 抽選する」等のタップが
 // 認識されないことがあるため、タップ中は自動更新による再描画を見送る
 var userInteracting = false;
-document.addEventListener("pointerdown", function(){ userInteracting = true; }, true);
-document.addEventListener("pointerup", function(){ userInteracting = false; }, true);
-document.addEventListener("pointercancel", function(){ userInteracting = false; }, true);
-document.addEventListener("touchstart", function(){ userInteracting = true; }, {capture:true, passive:true});
-document.addEventListener("touchend", function(){ userInteracting = false; }, {capture:true, passive:true});
-document.addEventListener("touchcancel", function(){ userInteracting = false; }, {capture:true, passive:true});
+var userInteractingTimer = null;
+// pointerup/touchend/clickがDOM入れ替え等の理由で発火しなかった場合に備え、一定時間で必ず解除する
+// (解除し忘れると自動更新が永久に止まってしまうため)
+function setUserInteracting(v){
+  userInteracting = v;
+  if(userInteractingTimer){ clearTimeout(userInteractingTimer); userInteractingTimer = null; }
+  if(v) userInteractingTimer = setTimeout(function(){ userInteracting = false; }, 1000);
+}
+document.addEventListener("pointerdown", function(){ setUserInteracting(true); }, true);
+document.addEventListener("pointerup", function(){ setUserInteracting(false); }, true);
+document.addEventListener("pointercancel", function(){ setUserInteracting(false); }, true);
+document.addEventListener("touchstart", function(){ setUserInteracting(true); }, {capture:true, passive:true});
+document.addEventListener("touchend", function(){ setUserInteracting(false); }, {capture:true, passive:true});
+document.addEventListener("touchcancel", function(){ setUserInteracting(false); }, {capture:true, passive:true});
 
 // ---------- generic helpers ----------
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]; }); }
@@ -4227,6 +4235,7 @@ function rebuildFinalsFromSlots(t, slots){
 
 // ============ EVENTS ============
 document.addEventListener("click", function(e){
+  setUserInteracting(false);
   var t = e.target.closest("[data-action]");
   if(!t) return;
   var action = t.getAttribute("data-action");
@@ -4524,6 +4533,7 @@ document.addEventListener("compositionend", function(e){
 }, false);
 
 document.addEventListener("change", function(e){
+  setUserInteracting(false);
   var t = e.target;
   var action = t.getAttribute && t.getAttribute("data-action");
   if(!action) return;
@@ -4842,6 +4852,7 @@ document.addEventListener("change", function(e){
 }, false);
 
 document.addEventListener("submit", function(e){
+  setUserInteracting(false);
   var form = e.target;
   if(form.getAttribute("data-form")==="add-player"){
     e.preventDefault();
