@@ -2657,7 +2657,7 @@ function renderTournamentEntrySection(t){
       : e.drawNumber ? '<span class="slot-no">No.'+e.drawNumber+'</span>'
       : '<button class="btn btn-sm btn-ghost" type="button" data-action="draw-entry-number" data-tid="'+t.id+'" data-id="'+p.id+'">🎲 抽選する</button>';
     var feeCell = !e.entered ? '<span class="hint">-</span>' :
-      ('<select data-action="set-fee-method" data-tid="'+t.id+'" data-id="'+p.id+'" style="width:6.5rem">'+
+      ('<select data-action="set-fee-method" data-tid="'+t.id+'" data-id="'+p.id+'" style="width:6.5rem'+(e.feePaid?'':';color:var(--loss);font-weight:700')+'">'+
         FEE_METHOD_OPTIONS.map(function(opt){ return '<option value="'+opt.value+'"'+((e.feeMethod||"")===opt.value?" selected":"")+'>'+opt.label+'</option>'; }).join("")+
       '</select>');
     return '<tr><td>'+esc(p.name)+guestTag+'</td><td>'+clsCell+'</td>'+
