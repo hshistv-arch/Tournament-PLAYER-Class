@@ -3836,6 +3836,22 @@ function formatSwitchHTML(t){
   qrDetailsHTML(displayUrlFor(t.id))+
   '</div>';
 }
+function renderFeeStatusSection(t){
+  var ids = (t.eligiblePlayerIds || []).filter(function(id){ return !!getPlayer(id); });
+  if(!ids.length) return "";
+  var rows = ids.map(function(id){
+    var p = getPlayer(id);
+    var e = t.entries[id] || {entered:false, feePaid:false};
+    var clsLabel = p.isGuest ? (p.manualEntryClass || "-") : classOf(p.points);
+    return '<tr><td>'+esc(p.name)+'</td><td>'+badge(clsLabel)+'</td>'+
+      '<td><select data-action="set-fee-method" data-tid="'+t.id+'" data-id="'+p.id+'" style="width:6.5rem'+(e.feePaid?'':';color:var(--loss);font-weight:700')+'">'+
+        FEE_METHOD_OPTIONS.map(function(opt){ return '<option value="'+opt.value+'"'+((e.feeMethod||"")===opt.value?" selected":"")+'>'+opt.label+'</option>'; }).join("")+
+      '</select></td></tr>';
+  }).join("");
+  return '<details style="margin-bottom:.7rem"><summary class="hint" style="cursor:pointer">参加費受領状況を確認</summary><div style="margin-top:.5rem">'+
+    '<div class="table-wrap"><table class="data"><thead><tr><th>氏名</th><th>クラス</th><th>参加費受領</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+  '</div></details>';
+}
 function renderBlockPrelimTournament(t){
   var STATUS_LABEL = {entryPending:"エントリー受付中", assigning:"組み合わせ待ち", prelim:"予選中", finals:"決勝トーナメント中", completed:"終了"};
   var header = '<div class="page-head"><div><h1>'+esc(t.name)+'</h1><p class="sub">'+tournamentFormatLabel(t)+' ・ '+
@@ -3846,7 +3862,7 @@ function renderBlockPrelimTournament(t){
     (t.status!=="assigning"?'<button class="btn btn-sm btn-ghost" data-action="revert-to-assigning" data-tid="'+t.id+'">↩ 組み合わせ待ちに戻す</button>':'')+
     '<button class="btn btn-sm btn-ghost" data-action="refresh-entries-from-server">🔄 更新</button>'+
     '<button class="btn btn-sm" data-action="nav" data-screen="history">一覧へ戻る</button></div></div>';
-  var out = header + formatSwitchHTML(t);
+  var out = header + formatSwitchHTML(t) + renderFeeStatusSection(t);
   out += t.blocks.map(function(block){ return renderOneBlock(t, block); }).join("");
   if(t.status==="assigning"){
     out += '<div class="card"><p class="hint">各枠の選手を選び終えたら、下のボタンで大会を開始してください。</p>'+
@@ -3940,7 +3956,7 @@ function renderElimPrelimTournament(t){
     (t.status!=="assigning"?'<button class="btn btn-sm btn-ghost" data-action="revert-to-assigning" data-tid="'+t.id+'">↩ 組み合わせ待ちに戻す</button>':'')+
     '<button class="btn btn-sm btn-ghost" data-action="refresh-entries-from-server">🔄 更新</button>'+
     '<button class="btn btn-sm" data-action="nav" data-screen="history">一覧へ戻る</button></div></div>';
-  var out = header + formatSwitchHTML(t);
+  var out = header + formatSwitchHTML(t) + renderFeeStatusSection(t);
   var timeColorMap = buildTimeSlotColorMap(t);
   out += t.groups.map(function(g){ return renderOneGroup(t, g, timeColorMap); }).join("");
   if(t.status==="assigning"){
