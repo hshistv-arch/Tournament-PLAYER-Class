@@ -1476,25 +1476,11 @@ function undoMatchDeltas(match){
 
 // ---------- ② block prelim ----------
 function recomputeBlockElimination(block, t){
+  // リーグ戦(総当たり)では予選2敗による自動失格・ペナルティは適用しない(全試合を戦い切る方式のため)
   var losses={};
   block.playerIds.forEach(function(id){ losses[id]=0; });
   block.matches.forEach(function(m){
     if(m.winner){ var loserId = m.winner===m.a ? m.b : m.a; losses[loserId]=(losses[loserId]||0)+1; }
-  });
-  block.eliminated = block.eliminated || {};
-  block.penaltyDeltas = block.penaltyDeltas || {};
-  block.playerIds.forEach(function(id){
-    var was = !!block.eliminated[id];
-    var now = losses[id]>=2;
-    if(now && !was){
-      block.eliminated[id]=true;
-      var pen = usePointsAndSets(t) ? (state.settings.bonuses.prelimDoubleLossPenalty || 0) : 0;
-      if(pen){ var p=getPlayer(id); if(p) block.penaltyDeltas[id]=applyPointDelta(p, pen, t); }
-    } else if(!now && was){
-      block.eliminated[id]=false;
-      var applied = block.penaltyDeltas[id];
-      if(applied){ var p2=getPlayer(id); if(p2) p2.points -= applied; delete block.penaltyDeltas[id]; }
-    }
   });
   block.losses = losses;
 }
