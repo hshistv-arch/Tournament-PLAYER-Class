@@ -1092,7 +1092,7 @@ function secondaryHandicap(classA, classB){
   var result = {breakFor:null, reduceA:0, reduceB:0};
   var aIsSA = classA==="SA", bIsSA = classB==="SA";
   if(aIsSA || bIsSA){
-    if(aIsSA && bIsSA) return result;
+    if(aIsSA && bIsSA){ result.reduceA = 5; result.reduceB = 5; return result; }
     if(aIsSA){ result.reduceA = 5; result.breakFor = "b"; }
     else { result.reduceB = 5; result.breakFor = "a"; }
     return result;
@@ -2814,7 +2814,7 @@ function renderSettingsSetCounts(){
   return '<div class="card">'+
     '<h3>クラスごとのセット数(レース本数)</h3>'+
     '<p class="hint">対戦カードに表示される、各選手の必要セット数です。「セット数A」「セット数B」の2種類を用意しており、どちらを使うかは大会作成時に大会ごとに選択します(デフォルトはセット数A。大会画面からいつでも切り替えられます)。持ち時間はセット数に応じて自動計算されます(2セット=15分、3セット=20分、4セット=25分、5セット=30分、6セット=35分。前回優勝者は+1セット)。「ワンセットダウン」は、ダブルエリミネーションの敗者復活ブロックで使うセット数です(大会作成時にこちらを使うか選択でき、デフォルトで採用されます)。</p>'+
-    '<p class="hint">※SA vs SA 以外の対戦では、SA側の持ち時間が5分短縮されます(セカンダリハンデ)。</p>'+
+    '<p class="hint">※SA vs SA 以外の対戦では、SA側の持ち時間が5分短縮されます(セカンダリハンデ)。SA同士の対戦では、両者とも持ち時間が5分短縮されます。</p>'+
   '</div>'+
   renderSetCountTableCard("A")+
   renderSetCountTableCard("B")+
