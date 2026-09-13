@@ -1088,13 +1088,19 @@ function classSubRank(code){
   var c2 = code.charAt(1);
   return c2==="A" ? 1 : c2==="B" ? 2 : c2==="C" ? 3 : null;
 }
+var SA_EXTRA_REDUCE_CLASSES = ["AC","BC","Be"];
 function secondaryHandicap(classA, classB){
   var result = {breakFor:null, reduceA:0, reduceB:0};
   var aIsSA = classA==="SA", bIsSA = classB==="SA";
   if(aIsSA || bIsSA){
     if(aIsSA && bIsSA){ result.reduceA = 5; result.reduceB = 5; return result; }
-    if(aIsSA){ result.reduceA = 5; result.breakFor = "b"; }
-    else { result.reduceB = 5; result.breakFor = "a"; }
+    if(aIsSA){
+      result.reduceA = SA_EXTRA_REDUCE_CLASSES.indexOf(classB)>=0 ? 10 : 5;
+      result.breakFor = "b";
+    } else {
+      result.reduceB = SA_EXTRA_REDUCE_CLASSES.indexOf(classA)>=0 ? 10 : 5;
+      result.breakFor = "a";
+    }
     return result;
   }
   if(classA.charAt(0) !== classB.charAt(0)) return result;
@@ -2814,7 +2820,7 @@ function renderSettingsSetCounts(){
   return '<div class="card">'+
     '<h3>クラスごとのセット数(レース本数)</h3>'+
     '<p class="hint">対戦カードに表示される、各選手の必要セット数です。「セット数A」「セット数B」の2種類を用意しており、どちらを使うかは大会作成時に大会ごとに選択します(デフォルトはセット数A。大会画面からいつでも切り替えられます)。持ち時間はセット数に応じて自動計算されます(2セット=15分、3セット=20分、4セット=25分、5セット=30分、6セット=35分。前回優勝者は+1セット)。「ワンセットダウン」は、ダブルエリミネーションの敗者復活ブロックで使うセット数です(大会作成時にこちらを使うか選択でき、デフォルトで採用されます)。</p>'+
-    '<p class="hint">※SA vs SA 以外の対戦では、SA側の持ち時間が5分短縮されます(セカンダリハンデ)。SA同士の対戦では、両者とも持ち時間が5分短縮されます。</p>'+
+    '<p class="hint">※SA vs SA 以外の対戦では、SA側の持ち時間が5分短縮されます(セカンダリハンデ。相手がAC/BC/Beの場合はさらに5分短縮され、合計10分短縮)。SA同士の対戦では、両者とも持ち時間が5分短縮されます。</p>'+
   '</div>'+
   renderSetCountTableCard("A")+
   renderSetCountTableCard("B")+
