@@ -1043,6 +1043,12 @@ function tournamentHasClassInfo(t){
   return !!(t && t.manualClasses && Object.keys(t.manualClasses).some(function(k){ return t.manualClasses[k]; }));
 }
 var MANUAL_CLASS_OPTIONS = ["P","LP","SA","A","B","C","Be"];
+var FEE_METHOD_OPTIONS = [
+  {value:"", label:"未受領"},
+  {value:"paypay", label:"PayPay"},
+  {value:"cash", label:"現金"},
+  {value:"gchip", label:"Gチップ"}
+];
 var BRACKET_SIZES = [8,16,32,64,128];
 function smallestBracketSizeFor(n){
   for(var i=0;i<BRACKET_SIZES.length;i++){ if(BRACKET_SIZES[i]>=n) return BRACKET_SIZES[i]; }
@@ -2650,9 +2656,13 @@ function renderTournamentEntrySection(t){
     var drawCell = !e.entered ? '<span class="hint">-</span>'
       : e.drawNumber ? '<span class="slot-no">No.'+e.drawNumber+'</span>'
       : '<button class="btn btn-sm btn-ghost" type="button" data-action="draw-entry-number" data-tid="'+t.id+'" data-id="'+p.id+'">🎲 抽選する</button>';
+    var feeCell = !e.entered ? '<span class="hint">-</span>' :
+      ('<select data-action="set-fee-method" data-tid="'+t.id+'" data-id="'+p.id+'" style="width:6.5rem">'+
+        FEE_METHOD_OPTIONS.map(function(opt){ return '<option value="'+opt.value+'"'+((e.feeMethod||"")===opt.value?" selected":"")+'>'+opt.label+'</option>'; }).join("")+
+      '</select>');
     return '<tr><td>'+esc(p.name)+guestTag+'</td><td>'+clsCell+'</td>'+
       '<td><input type="checkbox" data-action="toggle-entry" data-tid="'+t.id+'" data-id="'+p.id+'" '+(e.entered?"checked":"")+'></td>'+
-      '<td><input type="checkbox" data-action="toggle-fee" data-tid="'+t.id+'" data-id="'+p.id+'" '+(e.feePaid?"checked":"")+(e.entered?"":" disabled")+'></td>'+
+      '<td>'+feeCell+'</td>'+
       '<td>'+drawCell+'</td></tr>';
   }).join("");
   function modeCard(value, checked, title, desc){
@@ -4520,6 +4530,14 @@ document.addEventListener("change", function(e){
     var pEC = getPlayer(t.getAttribute("data-id"));
     if(pEC){ pEC.manualEntryClass = t.value; saveState(); render(); }
   }
+  else if(action==="set-fee-method"){
+    var tidFM=t.getAttribute("data-tid"); var tourFM=findTournament(tidFM); if(!tourFM) return;
+    var idFM=t.getAttribute("data-id");
+    tourFM.entries[idFM] = tourFM.entries[idFM] || {entered:false, feePaid:false};
+    tourFM.entries[idFM].feeMethod = t.value || null;
+    tourFM.entries[idFM].feePaid = !!t.value;
+    saveState(); render();
+  }
   else if(action==="lb-oneset-toggle"){
     var tidLB=t.getAttribute("data-tid"); var tourLB=findTournament(tidLB); if(!tourLB) return;
     var ntlb = ensureTournamentSetupState(tourLB); ntlb.lbOneSetDown = t.checked; render();
@@ -4576,19 +4594,12 @@ document.addEventListener("change", function(e){
     var id=t.getAttribute("data-id");
     tourTE.entries[id] = tourTE.entries[id] || {entered:false, feePaid:false};
     tourTE.entries[id].entered = t.checked;
-    if(!t.checked){ tourTE.entries[id].feePaid = false; tourTE.entries[id].drawNumber = null; }
+    if(!t.checked){ tourTE.entries[id].feePaid = false; tourTE.entries[id].feeMethod = null; tourTE.entries[id].drawNumber = null; }
     saveState(); render();
   }
   else if(action==="toggle-entry-only-filter"){
     route.entryOnlyEntered = t.checked;
     render();
-  }
-  else if(action==="toggle-fee"){
-    var tidTFee=t.getAttribute("data-tid"); var tourTFee=findTournament(tidTFee); if(!tourTFee) return;
-    var id2=t.getAttribute("data-id");
-    tourTFee.entries[id2] = tourTFee.entries[id2] || {entered:false, feePaid:false};
-    tourTFee.entries[id2].feePaid = t.checked;
-    saveState(); render();
   }
   else if(action==="update-bound"){
     var idx = Number(t.getAttribute("data-idx"));
