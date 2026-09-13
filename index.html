@@ -1334,9 +1334,21 @@ function eventDateOf(t){
 }
 
 // ---------- round robin / seeding ----------
+// 総当たり戦の対戦順を提案する(サークル法): 各ラウンドで全員が同時に別の相手と対戦できるよう組み、
+// 同じ選手が連続で対戦しなくて済むようにラウンド順に並べて返す(奇数人数の場合は各ラウンドで1名ずつ順番に休み)
 function roundRobinPairs(ids){
-  var pairs=[];
-  for(var i=0;i<ids.length;i++) for(var j=i+1;j<ids.length;j++) pairs.push([ids[i],ids[j]]);
+  var arr = ids.slice();
+  if(arr.length % 2 === 1) arr.push(null);
+  var m = arr.length;
+  var pairs = [];
+  for(var r=0; r<m-1; r++){
+    for(var i=0; i<m/2; i++){
+      var a = arr[i], b = arr[m-1-i];
+      if(a!=null && b!=null) pairs.push([a,b]);
+    }
+    var last = arr.pop();
+    arr.splice(1, 0, last);
+  }
   return pairs;
 }
 function seedOrder(size){
@@ -3104,7 +3116,13 @@ function renderDisplayBlock(t, block){
       '<td class="num">'+w+'勝'+(block.losses?(block.losses[id]||0):0)+'敗</td>'+
       '<td>'+(elim?'<span class="pill" style="color:var(--loss);border-color:var(--loss)">予選敗退</span>':'')+'</td></tr>';
   }).join("");
-  var matches = block.matches.map(function(m,mi){ return displayMatchRowHTML(m, mi+1, t); }).join("");
+  var perRound = Math.max(1, Math.floor(block.playerIds.length/2));
+  var matches = block.matches.map(function(m,mi){
+    var roundHeader = (mi % perRound === 0)
+      ? ('<p class="hint" style="margin:'+(mi===0?'0':'1rem')+' 0 .3rem;font-weight:600">第'+(Math.floor(mi/perRound)+1)+'ラウンド</p>')
+      : '';
+    return roundHeader + displayMatchRowHTML(m, mi+1, t);
+  }).join("");
   return '<div class="card"><h3>ブロック '+(block.index+1)+'</h3>'+
     '<div class="table-wrap"><table class="data"><thead><tr><th>氏名</th>'+(showClass?'<th>クラス</th>':'')+(showPS?'<th>ポイント</th>':'')+'<th>戦績</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
     '<div style="margin-top:.6rem">'+matches+'</div></div>';
@@ -3923,12 +3941,19 @@ function renderOneBlock(t, block){
       '<td class="num">'+w+'勝'+(block.losses?(block.losses[id]||0):0)+'敗</td>'+
       '<td>'+(elim?'<span class="pill" style="color:var(--loss);border-color:var(--loss)">予選敗退</span>':'')+'</td></tr>';
   }).join("");
-  var matches = block.matches.map(function(m,mi){ return matchRow(m, "prelim", 'data-tid="'+t.id+'" data-block="'+block.index+'"', mi+1, t.status==="prelim", t); }).join("");
+  var perRound = Math.max(1, Math.floor(block.playerIds.length/2));
+  var matches = block.matches.map(function(m,mi){
+    var roundHeader = (mi % perRound === 0)
+      ? ('<p class="hint" style="margin:'+(mi===0?'0':'1rem')+' 0 .3rem;font-weight:600">第'+(Math.floor(mi/perRound)+1)+'ラウンド(同時進行可能)</p>')
+      : '';
+    return roundHeader + matchRow(m, "prelim", 'data-tid="'+t.id+'" data-block="'+block.index+'"', mi+1, t.status==="prelim", t);
+  }).join("");
   return '<div class="card"><h3>ブロック '+(block.index+1)+'</h3>'+
     renderGroupControls(t, "block", block.index, block.targetSize, "各ブロックの決勝進出人数", t.advancePerBlock, "update-advance-per-block")+
     renderEditSlots(t, "block", block.index, block.slots, false)+
     '<div class="table-wrap"><table class="data"><thead><tr><th>氏名</th>'+(showClass?'<th>クラス</th>':'')+(showPS?'<th>ポイント</th>':'')+'<th>戦績</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
-    '<div style="margin-top:.6rem">'+matches+'</div></div>';
+    '<p class="hint" style="margin-top:.6rem">対戦の順番は、同じ選手が連続で対戦せずに済むよう提案されています。同じラウンド内の対戦は別の台で同時に進行できます。</p>'+
+    '<div style="margin-top:.4rem">'+matches+'</div></div>';
 }
 
 // ---------- ① elimination prelim + finals screen ----------
