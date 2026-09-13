@@ -950,7 +950,7 @@ function syncFromServer(cb){
       state = applyRosterUpdate(migrateAddBeClass(migrateBestBorC(serverState)));
       state.entries = state.entries || {};
       state.currentTournamentId = state.currentTournamentId || null;
-      if(!cb && !isComposingText) render();
+      if(!cb && !isComposingText && !userInteracting) render();
     }
     saveState();
     if(cb) cb();
@@ -1292,6 +1292,16 @@ var DRAW_POLL_MS = 4000;
 var isComposingText = false;
 document.addEventListener("compositionstart", function(){ isComposingText = true; }, false);
 document.addEventListener("compositionend", function(){ isComposingText = false; }, false);
+// 指がボタンに触れている最中に定期同期の再描画がそのボタンごとDOMを作り直してしまうと、
+// タップがブラウザ側でキャンセル扱いになり「エントリーする」「🎲 抽選する」等のタップが
+// 認識されないことがあるため、タップ中は自動更新による再描画を見送る
+var userInteracting = false;
+document.addEventListener("pointerdown", function(){ userInteracting = true; }, true);
+document.addEventListener("pointerup", function(){ userInteracting = false; }, true);
+document.addEventListener("pointercancel", function(){ userInteracting = false; }, true);
+document.addEventListener("touchstart", function(){ userInteracting = true; }, {capture:true, passive:true});
+document.addEventListener("touchend", function(){ userInteracting = false; }, {capture:true, passive:true});
+document.addEventListener("touchcancel", function(){ userInteracting = false; }, {capture:true, passive:true});
 
 // ---------- generic helpers ----------
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]; }); }
