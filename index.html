@@ -4192,16 +4192,30 @@ function renderOneGroup(t, g, timeColorMap){
 }
 
 function renderFinalsPlaceholder(t){
-  var count = t.format==="blockPrelim"
-    ? (t.blocks||[]).length * (t.advancePerBlock||1)
-    : (t.groups||[]).length * (t.advancePerGroup||1);
-  count = Math.max(2, count);
-  var size = 1; while(size<count) size*=2;
-  var bracket = buildBracketFromSlots(new Array(size).fill(null));
+  var count, bracket, noteExtra = "";
+  if(t.format==="blockPrelim"){
+    count = Math.max(2, (t.blocks||[]).length * (t.advancePerBlock||1));
+    // 現在の勝敗数(未確定でも)に基づき、各ブロックの上位進出予定者で決勝トーナメントを暫定的に組む
+    var projected = [];
+    (t.blocks||[]).forEach(function(block){
+      var standings = blockStandings(t, block);
+      standings.slice(0, t.advancePerBlock||1).forEach(function(s){ projected.push(s.id); });
+    });
+    if(projected.length){
+      bracket = buildBracket(projected, t.entries);
+      noteExtra = "現在の勝敗数に基づく暫定的な組み合わせです。予選の対戦結果が進むと自動的に更新され、「予選を締めて決勝進出者を確定する」を押すと正式に決定します。";
+    }
+  } else {
+    count = Math.max(2, (t.groups||[]).length * (t.advancePerGroup||1));
+  }
+  if(!bracket){
+    var size = 1; while(size<count) size*=2;
+    bracket = buildBracketFromSlots(new Array(size).fill(null));
+  }
   return '<div class="card"><h3>決勝トーナメント</h3>'+
-    '<p class="hint">予選が確定すると、ここに実際の決勝トーナメントの組み合わせが表示されます(現在の設定では'+count+'名が進出予定)。</p>'+
+    '<p class="hint">予選が確定すると、ここに実際の決勝トーナメントの組み合わせが表示されます(現在の設定では'+count+'名が進出予定)。'+(noteExtra?(' '+noteExtra):'')+'</p>'+
     renderBracketFlow(bracket.rounds, function(ri){ return roundName(ri+1, bracket.totalRounds); }, {
-      resolvable:false, actionName:"", undoActionName:"", scoreScope:"", extraAttrs:""
+      resolvable:false, actionName:"", undoActionName:"", scoreScope:"", extraAttrs:"", tournament:t
     })+
   '</div>';
 }
