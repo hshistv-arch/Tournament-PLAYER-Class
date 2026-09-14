@@ -645,9 +645,6 @@ function qrToSvg(model, opts){
 function displayUrlFor(tid){
   return location.origin + location.pathname + "?display=1&id=" + tid;
 }
-function streamPickerUrlFor(tid){
-  return location.origin + location.pathname + "?stream=1&id=" + tid;
-}
 function drawUrlFor(tid, mode){
   var u = location.origin + location.pathname + "?draw=1" + (tid ? ("&tid="+encodeURIComponent(tid)) : "");
   if(mode==="event") u += "&event=1";
