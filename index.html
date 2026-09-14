@@ -174,6 +174,7 @@ table.matrix td.neg input{color:var(--loss);}
 .pill.completed{color:var(--muted); background:var(--surface-2);}
 .delta-plus{color:var(--win); font-weight:700;}
 .delta-minus{color:var(--loss); font-weight:700;}
+.match-delta{margin-left:.35rem; font-size:.9em;}
 .checklist{display:flex; flex-direction:column; gap:0; border:1px solid var(--border); border-radius:var(--radius); overflow:hidden;}
 .check-row{display:flex; align-items:center; gap:.6rem; padding:.5rem .7rem; border-bottom:1px solid var(--border); font-size:.88rem;}
 .check-row:last-child{border-bottom:none;}
@@ -278,7 +279,20 @@ details[open] > summary:before{content:"▾ ";}
   .print-summary .bflow-wrap{overflow:visible;}
   .print-summary .bflow-round{width:220px; margin-right:20px;}
   .print-summary .bflow-side{font-size:.68rem;}
+  @page hagaki{ size:100mm 148mm; margin:6mm; }
+  .match-print-page{ page:hagaki; }
 }
+/* ---- 対戦表(はがきサイズの印刷用スコアシート) ---- */
+.match-print-page{max-width:340px; margin:0 auto; border:1px solid var(--border); border-radius:10px; padding:1rem; background:var(--surface);}
+.mp-header{text-align:center; margin-bottom:.8rem;}
+.mp-title{font-weight:700; font-size:1.05rem;}
+.mp-sub{font-size:.75rem; color:var(--muted);}
+.mp-player{border:1px solid var(--border); border-radius:8px; padding:.6rem .7rem; margin-bottom:.5rem;}
+.mp-name{font-weight:700; font-size:1.1rem;}
+.mp-class{font-size:.75rem; color:var(--muted); margin-top:.15rem;}
+.mp-numbers{display:flex; flex-wrap:wrap; gap:.35rem; margin-top:.6rem;}
+.mp-num{display:inline-flex; align-items:center; justify-content:center; width:1.6rem; height:1.6rem; border:1px solid var(--text); border-radius:999px; font-size:.85rem; flex:none;}
+.mp-vs{text-align:center; font-weight:700; color:var(--muted); margin:.2rem 0;}
 
 /* ---- display mode (spectator/projector screen, read-only, auto-refreshing) ---- */
 body.display-mode-active .app-shell{display:block;}
@@ -1188,6 +1202,13 @@ function matchFormatHintHTML(playerId, opponentId, useDownSet, t){
   if(!f) return "";
   return '<span class="hint match-format">'+f.sets+'S/'+f.minutes+'m'+(f.hasBreak?'・Br':'')+'</span>';
 }
+// 対戦表(印刷用スコアシート)へのリンク。両者確定済みの対戦にのみ表示する
+function printMatchLinkHTML(t, m, scope, idx, side){
+  if(!t || !m || !m.a || !m.b || m.bye) return "";
+  var idxAttr = (idx!=null) ? (' data-idx="'+idx+'"') : "";
+  var sideAttr = side ? (' data-side="'+side+'"') : "";
+  return '<button class="btn btn-sm btn-ghost no-print" type="button" data-action="print-match" data-tid="'+t.id+'" data-scope="'+scope+'"'+idxAttr+sideAttr+' data-mid="'+m.id+'">🖨 対戦表</button>';
+}
 var TIME_SLOT_COLORS = ["#FFD9B3","#B3E5FC","#C8E6C9","#F8BBD0","#D1C4E9","#FFF59D","#B2DFDB","#FFCCBC"];
 function round1ByeWinnerIds(wbRounds){
   var r0 = (wbRounds && wbRounds[0]) || [];
@@ -1262,7 +1283,23 @@ function eligiblePlayerIdsForTournament(t, usePoints){
 
 // ---------- routing ----------
 var route = {screen:"roster"};
-function navigate(r){ route = r; render(); window.scrollTo(0,0); }
+// 大会ごとの「エントリーリストを編集」欄の開閉状態(画面遷移をまたいで保持するためrouteの外で管理)
+var entryEditOpenByTid = {};
+// クラウド上のバックアップ一覧(設定画面「データ管理」タブで使用)
+var cloudBackups = null;
+var cloudBackupsLoading = false;
+var cloudBackupsError = null;
+var cloudBackupBusy = false;
+document.addEventListener("toggle", function(e){
+  var el = e.target;
+  if(el && el.tagName==="DETAILS" && el.hasAttribute("data-entry-edit-tid")){
+    entryEditOpenByTid[el.getAttribute("data-entry-edit-tid")] = el.open;
+  }
+}, true);
+// 通常のnavigate()は画面の先頭にスクロールするが、印刷画面などから「戻る」場合に
+// 元のスクロール位置を復元できるよう、明示的にscrollYを指定できるようにしている
+var pendingScrollRestore = null;
+function navigate(r, scrollY){ route = r; pendingScrollRestore = (scrollY!=null) ? scrollY : 0; render(); }
 
 // ---------- display mode (read-only spectator/projector screen) ----------
 var DISPLAY_MODE = /(^|[?&])display=1(&|$)/.test(location.search);
@@ -1322,6 +1359,18 @@ function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(c){ re
 function fmtDelta(n){
   if(n===0 || n==null) return '<span class="hint">±0</span>';
   return n>0 ? '<span class="delta-plus">+'+n+'</span>' : '<span class="delta-minus">'+n+'</span>';
+}
+// その対戦1件でその選手が実際に得た/失ったポイント(勝敗分+ボーナス等の合計)。対戦結果が0ポイントの場合もあるため、
+// 対戦が決着していれば必ず数値(0を含む)を返し、未対戦・不戦の場合のみnullを返す
+function matchDeltaFor(match, playerId){
+  if(!match || !match.winner || !match.a || !match.b) return null;
+  var total = 0;
+  (match.deltas||[]).forEach(function(d){ if(d.playerId===playerId) total += d.amount; });
+  return total;
+}
+function matchDeltaHTML(match, playerId){
+  var d = matchDeltaFor(match, playerId);
+  return d==null ? "" : ('<span class="num match-delta">'+fmtDelta(d)+'</span>');
 }
 function badge(code){ return '<span class="badge tier-'+tierOf(code)+'">'+code+'</span>'; }
 function dateStamp(ts){
@@ -2476,7 +2525,9 @@ function render(){
     restoreFocusInfo(drawFocusInfo);
     return;
   }
-  var scrollY = window.scrollY, scrollX = window.scrollX;
+  var scrollY = (pendingScrollRestore!=null) ? pendingScrollRestore : window.scrollY;
+  var scrollX = window.scrollX;
+  pendingScrollRestore = null;
   var innerScrollers = Array.from(document.querySelectorAll("[data-preserve-scroll]")).map(function(el){
     return {id: el.id, scrollTop: el.scrollTop, scrollLeft: el.scrollLeft};
   });
@@ -2490,6 +2541,7 @@ function render(){
   if(route.screen==="roster") html = renderRoster();
   else if(route.screen==="rosterPrint") html = renderRosterPrint();
   else if(route.screen==="tournamentPrint") html = renderTournamentResultPrint(route.id);
+  else if(route.screen==="matchPrint") html = renderMatchPrint(route);
   else if(route.screen==="settings") html = renderSettings();
   else if(route.screen==="newTournament") html = renderCreateTournamentShellForm();
   else if(route.screen==="history") html = renderHistory();
@@ -2710,10 +2762,14 @@ function renderTournamentEntrySection(t){
   var addHint = entryMode==="noPoints" ?
     'ロースター未登録の選手をその場でエントリーに追加できます。氏名・読みカナ・所属・クラスを入力してください(G-SPeCポイントに影響しないエントリーのため、選手ロースターには追加されず、イベント大会出場選手として登録されます)。' :
     'ロースター未登録の選手をその場でエントリーに追加できます。氏名・読みカナ・初期ポイントを入力してください(通常の選手として選手ロースターにも登録されます)。';
+  var preStart = t.status==="entryPending";
   return ''+
-  '<div class="page-head" style="align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem"><div><h1>'+esc(t.name)+'</h1><p class="sub">エントリー受付中 ・ 開催日: '+eventDateOf(t)+'</p></div>'+
-    '<button class="btn btn-sm btn-ghost" type="button" data-action="refresh-entries-from-server">🔄 更新</button>'+
-  '</div>'+
+  (preStart ?
+    ('<div class="page-head" style="align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem"><div><h1>'+esc(t.name)+'</h1><p class="sub">エントリー受付中 ・ 開催日: '+eventDateOf(t)+'</p></div>'+
+      '<button class="btn btn-sm btn-ghost" type="button" data-action="refresh-entries-from-server">🔄 更新</button>'+
+    '</div>')
+    : ('<div style="display:flex;justify-content:flex-end;margin-bottom:.5rem"><button class="btn btn-sm btn-ghost" type="button" data-action="refresh-entries-from-server">🔄 更新</button></div>')
+  )+
   '<div class="stat-row">'+
     '<div class="stat"><div class="label">エントリー済み</div><div class="value num">'+entered.length+'</div></div>'+
     '<div class="stat"><div class="label">参加費受領済み</div><div class="value num">'+paid.length+'</div></div>'+
@@ -2918,13 +2974,116 @@ function renderSettingsChampion(){
     '</div>'+
   '</div>';
 }
+function formatBackupDate(iso){
+  try{
+    var d = new Date(iso);
+    if(isNaN(d.getTime())) return iso;
+    function p2(n){ return (n<10?"0":"")+n; }
+    return d.getFullYear()+"/"+p2(d.getMonth()+1)+"/"+p2(d.getDate())+" "+p2(d.getHours())+":"+p2(d.getMinutes());
+  }catch(e){ return iso; }
+}
+function formatBytes(n){
+  if(n==null) return "-";
+  if(n<1024) return n+"B";
+  if(n<1024*1024) return (n/1024).toFixed(1)+"KB";
+  return (n/1024/1024).toFixed(1)+"MB";
+}
+function loadCloudBackups(){
+  if(cloudBackupsLoading) return;
+  cloudBackupsLoading = true;
+  cloudBackupsError = null;
+  fetch("/api/backups", {cache:"no-store"}).then(function(r){
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    return r.json();
+  }).then(function(data){
+    cloudBackups = (data && data.backups) || [];
+    cloudBackupsLoading = false;
+    render();
+  }).catch(function(e){
+    cloudBackupsError = String((e&&e.message)||e);
+    cloudBackupsLoading = false;
+    render();
+  });
+}
+function createCloudBackup(){
+  if(cloudBackupBusy) return;
+  cloudBackupBusy = true; cloudBackupsError = null; render();
+  fetch("/api/backups", {method:"POST"}).then(function(r){
+    if(!r.ok) return r.json().then(function(j){ throw new Error((j&&j.error)||("HTTP "+r.status)); });
+    return r.json();
+  }).then(function(){
+    cloudBackupBusy = false;
+    cloudBackups = null;
+    render();
+  }).catch(function(e){
+    cloudBackupBusy = false;
+    cloudBackupsError = String((e&&e.message)||e);
+    render();
+  });
+}
+function restoreCloudBackup(name){
+  if(cloudBackupBusy) return;
+  cloudBackupBusy = true; cloudBackupsError = null; render();
+  fetch("/api/backups?action=restore&name="+encodeURIComponent(name), {method:"POST"}).then(function(r){
+    if(!r.ok) return r.json().then(function(j){ throw new Error((j&&j.error)||("HTTP "+r.status)); });
+    return r.json();
+  }).then(function(){
+    cloudBackupBusy = false;
+    syncFromServer(function(){ render(); });
+  }).catch(function(e){
+    cloudBackupBusy = false;
+    cloudBackupsError = String((e&&e.message)||e);
+    render();
+  });
+}
+function deleteCloudBackup(name){
+  if(cloudBackupBusy) return;
+  cloudBackupBusy = true; cloudBackupsError = null; render();
+  fetch("/api/backups?name="+encodeURIComponent(name), {method:"DELETE"}).then(function(r){
+    if(!r.ok) return r.json().then(function(j){ throw new Error((j&&j.error)||("HTTP "+r.status)); });
+    return r.json();
+  }).then(function(){
+    cloudBackupBusy = false;
+    cloudBackups = null;
+    render();
+  }).catch(function(e){
+    cloudBackupBusy = false;
+    cloudBackupsError = String((e&&e.message)||e);
+    render();
+  });
+}
 function renderSettingsData(){
-  return '<div class="card"><h3>データのバックアップ</h3>'+
+  if(cloudBackups===null && !cloudBackupsLoading) loadCloudBackups();
+  var backupListHTML;
+  if(cloudBackupsLoading && cloudBackups===null){
+    backupListHTML = '<p class="hint">読み込み中…</p>';
+  } else if(!cloudBackups || !cloudBackups.length){
+    backupListHTML = '<p class="empty-note">まだクラウドバックアップがありません。</p>';
+  } else {
+    var rows = cloudBackups.map(function(b){
+      return '<tr><td>'+esc(formatBackupDate(b.uploadedAt))+'</td><td class="num">'+formatBytes(b.size)+'</td>'+
+        '<td style="display:flex;gap:.4rem;flex-wrap:wrap">'+
+          '<button class="btn btn-sm" type="button" data-action="restore-cloud-backup" data-name="'+esc(b.name)+'"'+(cloudBackupBusy?' disabled':'')+'>この状態に復元</button>'+
+          '<button class="btn btn-sm btn-ghost btn-danger" type="button" data-action="delete-cloud-backup" data-name="'+esc(b.name)+'"'+(cloudBackupBusy?' disabled':'')+'>削除</button>'+
+        '</td></tr>';
+    }).join("");
+    backupListHTML = '<div class="table-wrap"><table class="data"><thead><tr><th>日時</th><th>サイズ</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+  }
+  return '<div class="card"><h3>データのバックアップ(この端末)</h3>'+
     '<p class="hint">この端末に保存されているデータをJSONファイルとして書き出し、他の端末に読み込ませることができます。</p>'+
     '<div class="form-row">'+
       '<button class="btn btn-primary" data-action="export-data">バックアップを書き出す</button>'+
       '<label class="btn" style="cursor:pointer">読み込む<input type="file" accept="application/json" style="display:none" data-action="import-file"></label>'+
     '</div>'+
+  '</div>'+
+  '<div class="card"><h3>クラウド上のバックアップ</h3>'+
+    '<p class="hint">現在クラウドに保存されている選手・大会データのスナップショットを、いつでも複製保存できます。誤操作やデータ不整合があった場合に、過去の状態へ復元できます(最新30件まで保持され、それより古いものは自動的に削除されます)。</p>'+
+    '<div class="form-row" style="margin-bottom:.8rem">'+
+      '<button class="btn btn-primary" type="button" data-action="create-cloud-backup"'+(cloudBackupBusy?' disabled':'')+'>今すぐクラウドにバックアップを保存</button>'+
+      '<button class="btn btn-sm btn-ghost" type="button" data-action="reload-cloud-backups"'+(cloudBackupsLoading?' disabled':'')+'>🔄 一覧を更新</button>'+
+    '</div>'+
+    (cloudBackupsError ? ('<p class="hint" style="color:var(--loss)">通信エラー: '+esc(cloudBackupsError)+'</p>') : '')+
+    backupListHTML+
   '</div>';
 }
 
@@ -3091,7 +3250,7 @@ function displayMatchRowHTML(match, matchNo, t){
     var val = score[sideKey];
     var scoreHTML = isWinner ? '<span class="score-num num win-mark" style="margin-left:.3rem">(W)</span>' : (val!=null ? '<span class="score-num num" style="margin-left:.3rem">('+val+')</span>' : "");
     var rowBadge = classBadgeOrEmpty(t, id);
-    return '<span'+(isWinner?' style="font-weight:700"':'')+'>'+esc(playerName(id))+(rowBadge?(' '+rowBadge):'')+(isWinner?' 🏆':'')+'</span>'+matchFormatHintHTML(id, oppId, false, t)+scoreHTML;
+    return '<span'+(isWinner?' style="font-weight:700"':'')+'>'+esc(playerName(id))+(rowBadge?(' '+rowBadge):'')+(isWinner?' 🏆':'')+'</span>'+matchFormatHintHTML(id, oppId, false, t)+scoreHTML+(usePointsAndSets(t)?matchDeltaHTML(match, id):'');
   }
   var matchNoHTML = matchNo ? '<span class="match-no">No.'+matchNo+'</span>' : "";
   return '<div class="match-row">'+matchNoHTML+
@@ -3446,7 +3605,7 @@ function renderStreamScreen(){
   return renderStreamScoreboard(t, match, streamEntry ? streamEntry.section : "");
 }
 
-function matchRow(match, tprefix, extraActionData, matchNo, resolvable, t){
+function matchRow(match, tprefix, extraActionData, matchNo, resolvable, t, blockIdx){
   var a = match.a, b = match.b;
   var resolved = !!match.winner;
   var actionData = extraActionData || "";
@@ -3468,7 +3627,7 @@ function matchRow(match, tprefix, extraActionData, matchNo, resolvable, t){
     var clickable = !resolved && resolvable;
     return '<button class="btn btn-sm'+(isWinner?' btn-felt':'')+'" '+
       (clickable?'':'disabled')+' data-action="resolve-match" data-scope="'+tprefix+'" data-mid="'+match.id+'" data-winner="'+id+'" '+actionData+'>'+
-      esc(label)+(isWinner?' 🏆':'')+'</button>'+scoreHTML+matchFormatHintHTML(id, oppId, false, t);
+      esc(label)+(isWinner?' 🏆':'')+'</button>'+scoreHTML+matchFormatHintHTML(id, oppId, false, t)+(usePointsAndSets(t)?matchDeltaHTML(match, id):'');
   }
   var undo = resolved ? '<button class="btn btn-sm btn-ghost" data-action="undo-match" data-scope="'+tprefix+'" data-mid="'+match.id+'" '+actionData+'>取消</button>' : '';
   var matchNoHTML = matchNo ? '<span class="match-no">No.'+matchNo+'</span>' : "";
@@ -3477,7 +3636,7 @@ function matchRow(match, tprefix, extraActionData, matchNo, resolvable, t){
     '<div class="match-side">'+sideBtn(a,"a")+'</div>'+
     '<div class="match-vs">vs</div>'+
     '<div class="match-side">'+sideBtn(b,"b")+'</div>'+
-    '<div class="match-result">'+undo+'</div>'+
+    '<div class="match-result">'+undo+printMatchLinkHTML(t, match, "block", blockIdx, null)+'</div>'+
   '</div>';
 }
 
@@ -3626,7 +3785,7 @@ function bflowSideHTML(m, playerId, opts, slotNo){
         '<input type="number" class="num score-input-inline" min="0" data-action="update-score" data-scope="'+opts.scoreScope+'" data-which="'+which+'" data-mid="'+m.id+'" '+opts.extraAttrs+' value="'+(val==null?"":val)+'" placeholder="-">';
     }
   }
-  return '<div class="'+cls+'" '+attrs+'>'+slotNoHTML+'<span class="pname">'+esc(playerName(playerId))+'</span>'+badgeHTML+matchFormatHintHTML(playerId, oppId, opts.useDownSet, opts.tournament)+scoreHTML+(showPS?('<span class="pts num">'+entryPointsOf(opts.tournament, playerId)+'</span>'):'')+'</div>';
+  return '<div class="'+cls+'" '+attrs+'>'+slotNoHTML+'<span class="pname">'+esc(playerName(playerId))+'</span>'+badgeHTML+matchFormatHintHTML(playerId, oppId, opts.useDownSet, opts.tournament)+scoreHTML+(showPS?('<span class="pts num">'+entryPointsOf(opts.tournament, playerId)+'</span>'+matchDeltaHTML(m, playerId)):'')+'</div>';
 }
 function renderBracketFlow(rounds, roundLabelFn, opts){
   var counter = 0;
@@ -3664,7 +3823,7 @@ function renderBracketFlow(rounds, roundLabelFn, opts){
       var matchStyle = slotColor ? ' style="box-shadow:inset 0 0 0 3px '+slotColor+'"' : "";
       var slotNoA = (ri===0 && opts.side==="wb") ? mi*2+1 : null;
       var slotNoB = (ri===0 && opts.side==="wb") ? mi*2+2 : null;
-      return '<div class="bflow-match"'+matchStyle+'>'+bflowSideHTML(m, m.a, opts, slotNoA)+bflowSideHTML(m, m.b, opts, slotNoB)+'<div class="bflow-match-footer">'+noHTML+lbDestHTML+scheduleHTML+undo+'</div></div>';
+      return '<div class="bflow-match"'+matchStyle+'>'+bflowSideHTML(m, m.a, opts, slotNoA)+bflowSideHTML(m, m.b, opts, slotNoB)+'<div class="bflow-match-footer">'+noHTML+lbDestHTML+scheduleHTML+undo+printMatchLinkHTML(opts.tournament, m, opts.printScope, opts.printIdx, opts.side)+'</div></div>';
     }).join("");
     return '<div class="bflow-round"><div class="bflow-round-label">'+roundLabelFn(ri, rounds.length)+'</div>'+
       '<div class="bflow-slots">'+connectors+matches+'</div></div>';
@@ -3697,7 +3856,7 @@ function simpleSideHTML(m, playerId, opts){
         '<input type="number" class="num score-input-inline" min="0" data-action="update-score" data-scope="'+opts.scoreScope+'" data-which="'+which+'" data-mid="'+m.id+'" '+opts.extraAttrs+' value="'+(val==null?"":val)+'" placeholder="-">';
     }
   }
-  return '<div class="'+cls+'" '+attrs+'>'+esc(playerName(playerId))+badgeHTML+matchFormatHintHTML(playerId, oppId2, opts.useDownSet, opts.tournament)+scoreHTML+(showPS?('<span class="pts num">'+entryPointsOf(opts.tournament, playerId)+'</span>'):'')+'</div>';
+  return '<div class="'+cls+'" '+attrs+'>'+esc(playerName(playerId))+badgeHTML+matchFormatHintHTML(playerId, oppId2, opts.useDownSet, opts.tournament)+scoreHTML+(showPS?('<span class="pts num">'+entryPointsOf(opts.tournament, playerId)+'</span>'+matchDeltaHTML(m, playerId)):'')+'</div>';
 }
 function lbPlaceholderRounds(g){
   var r0 = (g.wb && g.wb.rounds && g.wb.rounds[0]) || [];
@@ -3789,7 +3948,7 @@ function renderSimpleRounds(rounds, roundLabelFn, opts){
       var undo = (opts.showUndo!==false && m.winner && !m.bye) ?
         '<button class="btn btn-sm btn-ghost no-print" data-action="'+opts.undoActionName+'" data-mid="'+m.id+'" '+opts.extraAttrs+'>取消</button>' : "";
       var noHTML = m.bye ? "" : '<span class="match-no">No.'+counter+'</span>';
-      return '<div class="simple-match'+(m.preview?' preview':'')+'">'+simpleSideHTML(m, m.a, opts)+simpleSideHTML(m, m.b, opts)+'<div class="bflow-match-footer">'+noHTML+undo+'</div></div>';
+      return '<div class="simple-match'+(m.preview?' preview':'')+'">'+simpleSideHTML(m, m.a, opts)+simpleSideHTML(m, m.b, opts)+'<div class="bflow-match-footer">'+noHTML+undo+(m.preview?"":printMatchLinkHTML(opts.tournament, m, opts.printScope, opts.printIdx, "lb"))+'</div></div>';
     }).join("");
     return '<div class="simple-round"><div class="simple-round-label">敗者復活 '+(ri+1)+'回戦</div>'+matches+'</div>';
   }).join("");
@@ -3840,20 +3999,10 @@ function formatSwitchHTML(t){
   qrDetailsHTML(displayUrlFor(t.id))+
   '</div>';
 }
-function renderFeeStatusSection(t){
-  var ids = (t.eligiblePlayerIds || []).filter(function(id){ return !!getPlayer(id); });
-  if(!ids.length) return "";
-  var rows = ids.map(function(id){
-    var p = getPlayer(id);
-    var e = t.entries[id] || {entered:false, feePaid:false};
-    var clsLabel = p.isGuest ? (p.manualEntryClass || "-") : classOf(p.points);
-    return '<tr><td>'+esc(p.name)+'</td><td>'+badge(clsLabel)+'</td>'+
-      '<td><select data-action="set-fee-method" data-tid="'+t.id+'" data-id="'+p.id+'" style="width:6.5rem'+(e.feePaid?'':';color:var(--loss);font-weight:700')+'">'+
-        FEE_METHOD_OPTIONS.map(function(opt){ return '<option value="'+opt.value+'"'+((e.feeMethod||"")===opt.value?" selected":"")+'>'+opt.label+'</option>'; }).join("")+
-      '</select></td></tr>';
-  }).join("");
-  return '<details style="margin-bottom:.7rem"><summary class="hint" style="cursor:pointer">参加費受領状況を確認</summary><div style="margin-top:.5rem">'+
-    '<div class="table-wrap"><table class="data"><thead><tr><th>氏名</th><th>クラス</th><th>参加費受領</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+function renderEntryEditSection(t){
+  var isOpen = !!entryEditOpenByTid[t.id];
+  return '<details'+(isOpen?' open':'')+' data-entry-edit-tid="'+t.id+'" style="margin-bottom:.7rem"><summary class="hint" style="cursor:pointer">エントリーリストを編集(参加費受領状況を含む)</summary><div style="margin-top:.5rem">'+
+    renderTournamentEntrySection(t)+
   '</div></details>';
 }
 function renderBlockPrelimTournament(t){
@@ -3866,7 +4015,7 @@ function renderBlockPrelimTournament(t){
     (t.status!=="assigning"?'<button class="btn btn-sm btn-ghost" data-action="revert-to-assigning" data-tid="'+t.id+'">↩ 組み合わせ待ちに戻す</button>':'')+
     '<button class="btn btn-sm btn-ghost" data-action="refresh-entries-from-server">🔄 更新</button>'+
     '<button class="btn btn-sm" data-action="nav" data-screen="history">一覧へ戻る</button></div></div>';
-  var out = header + formatSwitchHTML(t) + renderFeeStatusSection(t);
+  var out = header + formatSwitchHTML(t) + renderEntryEditSection(t);
   out += t.blocks.map(function(block){ return renderOneBlock(t, block); }).join("");
   if(t.status==="assigning"){
     out += '<div class="card"><p class="hint">各枠の選手を選び終えたら、下のボタンで大会を開始してください。</p>'+
@@ -3946,7 +4095,7 @@ function renderOneBlock(t, block){
     var roundHeader = (mi % perRound === 0)
       ? ('<p class="hint" style="margin:'+(mi===0?'0':'1rem')+' 0 .3rem;font-weight:600">第'+(Math.floor(mi/perRound)+1)+'ラウンド(同時進行可能)</p>')
       : '';
-    return roundHeader + matchRow(m, "prelim", 'data-tid="'+t.id+'" data-block="'+block.index+'"', mi+1, t.status==="prelim", t);
+    return roundHeader + matchRow(m, "prelim", 'data-tid="'+t.id+'" data-block="'+block.index+'"', mi+1, t.status==="prelim", t, block.index);
   }).join("");
   return '<div class="card"><h3>ブロック '+(block.index+1)+'</h3>'+
     renderGroupControls(t, "block", block.index, block.targetSize, "各ブロックの決勝進出人数", t.advancePerBlock, "update-advance-per-block")+
@@ -3967,7 +4116,7 @@ function renderElimPrelimTournament(t){
     (t.status!=="assigning"?'<button class="btn btn-sm btn-ghost" data-action="revert-to-assigning" data-tid="'+t.id+'">↩ 組み合わせ待ちに戻す</button>':'')+
     '<button class="btn btn-sm btn-ghost" data-action="refresh-entries-from-server">🔄 更新</button>'+
     '<button class="btn btn-sm" data-action="nav" data-screen="history">一覧へ戻る</button></div></div>';
-  var out = header + formatSwitchHTML(t) + renderFeeStatusSection(t);
+  var out = header + formatSwitchHTML(t) + renderEntryEditSection(t);
   var timeColorMap = buildTimeSlotColorMap(t);
   out += t.groups.map(function(g){ return renderOneGroup(t, g, timeColorMap); }).join("");
   if(t.status==="assigning"){
@@ -4016,7 +4165,9 @@ function renderOneGroup(t, g, timeColorMap){
       side: "wb",
       timeColorMap: timeColorMap,
       tournament: t,
-      lbProjections: lbProj
+      lbProjections: lbProj,
+      printScope: "elim",
+      printIdx: g.index
     })+
   '</div>';
   if(hasLoserBracket(t)){
@@ -4031,7 +4182,9 @@ function renderOneGroup(t, g, timeColorMap){
         scoreScope: "elim",
         extraAttrs: 'data-tid="'+t.id+'" data-side="lb" data-group="'+g.index+'"',
         useDownSet: t.lbOneSetDown!==false,
-        tournament: t
+        tournament: t,
+        printScope: "elim",
+        printIdx: g.index
       })+
     '</div>';
   }
@@ -4065,7 +4218,8 @@ function renderFinalsSection(t){
       undoActionName: "undo-bracket",
       scoreScope: "bracket",
       extraAttrs: 'data-tid="'+t.id+'"',
-      tournament: t
+      tournament: t,
+      printScope: "bracket"
     })+
   '</div>';
   if(t.status==="completed"){
@@ -4139,6 +4293,37 @@ function renderPointSummary(t){
   if(!rows) return "";
   return '<div class="card"><h3>参加メンバーのポイント変化</h3>'+
     '<div class="table-wrap"><table class="data"><thead><tr><th>氏名</th><th>クラス</th><th>今大会での変動</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+  '</div>';
+}
+// ---------- 対戦表(はがきサイズの印刷用スコアシート) ----------
+function renderMatchPrint(route){
+  var t = findTournament(route.id);
+  var backBtn = t ? ('<button class="btn btn-sm btn-ghost" data-action="nav-restore-scroll" data-screen="tournament" data-id="'+t.id+'" data-scroll="'+(route.returnScrollY||0)+'">大会画面へ戻る</button>') : ('<button class="btn btn-sm btn-ghost" data-action="nav" data-screen="history">大会一覧へ戻る</button>');
+  if(!t) return '<div class="page-head no-print"><h1>大会が見つかりません</h1></div>'+backBtn;
+  var match = findStreamMatch(t, route.scope, route.idx, route.side, route.mid);
+  if(!match || !match.a || !match.b) return '<div class="page-head no-print"><h1>対戦が見つかりません</h1><p class="sub">組み合わせが変更された可能性があります。</p></div>'+backBtn;
+  var useDownSet = route.side==="lb" ? (t.lbOneSetDown!==false) : false;
+  function playerBlock(id, oppId){
+    var cls = displayClassOf(t, id);
+    var fmt = matchFormatFor(id, oppId, useDownSet, t);
+    var sets = fmt ? fmt.sets : 0;
+    var numbers = [];
+    for(var i=0;i<=sets;i++) numbers.push('<span class="mp-num">'+i+'</span>');
+    return '<div class="mp-player">'+
+      '<div class="mp-name">'+esc(playerName(id))+'</div>'+
+      (cls ? ('<div class="mp-class">クラス '+esc(cls)+'</div>') : '')+
+      '<div class="mp-numbers">'+numbers.join("")+'</div>'+
+    '</div>';
+  }
+  return '<div class="match-print-page">'+
+    '<div class="form-row no-print" style="gap:.5rem;margin-bottom:1rem">'+
+      '<button class="btn btn-primary" data-action="print-page">印刷する</button>'+
+      backBtn+
+    '</div>'+
+    '<div class="mp-header"><div class="mp-title">'+esc(t.name)+'</div><div class="mp-sub">開催日: '+eventDateOf(t)+'</div></div>'+
+    playerBlock(match.a, match.b)+
+    '<div class="mp-vs">VS</div>'+
+    playerBlock(match.b, match.a)+
   '</div>';
 }
 function renderTournamentResultPrint(tid){
@@ -4279,6 +4464,24 @@ document.addEventListener("click", function(e){
     if(t.getAttribute("data-id")) r.id = t.getAttribute("data-id");
     navigate(r);
   }
+  else if(action==="print-match"){
+    var pIdxRaw = t.getAttribute("data-idx");
+    navigate({
+      screen: "matchPrint",
+      id: t.getAttribute("data-tid"),
+      scope: t.getAttribute("data-scope"),
+      idx: pIdxRaw!=null && pIdxRaw!=="" ? Number(pIdxRaw) : null,
+      side: t.getAttribute("data-side") || null,
+      mid: t.getAttribute("data-mid"),
+      returnScrollY: window.scrollY
+    });
+  }
+  else if(action==="nav-restore-scroll"){
+    var rsScreen = t.getAttribute("data-screen");
+    var rsR = {screen:rsScreen};
+    if(t.getAttribute("data-id")) rsR.id = t.getAttribute("data-id");
+    navigate(rsR, Number(t.getAttribute("data-scroll"))||0);
+  }
   else if(action==="settings-tab"){ route = {screen:"settings", tab:t.getAttribute("data-tab")}; render(); }
   else if(action==="roster-sort"){ route.rosterSort = t.getAttribute("data-sort"); render(); }
   else if(action==="roster-tab"){ route.rosterTab = t.getAttribute("data-tab"); render(); }
@@ -4383,6 +4586,20 @@ document.addEventListener("click", function(e){
     }
   }
   else if(action==="export-data"){ exportData(); }
+  else if(action==="create-cloud-backup"){ createCloudBackup(); }
+  else if(action==="reload-cloud-backups"){ cloudBackups = null; render(); }
+  else if(action==="restore-cloud-backup"){
+    var rcbName = t.getAttribute("data-name");
+    if(confirm("このバックアップの内容で、現在クラウド上の全データ(選手・大会結果すべて)を上書きします。よろしいですか?(現在の内容は失われます)")){
+      restoreCloudBackup(rcbName);
+    }
+  }
+  else if(action==="delete-cloud-backup"){
+    var dcbName = t.getAttribute("data-name");
+    if(confirm("このバックアップを削除しますか?(元に戻せません)")){
+      deleteCloudBackup(dcbName);
+    }
+  }
   else if(action==="delete-tournament"){ deleteTournament(t.getAttribute("data-id")); }
   else if(action==="toggle-lock-tournament"){ toggleLockTournament(t.getAttribute("data-id")); }
   else if(action==="revert-to-assigning"){
@@ -4391,8 +4608,12 @@ document.addEventListener("click", function(e){
     revertToAssigning(tourRa);
   }
   else if(action==="refresh-eligible-from-entries"){
-    var tidRE=t.getAttribute("data-tid"); var tourRE=findTournament(tidRE);
-    if(tourRE) refreshEligibleFromEntries(tourRE);
+    var tidRE=t.getAttribute("data-tid");
+    syncFromServer(function(){
+      var tourRE = findTournament(tidRE);
+      if(tourRE) refreshEligibleFromEntries(tourRE);
+      else render();
+    });
   }
   else if(action==="redraw-finals"){
     var tidr=t.getAttribute("data-tid"); var tourr=findTournament(tidr);
