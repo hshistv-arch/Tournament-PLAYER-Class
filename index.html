@@ -213,6 +213,7 @@ details[open] > summary:before{content:"▾ ";}
   flex:none; min-height:84px; margin:5px 0; border:1px solid var(--border); border-radius:8px; background:var(--surface);
   box-shadow:var(--shadow); display:flex; flex-direction:column; position:relative; z-index:1;
 }
+.bflow-match.preview{border-style:dashed; opacity:.75;}
 .bflow-side{
   display:flex; align-items:center; gap:.3rem; padding:.25rem .5rem; flex:1; font-size:.78rem; cursor:pointer;
 }
@@ -1272,7 +1273,7 @@ function eligiblePlayerIdsForTournament(t, usePoints){
   var entries = t.entries || {};
   return state.players.filter(function(p){
     var e = entries[p.id];
-    if(!e || !e.entered || !e.feePaid) return false;
+    if(!e || !e.entered) return false;
     if(usePoints!==false && p.isGuest) return false;
     return true;
   }).map(function(p){ return p.id; });
@@ -1463,14 +1464,22 @@ function padBracketRounds(bracket, capRounds){
   // 目安の進出人数から逆算した表示上限がそれより小さくても隠さない(隠すと対戦が入力できなくなるため)
   totalRounds = Math.max(totalRounds, bracket.rounds.length);
   var rounds = bracket.rounds.slice();
-  var lastSize = rounds[rounds.length-1].length;
+  // 対戦が1つ終わるごとに、そのラウンドがまだ全部終わっていなくても
+  // 判明した勝者名だけ次のラウンドの枠に先出しする(敗者復活ブロックの
+  // lbPreviewRoundsForProj と同じ考え方)
+  var lastVals = rounds[rounds.length-1].map(function(m){ return m.winner; });
   for(var r=rounds.length; r<totalRounds; r++){
-    lastSize = Math.max(1, Math.round(lastSize/2));
+    var n = Math.max(1, Math.ceil(lastVals.length/2));
     var placeholder=[];
-    for(var i=0;i<lastSize;i++){
-      placeholder.push({id:"ph_r"+(r+1)+"_m"+i, round:r+1, a:null, b:null, winner:null, deltas:null, bye:false, score:{a:null,b:null}});
+    var outVals=[];
+    for(var i=0;i<n;i++){
+      var a = lastVals[i*2]!=null ? lastVals[i*2] : null;
+      var b = lastVals[i*2+1]!=null ? lastVals[i*2+1] : null;
+      placeholder.push({id:"ph_r"+(r+1)+"_m"+i, round:r+1, a:a, b:b, winner:null, deltas:null, bye:false, preview:true, score:{a:null,b:null}});
+      outVals.push(null);
     }
     rounds.push(placeholder);
+    lastVals = outVals;
   }
   return rounds;
 }
@@ -3116,7 +3125,7 @@ function ensureTournamentSetupState(t){
       totalParticipants: 8
     };
   }
-  // 出場選手はエントリー受付(エントリー・参加費受領済み)の状況をそのまま使う
+  // 出場選手はエントリー受付(エントリー済み)の状況をそのまま使う
   var eligibleIds = eligiblePlayerIdsForTournament(t, nt.usePointsAndSets);
   nt.selectedIds = eligibleIds.slice();
   if(eligibleIds.length) nt.totalParticipants = eligibleIds.length;
@@ -3132,7 +3141,7 @@ function renderTournamentSetupSection(t){
   }
   return ''+
   '<div class="card"><h3 style="margin-top:0">試合形式を選択して大会を開始する</h3><p class="hint">出場選手の割当は大会開始後、トーナメント表/ブロック表の中で行います。</p></div>'+
-  '<div class="card"><p class="hint">このエントリー受付でエントリー・参加費受領済みの選手: <b class="num">'+eligibleCount+'</b>名'+
+  '<div class="card"><p class="hint">このエントリー受付でエントリー済みの選手: <b class="num">'+eligibleCount+'</b>名'+
     (eligibleCount===0 ? '(未設定の場合はロースター全員が選択対象になります)' : '')+
   '</p></div>'+
   '<form data-form="tournament-setup" data-tid="'+t.id+'">'+
@@ -3197,7 +3206,7 @@ function renderTournamentSetupSection(t){
     '<div class="card">'+
       '<h3>参加人数</h3>'+
       (eligibleCount>0 ?
-        '<p class="hint">総参加人数: <b class="num">'+nt.totalParticipants+'</b>名(エントリー受付でエントリー・参加費受領済みの人数から自動設定されます)</p>'
+        '<p class="hint">総参加人数: <b class="num">'+nt.totalParticipants+'</b>名(エントリー受付でエントリー済みの人数から自動設定されます)</p>'
         :
         '<div class="form-row"><div class="field"><label>総参加人数</label><input type="number" data-action="totalParticipants-input" data-tid="'+t.id+'" value="'+nt.totalParticipants+'" min="2" style="width:7rem"></div></div>'
       )+
@@ -3766,7 +3775,7 @@ function bflowSideHTML(m, playerId, opts, slotNo){
   if(m.bye){
     return '<div class="'+cls+' bye">'+slotNoHTML+esc(playerName(playerId))+(badgeHTML?(' '+badgeHTML):'')+(showPS?'<span class="pts num">不戦勝</span>':'')+'</div>';
   }
-  var canClick = !resolved && opts.resolvable;
+  var canClick = !resolved && opts.resolvable && !m.preview;
   var attrs = canClick ? ('data-action="'+opts.actionName+'" data-mid="'+m.id+'" data-winner="'+playerId+'" '+opts.extraAttrs) : "";
   if(!canClick) cls += resolved ? "" : " locked";
   var scoreHTML = "";
@@ -3774,7 +3783,7 @@ function bflowSideHTML(m, playerId, opts, slotNo){
     var score = m.score || {a:null,b:null};
     var which = (playerId===m.a) ? "a" : "b";
     var val = score[which];
-    if(opts.hideScoreInput){
+    if(opts.hideScoreInput || m.preview){
       scoreHTML = isWinner ? '<span class="score-num num win-mark" style="margin:0 .2rem">W</span>' : (val!=null ? '<span class="score-num num" style="margin:0 .2rem">'+val+'</span>' : "");
     } else {
       scoreHTML = isWinner ?
@@ -3814,13 +3823,13 @@ function renderBracketFlow(rounds, roundLabelFn, opts){
           lbDestHTML = '<span class="hint" style="font-size:.7rem">→敗者復活'+(dest.lbRound>1?(' '+dest.lbRound+'回戦'):'')+' No.'+dest.no+'</span>';
         }
       }
-      var eligible = opts.side==="wb" && (ri===0 || (ri===1 && (byeWinners.indexOf(m.a)>=0 || byeWinners.indexOf(m.b)>=0)));
+      var eligible = !m.preview && opts.side==="wb" && (ri===0 || (ri===1 && (byeWinners.indexOf(m.a)>=0 || byeWinners.indexOf(m.b)>=0)));
       var scheduleHTML = scheduleTimeHTML(opts.tournament, m, opts.scoreScope, opts.extraAttrs, !opts.hideScoreInput, eligible);
       var slotColor = (eligible && m.startTime && opts.timeColorMap && opts.timeColorMap[m.startTime]) ? opts.timeColorMap[m.startTime] : "";
       var matchStyle = slotColor ? ' style="box-shadow:inset 0 0 0 3px '+slotColor+'"' : "";
       var slotNoA = (ri===0 && opts.side==="wb") ? mi*2+1 : null;
       var slotNoB = (ri===0 && opts.side==="wb") ? mi*2+2 : null;
-      return '<div class="bflow-match"'+matchStyle+'>'+bflowSideHTML(m, m.a, opts, slotNoA)+bflowSideHTML(m, m.b, opts, slotNoB)+'<div class="bflow-match-footer">'+noHTML+lbDestHTML+scheduleHTML+undo+printMatchLinkHTML(opts.tournament, m, opts.printScope, opts.printIdx, opts.side)+'</div></div>';
+      return '<div class="bflow-match'+(m.preview?' preview':'')+'"'+matchStyle+'>'+bflowSideHTML(m, m.a, opts, slotNoA)+bflowSideHTML(m, m.b, opts, slotNoB)+'<div class="bflow-match-footer">'+noHTML+lbDestHTML+scheduleHTML+undo+(m.preview?"":printMatchLinkHTML(opts.tournament, m, opts.printScope, opts.printIdx, opts.side))+'</div></div>';
     }).join("");
     return '<div class="bflow-round"><div class="bflow-round-label">'+roundLabelFn(ri, rounds.length)+'</div>'+
       '<div class="bflow-slots">'+connectors+matches+'</div></div>';
