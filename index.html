@@ -93,6 +93,9 @@ button{font-family:inherit;}
 .main-inner{max-width:1120px; margin:0 auto; display:flex; flex-direction:column; gap:1.2rem;}
 .page-head{display:flex; align-items:baseline; justify-content:space-between; gap:1rem; flex-wrap:wrap;}
 .page-head p.sub{color:var(--muted); margin:.15rem 0 0; font-size:.88rem;}
+.tournament-name-input{font:inherit; font-size:1.5rem; font-weight:700; color:var(--text); border:1px solid transparent; background:transparent; padding:.1rem .3rem; margin:0 0 0 -.3rem; border-radius:6px; max-width:100%; width:22rem;}
+.tournament-name-input:hover{border-color:var(--border);}
+.tournament-name-input:focus{border-color:var(--border); background:var(--surface); outline:none;}
 .card{
   background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
   padding:1.1rem 1.2rem; box-shadow:var(--shadow);
@@ -2791,7 +2794,7 @@ function renderTournamentEntrySection(t){
   var preStart = t.status==="entryPending";
   return ''+
   (preStart ?
-    ('<div class="page-head" style="align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem"><div><h1>'+esc(t.name)+'</h1><p class="sub">エントリー受付中 ・ 開催日: '+eventDateOf(t)+'</p></div>'+
+    ('<div class="page-head" style="align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem"><div><h1><input type="text" class="tournament-name-input" data-action="update-tournament-name" data-tid="'+t.id+'" value="'+esc(t.name)+'"></h1><p class="sub">エントリー受付中 ・ 開催日: '+eventDateOf(t)+'</p></div>'+
       '<button class="btn btn-sm btn-ghost" type="button" data-action="refresh-entries-from-server">🔄 更新</button>'+
     '</div>')
     : ('<div style="display:flex;justify-content:flex-end;margin-bottom:.5rem"><button class="btn btn-sm btn-ghost" type="button" data-action="refresh-entries-from-server">🔄 更新</button></div>')
@@ -4033,7 +4036,7 @@ function renderEntryEditSection(t){
 }
 function renderBlockPrelimTournament(t){
   var STATUS_LABEL = {entryPending:"エントリー受付中", assigning:"組み合わせ待ち", prelim:"予選中", finals:"決勝トーナメント中", completed:"終了"};
-  var header = '<div class="page-head"><div><h1>'+esc(t.name)+'</h1><p class="sub">'+tournamentFormatLabel(t)+' ・ '+
+  var header = '<div class="page-head"><div><h1><input type="text" class="tournament-name-input" data-action="update-tournament-name" data-tid="'+t.id+'" value="'+esc(t.name)+'"></h1><p class="sub">'+tournamentFormatLabel(t)+' ・ '+
     '<span class="pill '+t.status+'">'+STATUS_LABEL[t.status]+'</span>'+(t.locked?' <span class="pill" style="color:var(--rust-ink);border-color:var(--rust)">🔒 削除ロック中</span>':'')+'</p></div>'+
     '<div style="display:flex;gap:.5rem;flex-wrap:wrap"><a class="btn btn-sm btn-ghost" href="?display=1&id='+t.id+'" target="_blank">大会結果共有</a>'+
     '<a class="btn btn-sm btn-ghost" href="?stream=1&id='+t.id+'" target="_blank">📺 配信用スコアボード</a>'+
@@ -4134,7 +4137,7 @@ function renderOneBlock(t, block){
 // ---------- ① elimination prelim + finals screen ----------
 function renderElimPrelimTournament(t){
   var STATUS_LABEL = {entryPending:"エントリー受付中", assigning:"組み合わせ待ち", prelim:"予選中", finals:"決勝トーナメント中", completed:"終了"};
-  var header = '<div class="page-head"><div><h1>'+esc(t.name)+'</h1><p class="sub">'+tournamentFormatLabel(t)+' ・ '+
+  var header = '<div class="page-head"><div><h1><input type="text" class="tournament-name-input" data-action="update-tournament-name" data-tid="'+t.id+'" value="'+esc(t.name)+'"></h1><p class="sub">'+tournamentFormatLabel(t)+' ・ '+
     '<span class="pill '+t.status+'">'+STATUS_LABEL[t.status]+'</span>'+(t.locked?' <span class="pill" style="color:var(--rust-ink);border-color:var(--rust)">🔒 削除ロック中</span>':'')+'</p></div>'+
     '<div style="display:flex;gap:.5rem;flex-wrap:wrap"><a class="btn btn-sm btn-ghost" href="?display=1&id='+t.id+'" target="_blank">大会結果共有</a>'+
     '<a class="btn btn-sm btn-ghost" href="?stream=1&id='+t.id+'" target="_blank">📺 配信用スコアボード</a>'+
@@ -4875,6 +4878,14 @@ document.addEventListener("change", function(e){
     var tidED = t.getAttribute("data-tid"); var tourED = findTournament(tidED);
     if(!tourED || !t.value) return;
     tourED.eventDate = t.value;
+    saveState(); render();
+  }
+  else if(action==="update-tournament-name"){
+    var tidTN = t.getAttribute("data-tid"); var tourTN = findTournament(tidTN);
+    if(!tourTN) return;
+    var nameTN = t.value.trim();
+    if(!nameTN){ t.value = tourTN.name; return; }
+    tourTN.name = nameTN;
     saveState(); render();
   }
   else if(action==="update-bracket-format"){
