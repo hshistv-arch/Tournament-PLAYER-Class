@@ -4131,7 +4131,12 @@ function formatSwitchHTML(t){
         BRACKET_SIZES.map(function(sz){ return '<option value="'+sz+'"'+(t.bracketSize===sz?" selected":"")+'>'+sz+'名用</option>'; }).join("")+
       '</select>'+
       '<span class="hint">フォーマットを変更すると、出場選手が自動で再割当され、既に入力されている対戦結果はリセットされます</span>'+
-    '</div>') : '')+
+    '</div>') :
+    ('<div class="form-row" style="align-items:center;gap:.6rem;margin-top:.6rem">'+
+      '<span class="hint">予選ブロック数</span>'+
+      '<input type="number" min="1" style="width:6rem" data-action="update-block-count" data-tid="'+t.id+'" value="'+(t.blockCount||t.blocks.length)+'">'+
+      '<span class="hint">ブロック数を変更すると、出場選手が自動で再割当され、既に入力されている対戦結果はリセットされます</span>'+
+    '</div>'))+
   '<div class="form-row" style="align-items:center;gap:.6rem;margin-top:.6rem">'+
     '<span class="hint">基本セット数</span>'+
     '<select data-action="update-set-count-table" data-tid="'+t.id+'">'+
@@ -5058,6 +5063,35 @@ document.addEventListener("change", function(e){
     var tidGc = t.getAttribute("data-tid"); var tourGc = findTournament(tidGc);
     if(!tourGc) return;
     changeBracketFormat(tourGc, Number(t.value));
+  }
+  else if(action==="update-block-count"){
+    var tidBK = t.getAttribute("data-tid"); var tourBK = findTournament(tidBK);
+    if(!tourBK || tourBK.format!=="blockPrelim") return;
+    var newCount = Math.max(1, Math.round(Number(t.value))||1);
+    if(newCount===tourBK.blockCount) return;
+    var hasProgBK = tourBK.blocks.some(function(b, bi){ return groupOrBlockHasProgress(tourBK, bi); }) || !!tourBK.finals;
+    if(hasProgBK && !confirm("ブロック数を変更すると、出場選手が自動で再割当され、既に入力されている対戦結果(場合によっては決勝トーナメントの結果も)が取り消されます。よろしいですか?")){
+      render();
+      return;
+    }
+    if(tourBK.finals) unwindFinalsIfNeeded(tourBK);
+    var idsBK = currentLineupIds(tourBK);
+    var resultBK = computeAiBlockAssignment(idsBK, newCount, tourBK);
+    tourBK.blocks.forEach(function(b){
+      (b.matches||[]).forEach(function(m){ if(m.winner) undoMatchDeltas(m); });
+      if(b.penaltyDeltas){
+        Object.keys(b.penaltyDeltas).forEach(function(id){ var p=getPlayer(id); if(p) p.points -= b.penaltyDeltas[id]; });
+      }
+    });
+    tourBK.blockCount = newCount;
+    tourBK.blocks = resultBK.sizes.map(function(size, bi){
+      var slots = new Array(size).fill(null);
+      resultBK.perGroupIds[bi].forEach(function(id, i){ slots[i] = id; });
+      return {index:bi, targetSize:size, slots:slots};
+    });
+    tourBK.blocks.forEach(function(b){ rebuildBlockFromSlots(tourBK, b); });
+    if(tourBK.status!=="assigning") captureEntryPoints(tourBK);
+    saveState(); render();
   }
   else if(action==="toggle-tiebreak"){
     var tidTB=t.getAttribute("data-tid"); var tourTB=findTournament(tidTB);
