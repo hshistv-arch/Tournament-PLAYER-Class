@@ -978,6 +978,12 @@ function getPlayer(id){
   return null;
 }
 function playerName(id){ var p=getPlayer(id); return p ? p.name : "(削除された選手)"; }
+function playerNameWithAffiliation(t, id){
+  var name = playerName(id);
+  var p = getPlayer(id);
+  if(t && !usePointsAndSets(t) && p && p.affiliation) name += " ("+p.affiliation+")";
+  return name;
+}
 function pointsOf(id){ var p=getPlayer(id); return p ? p.points : 0; }
 function drawNumberOf(entries, id){ var e=(entries||{})[id]; return (e && e.drawNumber) ? e.drawNumber : null; }
 // 組み合わせの並び順: 抽選番号を引いている選手を若い番号順で優先し、引いていない選手は従来通りポイント順で後ろに回す
@@ -2604,6 +2610,19 @@ function renderRosterGuests(){
     '<div class="stat"><div class="label">イベント大会出場選手数</div><div class="value num">'+guests.length+'</div></div>'+
   '</div>'+
   '<div class="card">'+
+    '<h3>イベント大会出場選手を新規登録</h3>'+
+    '<p class="hint">G-SPeCポイントに影響しない大会(親善試合・イベント戦)向けの出場選手をここから直接登録できます。ポイントには一切影響しません。</p>'+
+    '<form data-form="add-guest-player" class="form-row">'+
+      '<div class="field"><label>氏名</label><input type="text" name="name" placeholder="例: 山田 太郎" required></div>'+
+      '<div class="field"><label>読みカナ</label><input type="text" name="kana" placeholder="例: ヤマダ タロウ"></div>'+
+      '<div class="field"><label>所属</label><input type="text" name="affiliation" placeholder="例: ○○クラブ"></div>'+
+      '<div class="field"><label>クラス</label><select name="cls" style="width:6rem">'+
+        MANUAL_CLASS_OPTIONS.map(function(c){ return '<option value="'+c+'">'+c+'</option>'; }).join("")+
+      '</select></div>'+
+      '<button type="submit" class="btn btn-primary">追加する</button>'+
+    '</form>'+
+  '</div>'+
+  '<div class="card">'+
     '<h3 style="margin-bottom:.6rem">イベント大会出場選手一覧</h3>'+
     '<p class="hint">「エントリー受付」の「G-SPeCポイントに影響しない試合」から追加された選手です。氏名・読みカナ・所属・クラスはその場で編集できます(変更は自動保存されます)。ポイントには一切影響しません。</p>'+
     (guests.length ?
@@ -2718,6 +2737,7 @@ function renderTournamentEntrySection(t){
   var entered = players.filter(function(p){ var e=t.entries[p.id]; return e && e.entered; });
   var paid = entered.filter(function(p){ return t.entries[p.id].feePaid; });
   var visiblePlayers = players.filter(function(p){
+    if(entryMode==="noPoints" ? !p.isGuest : p.isGuest) return false;
     if(onlyEntered){ var e=t.entries[p.id]; if(!e || !e.entered) return false; }
     return entrySearchMatches(p, searchQuery);
   });
@@ -2809,7 +2829,7 @@ function renderTournamentEntrySection(t){
       '<input type="checkbox" data-action="toggle-entry-only-filter" '+(onlyEntered?"checked":"")+'>'+
       'エントリー済みの選手のみ表示する'+
     '</label>'+
-    (!visiblePlayers.length && (searchQuery || onlyEntered) ? '<p class="empty-note">'+(searchQuery ? '「'+esc(searchQuery)+'」に一致する選手が見つかりません。' : 'エントリー済みの選手がいません。')+'</p>' : (
+    (!visiblePlayers.length ? '<p class="empty-note">'+(searchQuery ? '「'+esc(searchQuery)+'」に一致する選手が見つかりません。' : (onlyEntered ? 'エントリー済みの選手がいません。' : (entryMode==="noPoints" ? 'イベント大会出場選手はまだ登録されていません。上の「メンバーを追加」または選手ロースターの「イベント大会出場選手」タブから登録できます。' : '選手ロースターに選手が登録されていません。')))+'</p>' : (
     '<div class="table-wrap" id="entry-table-scroll" data-preserve-scroll><table class="data">'+
       '<thead><tr><th>氏名</th><th>クラス</th><th>エントリー</th><th>参加費受領</th><th>抽選番号</th></tr></thead>'+
       '<tbody>'+rows+'</tbody>'+
@@ -3256,7 +3276,7 @@ function displayMatchRowHTML(match, matchNo, t){
     var val = score[sideKey];
     var scoreHTML = isWinner ? '<span class="score-num num win-mark" style="margin-left:.3rem">(W)</span>' : (val!=null ? '<span class="score-num num" style="margin-left:.3rem">('+val+')</span>' : "");
     var rowBadge = classBadgeOrEmpty(t, id);
-    return '<span'+(isWinner?' style="font-weight:700"':'')+'>'+esc(playerName(id))+(rowBadge?(' '+rowBadge):'')+(isWinner?' 🏆':'')+'</span>'+matchFormatHintHTML(id, oppId, false, t)+scoreHTML+(usePointsAndSets(t)?matchDeltaHTML(match, id):'');
+    return '<span'+(isWinner?' style="font-weight:700"':'')+'>'+esc(playerNameWithAffiliation(t, id))+(rowBadge?(' '+rowBadge):'')+(isWinner?' 🏆':'')+'</span>'+matchFormatHintHTML(id, oppId, false, t)+scoreHTML+(usePointsAndSets(t)?matchDeltaHTML(match, id):'');
   }
   var matchNoHTML = matchNo ? '<span class="match-no">No.'+matchNo+'</span>' : "";
   return '<div class="match-row">'+matchNoHTML+
@@ -3277,7 +3297,7 @@ function renderDisplayBlock(t, block){
   var rows = standings.map(function(id){
     var w = block.matches.filter(function(m){return m.winner===id;}).length;
     var elim = block.eliminated && block.eliminated[id];
-    return '<tr><td>'+esc(playerName(id))+'</td>'+(showClass?('<td>'+classBadgeOrEmpty(t, id)+'</td>'):'')+(showPS?('<td class="num">'+entryPointsOf(t, id)+'</td>'):'')+
+    return '<tr><td>'+esc(playerNameWithAffiliation(t, id))+'</td>'+(showClass?('<td>'+classBadgeOrEmpty(t, id)+'</td>'):'')+(showPS?('<td class="num">'+entryPointsOf(t, id)+'</td>'):'')+
       '<td class="num">'+w+'勝'+(block.losses?(block.losses[id]||0):0)+'敗</td>'+
       '<td>'+(elim?'<span class="pill" style="color:var(--loss);border-color:var(--loss)">予選敗退</span>':'')+'</td></tr>';
   }).join("");
@@ -3542,7 +3562,7 @@ function renderStreamPicker(t){
     var url = streamScoreboardUrlFor(t.id, e.scope, e.idx, e.side, e.mid, false);
     var statusPill = e.match.winner ? '<span class="pill completed">終了</span>' : '<span class="pill prelim">対戦中/これから</span>';
     return '<div class="tourn-card" style="flex-wrap:wrap">'+
-      '<div><div class="hint">'+esc(e.section)+'</div><h3 style="margin:.2rem 0">'+esc(playerName(e.match.a))+' vs '+esc(playerName(e.match.b))+'</h3>'+statusPill+'</div>'+
+      '<div><div class="hint">'+esc(e.section)+'</div><h3 style="margin:.2rem 0">'+esc(playerNameWithAffiliation(t, e.match.a))+' vs '+esc(playerNameWithAffiliation(t, e.match.b))+'</h3>'+statusPill+'</div>'+
       '<div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">'+
         '<a class="btn btn-sm" href="'+url+'" target="_blank">スコアボードを開く</a>'+
         '<button class="btn btn-sm btn-ghost" type="button" data-action="copy-url" data-url="'+esc(url)+'">URLをコピー</button>'+
@@ -3570,7 +3590,7 @@ function renderStreamScoreboard(t, match, stageLabel){
   function side(id, oppId, sideKey, reverse){
     var fmt = matchFormatFor(id, oppId, false, t);
     var setsLabel = fmt ? (fmt.sets+"セット") : "";
-    var nameHTML = '<span class="stream-name">'+esc(playerName(id))+'</span>';
+    var nameHTML = '<span class="stream-name">'+esc(playerNameWithAffiliation(t, id))+'</span>';
     var metaHTML = '<span class="stream-meta">'+classBadgeOrEmpty(t, id)+(setsLabel?('<span class="stream-sets">'+esc(setsLabel)+'</span>'):'')+'</span>';
     return '<div class="stream-side'+(match.winner===id?' winner':'')+(reverse?' reverse':'')+'">'+
       (reverse ? (metaHTML+nameHTML) : (nameHTML+metaHTML))+
@@ -3619,7 +3639,7 @@ function matchRow(match, tprefix, extraActionData, matchNo, resolvable, t, block
   function sideBtn(id, side){
     if(!id) return '<span class="hint">(不戦)</span>';
     var rowClass = displayClassOf(t, id);
-    var label = rowClass ? (playerName(id)+" ("+rowClass+")") : playerName(id);
+    var label = rowClass ? (playerNameWithAffiliation(t, id)+" ("+rowClass+")") : playerNameWithAffiliation(t, id);
     var isWinner = match.winner===id;
     var oppId = side==="a" ? b : a;
     var scoreHTML = "";
@@ -3773,7 +3793,7 @@ function bflowSideHTML(m, playerId, opts, slotNo){
   var badgeHTML = classBadgeOrEmpty(opts.tournament, playerId);
   var oppId = playerId===m.a ? m.b : m.a;
   if(m.bye){
-    return '<div class="'+cls+' bye">'+slotNoHTML+esc(playerName(playerId))+(badgeHTML?(' '+badgeHTML):'')+(showPS?'<span class="pts num">不戦勝</span>':'')+'</div>';
+    return '<div class="'+cls+' bye">'+slotNoHTML+esc(playerNameWithAffiliation(opts.tournament, playerId))+(badgeHTML?(' '+badgeHTML):'')+(showPS?'<span class="pts num">不戦勝</span>':'')+'</div>';
   }
   var canClick = !resolved && opts.resolvable && !m.preview;
   var attrs = canClick ? ('data-action="'+opts.actionName+'" data-mid="'+m.id+'" data-winner="'+playerId+'" '+opts.extraAttrs) : "";
@@ -3791,7 +3811,7 @@ function bflowSideHTML(m, playerId, opts, slotNo){
         '<input type="number" class="num score-input-inline" min="0" data-action="update-score" data-scope="'+opts.scoreScope+'" data-which="'+which+'" data-mid="'+m.id+'" '+opts.extraAttrs+' value="'+(val==null?"":val)+'" placeholder="-">';
     }
   }
-  return '<div class="'+cls+'" '+attrs+'>'+slotNoHTML+'<span class="pname">'+esc(playerName(playerId))+'</span>'+badgeHTML+matchFormatHintHTML(playerId, oppId, opts.useDownSet, opts.tournament)+scoreHTML+(showPS?('<span class="pts num">'+entryPointsOf(opts.tournament, playerId)+'</span>'+matchDeltaHTML(m, playerId)):'')+'</div>';
+  return '<div class="'+cls+'" '+attrs+'>'+slotNoHTML+'<span class="pname">'+esc(playerNameWithAffiliation(opts.tournament, playerId))+'</span>'+badgeHTML+matchFormatHintHTML(playerId, oppId, opts.useDownSet, opts.tournament)+scoreHTML+(showPS?('<span class="pts num">'+entryPointsOf(opts.tournament, playerId)+'</span>'+matchDeltaHTML(m, playerId)):'')+'</div>';
 }
 function renderBracketFlow(rounds, roundLabelFn, opts){
   var counter = 0;
@@ -3845,7 +3865,7 @@ function simpleSideHTML(m, playerId, opts){
   var badgeHTML = classBadgeOrEmpty(opts.tournament, playerId);
   var oppId2 = playerId===m.a ? m.b : m.a;
   if(m.bye){
-    return '<div class="'+cls+' bye">'+esc(playerName(playerId))+(badgeHTML?(' '+badgeHTML):'')+(showPS?'<span class="pts num">不戦勝</span>':'')+'</div>';
+    return '<div class="'+cls+' bye">'+esc(playerNameWithAffiliation(opts.tournament, playerId))+(badgeHTML?(' '+badgeHTML):'')+(showPS?'<span class="pts num">不戦勝</span>':'')+'</div>';
   }
   var canClick = !resolved && opts.resolvable && !m.preview;
   var attrs = canClick ? ('data-action="'+opts.actionName+'" data-mid="'+m.id+'" data-winner="'+playerId+'" '+opts.extraAttrs) : "";
@@ -3862,7 +3882,7 @@ function simpleSideHTML(m, playerId, opts){
         '<input type="number" class="num score-input-inline" min="0" data-action="update-score" data-scope="'+opts.scoreScope+'" data-which="'+which+'" data-mid="'+m.id+'" '+opts.extraAttrs+' value="'+(val==null?"":val)+'" placeholder="-">';
     }
   }
-  return '<div class="'+cls+'" '+attrs+'>'+esc(playerName(playerId))+badgeHTML+matchFormatHintHTML(playerId, oppId2, opts.useDownSet, opts.tournament)+scoreHTML+(showPS?('<span class="pts num">'+entryPointsOf(opts.tournament, playerId)+'</span>'+matchDeltaHTML(m, playerId)):'')+'</div>';
+  return '<div class="'+cls+'" '+attrs+'>'+esc(playerNameWithAffiliation(opts.tournament, playerId))+badgeHTML+matchFormatHintHTML(playerId, oppId2, opts.useDownSet, opts.tournament)+scoreHTML+(showPS?('<span class="pts num">'+entryPointsOf(opts.tournament, playerId)+'</span>'+matchDeltaHTML(m, playerId)):'')+'</div>';
 }
 function lbPlaceholderRounds(g){
   var r0 = (g.wb && g.wb.rounds && g.wb.rounds[0]) || [];
@@ -4092,7 +4112,7 @@ function renderOneBlock(t, block){
   var rows = standings.map(function(id){
     var w = block.matches.filter(function(m){return m.winner===id;}).length;
     var elim = block.eliminated && block.eliminated[id];
-    return '<tr><td>'+esc(playerName(id))+'</td>'+(showClass?('<td>'+classBadgeOrEmpty(t, id)+'</td>'):'')+(showPS?('<td class="num">'+entryPointsOf(t, id)+'</td>'):'')+
+    return '<tr><td>'+esc(playerNameWithAffiliation(t, id))+'</td>'+(showClass?('<td>'+classBadgeOrEmpty(t, id)+'</td>'):'')+(showPS?('<td class="num">'+entryPointsOf(t, id)+'</td>'):'')+
       '<td class="num">'+w+'勝'+(block.losses?(block.losses[id]||0):0)+'敗</td>'+
       '<td>'+(elim?'<span class="pill" style="color:var(--loss);border-color:var(--loss)">予選敗退</span>':'')+'</td></tr>';
   }).join("");
@@ -4330,7 +4350,7 @@ function renderMatchPrint(route){
     var numbers = [];
     for(var i=0;i<=sets;i++) numbers.push('<span class="mp-num">'+i+'</span>');
     return '<div class="mp-player">'+
-      '<div class="mp-name">'+esc(playerName(id))+'</div>'+
+      '<div class="mp-name">'+esc(playerNameWithAffiliation(t, id))+'</div>'+
       (cls ? ('<div class="mp-class">クラス '+esc(cls)+'</div>') : '')+
       '<div class="mp-numbers">'+numbers.join("")+'</div>'+
     '</div>';
@@ -5132,6 +5152,12 @@ document.addEventListener("submit", function(e){
     e.preventDefault();
     var fd = new FormData(form);
     addPlayer(fd.get("name"), fd.get("points"), fd.get("kana"));
+    form.reset();
+  }
+  else if(form.getAttribute("data-form")==="add-guest-player"){
+    e.preventDefault();
+    var fdRG = new FormData(form);
+    addGuestPlayer(fdRG.get("name"), fdRG.get("kana"), fdRG.get("cls"), fdRG.get("affiliation"));
     form.reset();
   }
   else if(form.getAttribute("data-form")==="add-player-entry"){
