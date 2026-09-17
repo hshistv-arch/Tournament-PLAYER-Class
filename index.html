@@ -1228,14 +1228,11 @@ function buildTimeSlotColorMap(t){
   var counts = {};
   function count(time){ if(time) counts[time] = (counts[time]||0)+1; }
   (t.groups||[]).forEach(function(g){
-    var wbRounds = (g.wb && g.wb.rounds) || [];
-    var byeWinners = round1ByeWinnerIds(wbRounds);
-    wbRounds.forEach(function(round, ri){
-      round.forEach(function(m){
-        if(m.bye) return;
-        if(ri===0 || (ri===1 && (byeWinners.indexOf(m.a)>=0 || byeWinners.indexOf(m.b)>=0))) count(m.startTime);
-      });
-    });
+    var r0 = (g.wb && g.wb.rounds && g.wb.rounds[0]) || [];
+    r0.forEach(function(m){ if(!m.bye) count(m.startTime); });
+    var sched = g.scheduleByPos || {};
+    var r2Count = Math.ceil(r0.length/2);
+    for(var mi=0; mi<r2Count; mi++){ count(sched["r2_m"+mi]); }
   });
   var times = Object.keys(counts).filter(function(tm){ return counts[tm]>=2; }).sort();
   var map = {};
@@ -3419,7 +3416,7 @@ function renderDisplayGroup(t, g, timeColorMap){
   var lbProj = hasLoserBracket(t) ? computeLbSlotProjections(g, t, cappedRounds) : null;
   var sec = '<div class="card"><h3>グループ'+(g.index+1)+' ・ 勝者側ブラケット</h3>'+
     renderBracketFlow(padBracketRounds(g.wb, cappedRounds), function(ri){ return "グループ"+(g.index+1)+" "+(ri+1)+"回戦"; }, {
-      resolvable:false, showUndo:false, hideScoreInput:true, actionName:"", undoActionName:"", scoreScope:"", extraAttrs:"", side:"wb", timeColorMap:timeColorMap, tournament:t, lbProjections: lbProj
+      resolvable:false, showUndo:false, hideScoreInput:true, actionName:"", undoActionName:"", scoreScope:"", extraAttrs:"", side:"wb", timeColorMap:timeColorMap, tournament:t, lbProjections: lbProj, scheduleGroup: g
     })+
   '</div>';
   if(hasLoserBracket(t)){
@@ -3944,9 +3941,22 @@ function renderBracketFlow(rounds, roundLabelFn, opts){
           lbDestHTML = '<span class="hint" style="font-size:.7rem">→敗者復活'+(dest.lbRound>1?(' '+dest.lbRound+'回戦'):'')+' No.'+dest.no+'</span>';
         }
       }
-      var eligible = !m.preview && opts.side==="wb" && (ri===0 || (ri===1 && (byeWinners.indexOf(m.a)>=0 || byeWinners.indexOf(m.b)>=0)));
-      var scheduleHTML = scheduleTimeHTML(opts.tournament, m, opts.scoreScope, opts.extraAttrs, !opts.hideScoreInput, eligible);
-      var slotColor = (eligible && m.startTime && opts.timeColorMap && opts.timeColorMap[m.startTime]) ? opts.timeColorMap[m.startTime] : "";
+      var scheduleHTML = "", scheduleTimeForColor = null;
+      if(opts.side==="wb" && ri===0 && !m.preview){
+        scheduleHTML = scheduleTimeHTML(opts.tournament, m, opts.scoreScope, opts.extraAttrs, !opts.hideScoreInput, true);
+        scheduleTimeForColor = m.startTime;
+      } else if(opts.side==="wb" && ri===1 && opts.scheduleGroup){
+        // 予選2回戦は、実際の対戦が組まれる前でも会場の時間割を決められるよう、
+        // 対戦相手ではなく枠の位置(r2_mN)に紐づけてタイムスケジュールを保存する
+        var g2 = opts.scheduleGroup;
+        g2.scheduleByPos = g2.scheduleByPos || {};
+        var posKey = "r2_m"+mi;
+        var posTime = g2.scheduleByPos[posKey] || null;
+        var pseudoM = {id:"pos__"+posKey, bye:m.bye, winner:(m.bye?m.winner:null), startTime:posTime};
+        scheduleHTML = scheduleTimeHTML(opts.tournament, pseudoM, "pos", opts.extraAttrs, !opts.hideScoreInput, true);
+        scheduleTimeForColor = posTime;
+      }
+      var slotColor = (scheduleTimeForColor && opts.timeColorMap && opts.timeColorMap[scheduleTimeForColor]) ? opts.timeColorMap[scheduleTimeForColor] : "";
       var matchStyle = slotColor ? ' style="box-shadow:inset 0 0 0 3px '+slotColor+'"' : "";
       var slotNoA = (ri===0 && opts.side==="wb") ? mi*2+1 : null;
       var slotNoB = (ri===0 && opts.side==="wb") ? mi*2+2 : null;
@@ -4317,7 +4327,8 @@ function renderOneGroup(t, g, timeColorMap){
       printIdx: g.index,
       slotEditable: true,
       slotEditAttrsFor: function(si){ return 'data-action="assign-slot" data-kind="group" data-idx="'+g.index+'" data-slot="'+si+'" data-tid="'+t.id+'"'; },
-      slotEditOptionsFor: function(si){ return rosterOptionsHTML(t, g.slots[si], true, t.eligiblePlayerIds, usedElsewhereG(si), activeElsewhereSetG); }
+      slotEditOptionsFor: function(si){ return rosterOptionsHTML(t, g.slots[si], true, t.eligiblePlayerIds, usedElsewhereG(si), activeElsewhereSetG); },
+      scheduleGroup: g
     })+
   '</div>';
   if(hasLoserBracket(t)){
@@ -5304,6 +5315,15 @@ document.addEventListener("change", function(e){
     var tidMT=t.getAttribute("data-tid"); var tourMT=findTournament(tidMT);
     if(!tourMT) return;
     var scopeMT=t.getAttribute("data-scope");
+    if(scopeMT==="pos"){
+      var gPos = tourMT.groups && tourMT.groups[Number(t.getAttribute("data-group"))];
+      if(!gPos) return;
+      gPos.scheduleByPos = gPos.scheduleByPos || {};
+      var posKeyMT = t.getAttribute("data-mid").replace(/^pos__/, "");
+      gPos.scheduleByPos[posKeyMT] = t.value || null;
+      saveState(); render();
+      return;
+    }
     var idxMT = scopeMT==="block" ? Number(t.getAttribute("data-block")) : (scopeMT==="elim" ? Number(t.getAttribute("data-group")) : null);
     var sideMT = t.getAttribute("data-side");
     var matchMT = findStreamMatch(tourMT, scopeMT, idxMT, sideMT, t.getAttribute("data-mid"));
