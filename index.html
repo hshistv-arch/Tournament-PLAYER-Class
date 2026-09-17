@@ -1072,7 +1072,7 @@ var FEE_METHOD_OPTIONS = [
   {value:"cash", label:"現金"},
   {value:"gchip", label:"Gチップ"}
 ];
-var BRACKET_SIZES = [8,16,32,64,128];
+var BRACKET_SIZES = [8,16,32,48,64,128];
 function smallestBracketSizeFor(n){
   for(var i=0;i<BRACKET_SIZES.length;i++){ if(BRACKET_SIZES[i]>=n) return BRACKET_SIZES[i]; }
   return BRACKET_SIZES[BRACKET_SIZES.length-1];
@@ -1421,7 +1421,7 @@ function seedOrder(size){
 function computeDefaultBracketSlots(ids, fixedSize, entries){
   var sorted = ids.slice().sort(seedCompare(entries||{}));
   var size;
-  if(fixedSize){ size = fixedSize; }
+  if(fixedSize){ size=1; while(size<fixedSize) size*=2; }
   else { size=1; while(size<sorted.length) size*=2; }
   var order = seedOrder(size);
   return order.map(function(seedIdx){ return sorted[seedIdx-1] || null; });
@@ -1751,6 +1751,14 @@ function advanceLB(prelim, maxRounds){
 }
 function advanceElimGroup(t, g){
   maybeAdvanceRounds(g.wb, hasLoserBracket(t) ? t.advancePerGroupWB : t.advancePerGroup);
+  if(g.wb.rounds[1] && g.round2ByPos && Object.keys(g.round2ByPos).length){
+    // 1回戦が全部揃って本物の2回戦データができたので、先取りしていた結果を引き継ぐ
+    g.wb.rounds[1].forEach(function(m, mi){
+      var stored = g.round2ByPos[mi];
+      if(stored && !m.bye && !m.winner){ m.winner = stored.winner; m.deltas = stored.deltas; }
+    });
+    g.round2ByPos = {};
+  }
   if(t.prelimType==="double") advanceLB(g);
   else if(t.prelimType==="round1Double") advanceLB(g, 1);
 }
@@ -1822,11 +1830,47 @@ function findElimMatch(g, side, mid){
   rounds.forEach(function(r){ r.forEach(function(m){ if(m.id===mid) found=m; }); });
   return found;
 }
+// ---------- WB2回戦の先取り(1回戦が全部揃わなくても、両者決定済みの2回戦だけ先に対戦開始できるようにする) ----------
+function parseWbRound2Pos(mid){
+  var m = /^(?:ph_)?r2_m(\d+)$/.exec(mid||"");
+  return m ? Number(m[1]) : null;
+}
+function wbMatchDecided(m){
+  return !!(m && (m.winner || (m.bye && !m.a && !m.b)));
+}
+function virtualWbRound2Match(g, mi){
+  if(g.wb.rounds[1] && g.wb.rounds[1][mi]) return g.wb.rounds[1][mi];
+  var r0 = g.wb.rounds[0];
+  var m1 = r0[mi*2], m2 = r0[mi*2+1];
+  if(!wbMatchDecided(m1) || !wbMatchDecided(m2)) return null;
+  var a = m1.winner, b = m2.winner;
+  var stored = (g.round2ByPos && g.round2ByPos[mi]) || null;
+  var bye = (!a || !b);
+  return {
+    id: "ph_r2_m"+mi, round:2, a:a, b:b, bye:bye,
+    winner: bye ? (a||b) : (stored ? stored.winner : null),
+    deltas: bye ? null : (stored ? stored.deltas : null),
+    score:{a:null,b:null},
+    preview:false, virtualRound2:true
+  };
+}
 function correctElimMatch(t, g, side, matchId){
   unwindFinalsIfNeeded(t);
   if(side==="wb"){
     var match = findElimMatch(g, "wb", matchId);
-    if(!match || match.bye || !match.winner) return;
+    if(!match){
+      // 1回戦全体はまだ揃っていないが、先取りで結果が入っている2回戦の取消
+      var miUndo = parseWbRound2Pos(matchId);
+      if(miUndo!=null && g.round2ByPos && g.round2ByPos[miUndo]){
+        var undoEntry = g.round2ByPos[miUndo];
+        if(undoEntry.deltas) undoEntry.deltas.forEach(function(d){ var p=getPlayer(d.playerId); if(p) p.points -= d.amount; });
+        delete g.round2ByPos[miUndo];
+      }
+      advanceElimGroup(t, g);
+      recomputeElimGroup(t, g);
+      return;
+    }
+    if(match.bye || !match.winner) return;
     var targetRound = match.round;
     if(hasLoserBracket(t)){
       var affectedLbFrom = targetRound===1 ? 1 : 2*(targetRound-1);
@@ -1839,6 +1883,16 @@ function correctElimMatch(t, g, side, matchId){
     while(g.wb.rounds.length > targetRound){
       var poppedWb = g.wb.rounds.pop();
       poppedWb.forEach(function(m){ if(m.winner && !m.bye) undoMatchDeltas(m); });
+    }
+    if(targetRound===1 && g.round2ByPos){
+      // この1回戦の対戦に対応する、先取り済みの2回戦の結果があれば先に取り消す
+      var miR1 = g.wb.rounds[0].findIndex(function(x){ return x.id===matchId; });
+      var pairIdx = Math.floor(miR1/2);
+      var pairEntry = g.round2ByPos[pairIdx];
+      if(pairEntry){
+        if(pairEntry.deltas) pairEntry.deltas.forEach(function(d){ var p=getPlayer(d.playerId); if(p) p.points -= d.amount; });
+        delete g.round2ByPos[pairIdx];
+      }
     }
     undoMatchDeltas(match);
   } else {
@@ -1889,6 +1943,13 @@ function rebuildGroupFromSlots(t, g){
   }
   if(g.penaltyDeltas){
     Object.keys(g.penaltyDeltas).forEach(function(id){ var p=getPlayer(id); if(p) p.points -= g.penaltyDeltas[id]; });
+  }
+  if(g.round2ByPos){
+    Object.keys(g.round2ByPos).forEach(function(mi){
+      var entry = g.round2ByPos[mi];
+      if(entry.deltas) entry.deltas.forEach(function(d){ var p=getPlayer(d.playerId); if(p) p.points -= d.amount; });
+    });
+    g.round2ByPos = {};
   }
   var oldWbRounds = g.wb ? g.wb.rounds : null;
   g.wb = buildBracketFromSlots(g.slots);
@@ -2008,7 +2069,8 @@ function groupOrBlockHasProgress(t, idx){
   if(!g.wb) return false;
   var wbHas = g.wb.rounds.some(function(r){ return r.some(function(m){ return m.winner && !m.bye; }); });
   var lbHas = g.lb && g.lb.rounds.some(function(r){ return r.some(function(m){ return m.winner && !m.bye; }); });
-  return wbHas || !!lbHas;
+  var round2Has = g.round2ByPos && Object.keys(g.round2ByPos).length>0;
+  return wbHas || !!lbHas || !!round2Has;
 }
 function resizeGroupOrBlockSlots(t, idx, newSize){
   var groups = t.format==="blockPrelim" ? t.blocks : t.groups;
@@ -3414,8 +3476,18 @@ function renderDisplayGroup(t, g, timeColorMap){
   var cappedRounds = roundsNeededForTarget(g.targetSize, (hasLoserBracket(t) && t.advancePerGroupWB!=null) ? t.advancePerGroupWB : t.advancePerGroup);
   cappedRounds = Math.max(cappedRounds, g.wb.rounds.length);
   var lbProj = hasLoserBracket(t) ? computeLbSlotProjections(g, t, cappedRounds) : null;
+  var wbRoundsForDisplay2 = padBracketRounds(g.wb, cappedRounds);
+  if(wbRoundsForDisplay2[1]){
+    wbRoundsForDisplay2[1].forEach(function(m, mi){
+      if(m.preview && m.a && m.b){
+        m.preview = false;
+        var stored = g.round2ByPos && g.round2ByPos[mi];
+        if(stored){ m.winner = stored.winner; m.deltas = stored.deltas; }
+      }
+    });
+  }
   var sec = '<div class="card"><h3>グループ'+(g.index+1)+' ・ 勝者側ブラケット</h3>'+
-    renderBracketFlow(padBracketRounds(g.wb, cappedRounds), function(ri){ return "グループ"+(g.index+1)+" "+(ri+1)+"回戦"; }, {
+    renderBracketFlow(wbRoundsForDisplay2, function(ri){ return "グループ"+(g.index+1)+" "+(ri+1)+"回戦"; }, {
       resolvable:false, showUndo:false, hideScoreInput:true, actionName:"", undoActionName:"", scoreScope:"", extraAttrs:"", side:"wb", timeColorMap:timeColorMap, tournament:t, lbProjections: lbProj, scheduleGroup: g
     })+
   '</div>';
@@ -3611,7 +3683,14 @@ function findStreamMatch(t, scope, idx, side, mid){
   }
   if(scope==="elim"){
     var g = (t.groups||[])[idx];
-    return g ? findElimMatch(g, side, mid) : null;
+    if(!g) return null;
+    var foundElim = findElimMatch(g, side, mid);
+    if(foundElim) return foundElim;
+    if(side==="wb"){
+      var miVirt = parseWbRound2Pos(mid);
+      if(miVirt!=null) return virtualWbRound2Match(g, miVirt);
+    }
+    return null;
   }
   if(scope==="bracket"){
     var found = null;
@@ -3901,7 +3980,7 @@ function bflowSideHTML(m, playerId, opts, slotNo){
     var score = m.score || {a:null,b:null};
     var which = (playerId===m.a) ? "a" : "b";
     var val = score[which];
-    if(opts.hideScoreInput || m.preview){
+    if(opts.hideScoreInput || m.preview || m.virtualRound2){
       scoreHTML = isWinner ? '<span class="score-num num win-mark" style="margin:0 .2rem">W</span>' : (val!=null ? '<span class="score-num num" style="margin:0 .2rem">'+val+'</span>' : "");
     } else {
       scoreHTML = isWinner ?
@@ -3993,7 +4072,7 @@ function simpleSideHTML(m, playerId, opts){
     var score = m.score || {a:null,b:null};
     var which = (playerId===m.a) ? "a" : "b";
     var val = score[which];
-    if(opts.hideScoreInput || m.preview){
+    if(opts.hideScoreInput || m.preview || m.virtualRound2){
       scoreHTML = isWinner ? '<span class="score-num num win-mark" style="margin:0 .2rem">W</span>' : (val!=null ? '<span class="score-num num" style="margin:0 .2rem">'+val+'</span>' : "");
     } else {
       scoreHTML = isWinner ?
@@ -4311,6 +4390,18 @@ function renderOneGroup(t, g, timeColorMap){
   var lbProj = hasLoserBracket(t) ? computeLbSlotProjections(g, t, cappedRounds) : null;
   var activeElsewhereSetG = playersActiveInOtherTournaments(t.id);
   function usedElsewhereG(si){ return g.slots.filter(function(id, idx){ return idx!==si && id; }); }
+  var wbRoundsForDisplay = padBracketRounds(g.wb, cappedRounds);
+  if(wbRoundsForDisplay[1]){
+    // 1回戦の残りを待たず、両者が決まった2回戦の枠は先に対戦開始・印刷できるようにする
+    wbRoundsForDisplay[1].forEach(function(m, mi){
+      if(m.preview && m.a && m.b){
+        m.preview = false;
+        m.virtualRound2 = true;
+        var stored = g.round2ByPos && g.round2ByPos[mi];
+        if(stored){ m.winner = stored.winner; m.deltas = stored.deltas; }
+      }
+    });
+  }
   var sec = '<div class="card"><h3>グループ'+(g.index+1)+' ・ 勝者側ブラケット</h3>'+
     renderElimGroupControls(t, g)+
     renderEditSlots(t, "group", g.index, g.slots, true)+
@@ -4318,7 +4409,7 @@ function renderOneGroup(t, g, timeColorMap){
     '<span class="hint">現在の勝ち残り: <span class="prelim-alive-pill num" style="color:'+(reached?'var(--win)':'var(--text)')+'">'+g.aliveCount+'</span>名</span>'+
     (reached?'<span class="pill" style="color:var(--win);border-color:var(--win)">進出人数に到達</span>':'')+
     '</div>'+
-    renderBracketFlow(padBracketRounds(g.wb, cappedRounds), function(ri){ return "グループ"+(g.index+1)+" "+(ri+1)+"回戦"; }, {
+    renderBracketFlow(wbRoundsForDisplay, function(ri){ return "グループ"+(g.index+1)+" "+(ri+1)+"回戦"; }, {
       resolvable: t.status==="prelim" && !reached,
       actionName: "resolve-elim-match",
       undoActionName: "undo-elim-match",
@@ -4927,6 +5018,17 @@ document.addEventListener("click", function(e){
       advanceElimGroup(tour6, g);
       recomputeElimGroup(tour6, g);
       saveState(); render();
+      return;
+    }
+    if(!match5 && side==="wb"){
+      var mi5 = parseWbRound2Pos(mid5);
+      var virt5 = mi5!=null ? virtualWbRound2Match(g, mi5) : null;
+      if(virt5 && !virt5.winner && !virt5.bye && (virt5.a===winner3 || virt5.b===winner3)){
+        resolveMatch(virt5, winner3, tour6);
+        g.round2ByPos = g.round2ByPos || {};
+        g.round2ByPos[mi5] = {winner: virt5.winner, deltas: virt5.deltas};
+        saveState(); render();
+      }
     }
   }
   else if(action==="undo-elim-match"){
