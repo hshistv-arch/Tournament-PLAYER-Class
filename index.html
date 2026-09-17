@@ -1292,6 +1292,8 @@ function eligiblePlayerIdsForTournament(t, usePoints){
 var route = {screen:"roster"};
 // 大会ごとの「エントリーリストを編集」欄の開閉状態(画面遷移をまたいで保持するためrouteの外で管理)
 var entryEditOpenByTid = {};
+// 大会ごとの「エントリー種別」表示モード(大会をまたいで共有されないようrouteの外で管理)
+var entryModeByTid = {};
 // クラウド上のバックアップ一覧(設定画面「データ管理」タブで使用)
 var cloudBackups = null;
 var cloudBackupsLoading = false;
@@ -2325,6 +2327,97 @@ function assignSlot(t, targetIdx, targetSlotIdx, newPlayerId){
   arr[targetSlotIdx] = newVal;
   return touched;
 }
+
+// ---------- AI再配置(シード順を保ちつつ、同じ所属の選手をできるだけ離す) ----------
+function currentLineupIds(t){
+  var groups = t.format==="blockPrelim" ? t.blocks : t.groups;
+  var ids = [];
+  (groups||[]).forEach(function(g){ g.slots.forEach(function(id){ if(id) ids.push(id); }); });
+  return ids;
+}
+function affiliationOf(id){
+  var p = getPlayer(id);
+  return (p && p.affiliation) ? p.affiliation : null;
+}
+// ①トーナメント戦: シード順の山分け配置をベースに、1回戦(隣り合う2枠)で同じ所属が
+// 当たる組み合わせを、他の枠との入れ替えでできるだけ解消する(貪欲法。完全解消は保証しない)
+function computeAiEliminationSlots(ids, fixedSize, t){
+  var slots = computeDefaultBracketSlots(ids, fixedSize, t.entries);
+  var guard = slots.length + 5;
+  while(guard-- > 0){
+    var pairIdx = -1;
+    for(var i=0; i<slots.length; i+=2){
+      var a = slots[i], b = slots[i+1];
+      if(a && b && affiliationOf(a) && affiliationOf(a)===affiliationOf(b)){ pairIdx = i; break; }
+    }
+    if(pairIdx<0) break;
+    var bIdx = pairIdx+1;
+    var bId = slots[bIdx];
+    var bAff = affiliationOf(bId);
+    var swapped = false;
+    for(var j=0; j<slots.length; j++){
+      if(j===pairIdx || j===bIdx) continue;
+      var candId = slots[j];
+      if(!candId) continue;
+      var partnerIdx = (j%2===0) ? j+1 : j-1;
+      var partnerId = slots[partnerIdx];
+      var candAff = affiliationOf(candId);
+      var conflictAtB = candAff && candAff===affiliationOf(slots[pairIdx]);
+      var conflictAtJ = bAff && partnerId && bAff===affiliationOf(partnerId);
+      if(!conflictAtB && !conflictAtJ){
+        slots[bIdx] = candId; slots[j] = bId;
+        swapped = true;
+        break;
+      }
+    }
+    if(!swapped) break;
+  }
+  return slots;
+}
+// ②予選リーグ: 現行と同じシード順のブロック均等振り分けをベースに、同じブロックに入った
+// 同じ所属の選手を、他ブロックの選手との入れ替えでできるだけ解消する(貪欲法)
+function computeAiBlockAssignment(ids, blockCount, t){
+  var sizes = distributeCount(ids.length, blockCount);
+  var sorted = ids.slice().sort(seedCompare(t.entries));
+  var perGroupIds = sizes.map(function(){ return []; });
+  sorted.forEach(function(id, i){ perGroupIds[i % sizes.length].push(id); });
+  var guard = sorted.length + 5;
+  while(guard-- > 0){
+    var conflict = null;
+    for(var bi=0; bi<perGroupIds.length && !conflict; bi++){
+      var seen = {};
+      for(var k=0; k<perGroupIds[bi].length; k++){
+        var aff = affiliationOf(perGroupIds[bi][k]);
+        if(aff){
+          if(seen[aff]!==undefined){ conflict = {blockIdx:bi, slotIdx:k}; break; }
+          seen[aff] = k;
+        }
+      }
+    }
+    if(!conflict) break;
+    var block = perGroupIds[conflict.blockIdx];
+    var moveId = block[conflict.slotIdx];
+    var moveAff = affiliationOf(moveId);
+    var swapped = false;
+    for(var obi=0; obi<perGroupIds.length && !swapped; obi++){
+      if(obi===conflict.blockIdx) continue;
+      var otherBlock = perGroupIds[obi];
+      for(var oi=0; oi<otherBlock.length; oi++){
+        var candId = otherBlock[oi];
+        var candAff = affiliationOf(candId);
+        var conflictHome = candAff && block.some(function(pid, pi){ return pi!==conflict.slotIdx && affiliationOf(pid)===candAff; });
+        var conflictAway = moveAff && otherBlock.some(function(pid, pi){ return pi!==oi && affiliationOf(pid)===moveAff; });
+        if(!conflictHome && !conflictAway){
+          block[conflict.slotIdx] = candId; otherBlock[oi] = moveId;
+          swapped = true;
+          break;
+        }
+      }
+    }
+    if(!swapped) break;
+  }
+  return {sizes:sizes, perGroupIds:perGroupIds};
+}
 function confirmLineup(t){
   t.status = "prelim";
   captureEntryPoints(t);
@@ -2733,7 +2826,10 @@ function entrySearchMatches(p, q){
 }
 function renderTournamentEntrySection(t){
   var sortMode = route.entrySort || "name";
-  var entryMode = route.entryMode==="noPoints" ? "noPoints" : "points";
+  if(entryModeByTid[t.id]!=="noPoints" && entryModeByTid[t.id]!=="points"){
+    entryModeByTid[t.id] = (t.usePointsAndSets===false) ? "noPoints" : "points";
+  }
+  var entryMode = entryModeByTid[t.id];
   var searchQuery = route.entrySearch || "";
   var onlyEntered = route.entryOnlyEntered===true;
   var players = sortPlayers(state.players, sortMode);
@@ -4044,7 +4140,7 @@ function renderBlockPrelimTournament(t){
     (t.status!=="assigning"?'<button class="btn btn-sm btn-ghost" data-action="revert-to-assigning" data-tid="'+t.id+'">↩ 組み合わせ待ちに戻す</button>':'')+
     '<button class="btn btn-sm btn-ghost" data-action="refresh-entries-from-server">🔄 更新</button>'+
     '<button class="btn btn-sm" data-action="nav" data-screen="history">一覧へ戻る</button></div></div>';
-  var out = header + formatSwitchHTML(t) + renderEntryEditSection(t);
+  var out = header + formatSwitchHTML(t) + renderEntryEditSection(t) + renderAiReseedCard(t);
   out += t.blocks.map(function(block){ return renderOneBlock(t, block); }).join("");
   if(t.status==="assigning"){
     out += '<div class="card"><p class="hint">各枠の選手を選び終えたら、下のボタンで大会を開始してください。</p>'+
@@ -4088,6 +4184,16 @@ function renderGroupControls(t, kind, idx, size, advanceLabel, advanceValue, adv
   return '<div class="form-row" style="align-items:end;margin-bottom:.7rem">'+
     '<div class="field" style="width:6rem"><label>人数</label><input type="number" class="num" min="1" value="'+size+'" data-action="resize-group" data-kind="'+kind+'" data-idx="'+idx+'" data-tid="'+t.id+'" style="width:5rem"></div>'+
     advanceHTML+
+  '</div>';
+}
+function renderAiReseedCard(t){
+  if(t.status==="completed") return "";
+  var noteExtra = t.format==="blockPrelim"
+    ? "同じ所属の選手はできるだけ別のブロックに分かれるよう調整します。"
+    : "同じ所属の選手はできるだけ1回戦で対戦しないよう調整します。";
+  return '<div class="card"><h3>🤖 AI再配置</h3>'+
+    '<p class="hint">現在の出場選手を、シード順(抽選番号・ポイント順)を保ったまま組み直します。'+noteExtra+'所属の重複が多すぎる場合は、できる限り離す結果になります。</p>'+
+    '<button class="btn btn-sm btn-ghost" data-action="ai-reseed-tournament" data-tid="'+t.id+'">🤖 AI再配置</button>'+
   '</div>';
 }
 function renderElimGroupControls(t, g){
@@ -4145,7 +4251,7 @@ function renderElimPrelimTournament(t){
     (t.status!=="assigning"?'<button class="btn btn-sm btn-ghost" data-action="revert-to-assigning" data-tid="'+t.id+'">↩ 組み合わせ待ちに戻す</button>':'')+
     '<button class="btn btn-sm btn-ghost" data-action="refresh-entries-from-server">🔄 更新</button>'+
     '<button class="btn btn-sm" data-action="nav" data-screen="history">一覧へ戻る</button></div></div>';
-  var out = header + formatSwitchHTML(t) + renderEntryEditSection(t);
+  var out = header + formatSwitchHTML(t) + renderEntryEditSection(t) + renderAiReseedCard(t);
   var timeColorMap = buildTimeSlotColorMap(t);
   out += t.groups.map(function(g){ return renderOneGroup(t, g, timeColorMap); }).join("");
   if(t.status==="assigning"){
@@ -4530,8 +4636,9 @@ document.addEventListener("click", function(e){
   else if(action==="roster-tab"){ route.rosterTab = t.getAttribute("data-tab"); render(); }
   else if(action==="entry-sort"){ route.entrySort = t.getAttribute("data-sort"); render(); }
   else if(action==="entry-mode-radio"){
-    route.entryMode = t.value==="noPoints" ? "noPoints" : "points";
-    var tidEM=t.getAttribute("data-tid"); var tourEM=findTournament(tidEM);
+    var tidEM=t.getAttribute("data-tid");
+    entryModeByTid[tidEM] = t.value==="noPoints" ? "noPoints" : "points";
+    var tourEM=findTournament(tidEM);
     if(tourEM){ var ntem = ensureTournamentSetupState(tourEM); ntem.usePointsAndSets = t.value!=="noPoints"; }
     render();
   }
@@ -4710,6 +4817,33 @@ document.addEventListener("click", function(e){
   else if(action==="confirm-lineup"){
     var tidc=t.getAttribute("data-tid"); var tourc=findTournament(tidc);
     if(tourc) confirmLineup(tourc);
+  }
+  else if(action==="ai-reseed-tournament"){
+    var tidAI = t.getAttribute("data-tid"); var tourAI = findTournament(tidAI);
+    if(!tourAI) return;
+    var groupsAI = tourAI.format==="blockPrelim" ? tourAI.blocks : tourAI.groups;
+    var anyProgress = groupsAI.some(function(g, gi){ return groupOrBlockHasProgress(tourAI, gi); }) || !!tourAI.finals;
+    if(anyProgress && !confirm("組み合わせを変更すると、既に入力されている対戦結果(場合によっては決勝トーナメントの結果も)が取り消されます。よろしいですか?")) return;
+    if(tourAI.finals) unwindFinalsIfNeeded(tourAI);
+    var idsAI = currentLineupIds(tourAI);
+    if(!idsAI.length){ alert("組み合わせに割り当てられている選手がいません。"); return; }
+    if(tourAI.format==="blockPrelim"){
+      var resultAI = computeAiBlockAssignment(idsAI, tourAI.blocks.length, tourAI);
+      tourAI.blocks.forEach(function(b, bi){
+        var size = resultAI.sizes[bi];
+        var slots = new Array(size).fill(null);
+        resultAI.perGroupIds[bi].forEach(function(id, i){ slots[i] = id; });
+        b.targetSize = size;
+        b.slots = slots;
+        rebuildBlockFromSlots(tourAI, b);
+      });
+    } else {
+      var gAI = tourAI.groups[0];
+      gAI.slots = computeAiEliminationSlots(idsAI, gAI.targetSize, tourAI);
+      rebuildGroupFromSlots(tourAI, gAI);
+    }
+    if(tourAI.status!=="assigning") captureEntryPoints(tourAI);
+    saveState(); render();
   }
   else if(action==="finalize-block-prelim"){
     var tid = t.getAttribute("data-tid"); var tour = findTournament(tid);
