@@ -217,6 +217,8 @@ details[open] > summary:before{content:"▾ ";}
   box-shadow:var(--shadow); display:flex; flex-direction:column; position:relative; z-index:1;
 }
 .bflow-match.preview{border-style:dashed; opacity:.75;}
+.bflow-slot-edit{display:flex; flex-direction:column; gap:2px; padding:.2rem .35rem; border-top:1px solid var(--border); background:var(--surface-2);}
+.bflow-slot-edit select{width:100%; font-size:.7rem; padding:1px 2px;}
 .bflow-side{
   display:flex; align-items:center; gap:.3rem; padding:.25rem .5rem; flex:1; font-size:.78rem; cursor:pointer;
 }
@@ -3774,7 +3776,7 @@ function renderTournamentScreen(id){
 }
 
 // ---------- 組み合わせ割当 ----------
-function rosterOptionsHTML(currentValue, allowBye, eligibleIds, usedElsewhere, activeElsewhereSet){
+function rosterOptionsHTML(t, currentValue, allowBye, eligibleIds, usedElsewhere, activeElsewhereSet){
   var placeholder = allowBye ? ('<option value=""'+(currentValue?"":" selected")+'>(不戦/空き)</option>')
                               : ('<option value=""'+(currentValue?"":" selected")+'>(未定)</option>');
   var pool = (eligibleIds && eligibleIds.length) ? state.players.filter(function(p){ return eligibleIds.indexOf(p.id)>=0; }) : state.players.slice();
@@ -3783,7 +3785,7 @@ function rosterOptionsHTML(currentValue, allowBye, eligibleIds, usedElsewhere, a
     var isUsed = usedElsewhere && usedElsewhere.indexOf(p.id)>=0;
     var isActiveElsewhere = !isUsed && activeElsewhereSet && activeElsewhereSet[p.id] && p.id!==currentValue;
     var clsLabel = p.isGuest ? (p.manualEntryClass || "-") : classOf(p.points);
-    var label = esc(p.name)+' ('+clsLabel+')'+(isUsed?' ✓選択済み':'')+(isActiveElsewhere?' (他大会で対戦中)':'');
+    var label = esc(playerNameWithAffiliation(t, p.id))+' ('+clsLabel+')'+(isUsed?' ✓選択済み':'')+(isActiveElsewhere?' (他大会で対戦中)':'');
     return '<option value="'+p.id+'"'+(currentValue===p.id?" selected":"")+((isUsed||isActiveElsewhere)?' style="background:#ddd;color:#777;"':'')+'>'+label+'</option>';
   }).join("");
   return opts;
@@ -3812,11 +3814,11 @@ function renderEditSlots(t, kind, groupIdx, slots, pairwise){
       rows += '<div class="form-row" style="align-items:center;flex-wrap:wrap;gap:.5rem">'+
         '<span class="hint num" style="width:4rem;flex:none">第'+(i/2+1)+'試合</span>'+
         '<span class="slot-no">No.'+(i+1)+'</span>'+
-        '<select data-action="assign-slot" data-kind="'+kind+'" data-idx="'+groupIdx+'" data-slot="'+i+'" data-tid="'+t.id+'" style="flex:1;min-width:120px">'+rosterOptionsHTML(slots[i], true, t.eligiblePlayerIds, usedElsewhere(i), activeElsewhereSet)+'</select>'+
+        '<select data-action="assign-slot" data-kind="'+kind+'" data-idx="'+groupIdx+'" data-slot="'+i+'" data-tid="'+t.id+'" style="flex:1;min-width:120px">'+rosterOptionsHTML(t, slots[i], true, t.eligiblePlayerIds, usedElsewhere(i), activeElsewhereSet)+'</select>'+
         (showManualClass?manualClassSelectHTML(t, slots[i], "update-manual-class-live"):'')+
         '<span class="hint" style="flex:none">vs</span>'+
         '<span class="slot-no">No.'+(i+2)+'</span>'+
-        '<select data-action="assign-slot" data-kind="'+kind+'" data-idx="'+groupIdx+'" data-slot="'+(i+1)+'" data-tid="'+t.id+'" style="flex:1;min-width:120px">'+rosterOptionsHTML(slots[i+1], true, t.eligiblePlayerIds, usedElsewhere(i+1), activeElsewhereSet)+'</select>'+
+        '<select data-action="assign-slot" data-kind="'+kind+'" data-idx="'+groupIdx+'" data-slot="'+(i+1)+'" data-tid="'+t.id+'" style="flex:1;min-width:120px">'+rosterOptionsHTML(t, slots[i+1], true, t.eligiblePlayerIds, usedElsewhere(i+1), activeElsewhereSet)+'</select>'+
         (showManualClass?manualClassSelectHTML(t, slots[i+1], "update-manual-class-live"):'')+
       '</div>';
     }
@@ -3825,7 +3827,7 @@ function renderEditSlots(t, kind, groupIdx, slots, pairwise){
       return '<div class="form-row" style="margin:.2rem 0;flex-wrap:wrap;align-items:center;gap:.5rem">'+
         '<span class="slot-no">No.'+(si+1)+'</span>'+
         '<select data-action="assign-slot" data-kind="'+kind+'" data-idx="'+groupIdx+'" data-slot="'+si+'" data-tid="'+t.id+'" style="flex:1;min-width:160px">'+
-        rosterOptionsHTML(id, false, t.eligiblePlayerIds, usedElsewhere(si), activeElsewhereSet)+'</select>'+
+        rosterOptionsHTML(t, id, false, t.eligiblePlayerIds, usedElsewhere(si), activeElsewhereSet)+'</select>'+
         (showManualClass?manualClassSelectHTML(t, id, "update-manual-class-live"):'')+'</div>';
     }).join("");
   }
@@ -3846,11 +3848,11 @@ function renderFinalsEditSlots(t){
     rows += '<div class="form-row" style="align-items:center;flex-wrap:wrap;gap:.5rem">'+
       '<span class="hint num" style="width:4rem;flex:none">第'+(i/2+1)+'試合</span>'+
       '<span class="slot-no">No.'+(i+1)+'</span>'+
-      '<select data-action="assign-finals-slot" data-tid="'+t.id+'" data-slot="'+i+'" style="flex:1;min-width:120px">'+rosterOptionsHTML(slots[i], true, t.finalists, usedElsewhere(i), activeElsewhereSet)+'</select>'+
+      '<select data-action="assign-finals-slot" data-tid="'+t.id+'" data-slot="'+i+'" style="flex:1;min-width:120px">'+rosterOptionsHTML(t, slots[i], true, t.finalists, usedElsewhere(i), activeElsewhereSet)+'</select>'+
       (showManualClass?manualClassSelectHTML(t, slots[i], "update-manual-class-live"):'')+
       '<span class="hint" style="flex:none">vs</span>'+
       '<span class="slot-no">No.'+(i+2)+'</span>'+
-      '<select data-action="assign-finals-slot" data-tid="'+t.id+'" data-slot="'+(i+1)+'" style="flex:1;min-width:120px">'+rosterOptionsHTML(slots[i+1], true, t.finalists, usedElsewhere(i+1), activeElsewhereSet)+'</select>'+
+      '<select data-action="assign-finals-slot" data-tid="'+t.id+'" data-slot="'+(i+1)+'" style="flex:1;min-width:120px">'+rosterOptionsHTML(t, slots[i+1], true, t.finalists, usedElsewhere(i+1), activeElsewhereSet)+'</select>'+
       (showManualClass?manualClassSelectHTML(t, slots[i+1], "update-manual-class-live"):'')+
     '</div>';
   }
@@ -3948,7 +3950,15 @@ function renderBracketFlow(rounds, roundLabelFn, opts){
       var matchStyle = slotColor ? ' style="box-shadow:inset 0 0 0 3px '+slotColor+'"' : "";
       var slotNoA = (ri===0 && opts.side==="wb") ? mi*2+1 : null;
       var slotNoB = (ri===0 && opts.side==="wb") ? mi*2+2 : null;
-      return '<div class="bflow-match'+(m.preview?' preview':'')+'"'+matchStyle+'>'+bflowSideHTML(m, m.a, opts, slotNoA)+bflowSideHTML(m, m.b, opts, slotNoB)+'<div class="bflow-match-footer">'+noHTML+lbDestHTML+scheduleHTML+undo+(m.preview?"":printMatchLinkHTML(opts.tournament, m, opts.printScope, opts.printIdx, opts.side))+'</div></div>';
+      var slotEditHTML = "";
+      if(opts.slotEditable && ri===0 && !m.preview){
+        var slotIdxA = mi*2, slotIdxB = mi*2+1;
+        slotEditHTML = '<div class="bflow-slot-edit no-print">'+
+          '<select '+opts.slotEditAttrsFor(slotIdxA)+'>'+opts.slotEditOptionsFor(slotIdxA)+'</select>'+
+          '<select '+opts.slotEditAttrsFor(slotIdxB)+'>'+opts.slotEditOptionsFor(slotIdxB)+'</select>'+
+        '</div>';
+      }
+      return '<div class="bflow-match'+(m.preview?' preview':'')+'"'+matchStyle+'>'+bflowSideHTML(m, m.a, opts, slotNoA)+bflowSideHTML(m, m.b, opts, slotNoB)+slotEditHTML+'<div class="bflow-match-footer">'+noHTML+lbDestHTML+scheduleHTML+undo+(m.preview?"":printMatchLinkHTML(opts.tournament, m, opts.printScope, opts.printIdx, opts.side))+'</div></div>';
     }).join("");
     return '<div class="bflow-round"><div class="bflow-round-label">'+roundLabelFn(ri, rounds.length)+'</div>'+
       '<div class="bflow-slots">'+connectors+matches+'</div></div>';
@@ -4284,6 +4294,8 @@ function renderOneGroup(t, g, timeColorMap){
   var cappedRounds = roundsNeededForTarget(g.targetSize, (hasLoserBracket(t) && t.advancePerGroupWB!=null) ? t.advancePerGroupWB : t.advancePerGroup);
   cappedRounds = Math.max(cappedRounds, g.wb.rounds.length);
   var lbProj = hasLoserBracket(t) ? computeLbSlotProjections(g, t, cappedRounds) : null;
+  var activeElsewhereSetG = playersActiveInOtherTournaments(t.id);
+  function usedElsewhereG(si){ return g.slots.filter(function(id, idx){ return idx!==si && id; }); }
   var sec = '<div class="card"><h3>グループ'+(g.index+1)+' ・ 勝者側ブラケット</h3>'+
     renderElimGroupControls(t, g)+
     renderEditSlots(t, "group", g.index, g.slots, true)+
@@ -4302,7 +4314,10 @@ function renderOneGroup(t, g, timeColorMap){
       tournament: t,
       lbProjections: lbProj,
       printScope: "elim",
-      printIdx: g.index
+      printIdx: g.index,
+      slotEditable: true,
+      slotEditAttrsFor: function(si){ return 'data-action="assign-slot" data-kind="group" data-idx="'+g.index+'" data-slot="'+si+'" data-tid="'+t.id+'"'; },
+      slotEditOptionsFor: function(si){ return rosterOptionsHTML(t, g.slots[si], true, t.eligiblePlayerIds, usedElsewhereG(si), activeElsewhereSetG); }
     })+
   '</div>';
   if(hasLoserBracket(t)){
@@ -4357,6 +4372,9 @@ function renderFinalsPlaceholder(t){
 function renderFinalsSection(t){
   var redrawBtn = (t.status==="finals") ?
     '<button class="btn btn-sm btn-ghost" data-action="redraw-finals" data-tid="'+t.id+'">組み合わせを再抽選</button>' : "";
+  var finalsSlots = finalsSlotsArray(t);
+  var activeElsewhereSetF = playersActiveInOtherTournaments(t.id);
+  function usedElsewhereF(si){ return finalsSlots.filter(function(id, idx){ return idx!==si && id; }); }
   var out = '<div class="card"><div class="form-row" style="align-items:center;justify-content:space-between">'+
     '<h3 style="margin:0">決勝トーナメント</h3>'+redrawBtn+
     '</div>'+
@@ -4368,7 +4386,10 @@ function renderFinalsSection(t){
       scoreScope: "bracket",
       extraAttrs: 'data-tid="'+t.id+'"',
       tournament: t,
-      printScope: "bracket"
+      printScope: "bracket",
+      slotEditable: t.status==="finals",
+      slotEditAttrsFor: function(si){ return 'data-action="assign-finals-slot" data-tid="'+t.id+'" data-slot="'+si+'"'; },
+      slotEditOptionsFor: function(si){ return rosterOptionsHTML(t, finalsSlots[si], true, t.finalists, usedElsewhereF(si), activeElsewhereSetF); }
     })+
   '</div>';
   if(t.status==="completed"){
