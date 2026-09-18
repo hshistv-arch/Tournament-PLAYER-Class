@@ -325,6 +325,7 @@ details[open] > summary:before{content:"▾ ";}
 .mp-sub{font-size:.75rem; color:var(--muted);}
 .mp-player{border:1px solid var(--border); border-radius:8px; padding:.6rem .7rem; margin-bottom:.5rem;}
 .mp-name{font-weight:700; font-size:1.1rem;}
+.mp-kana{font-size:.75rem; color:var(--muted); margin-top:.1rem;}
 .mp-class{font-size:.75rem; color:var(--muted); margin-top:.15rem;}
 .mp-numbers{display:flex; flex-wrap:wrap; gap:.35rem; margin-top:.6rem;}
 .mp-num{display:inline-flex; align-items:center; justify-content:center; width:1.6rem; height:1.6rem; border:1px solid var(--text); border-radius:999px; font-size:.85rem; flex:none;}
@@ -5371,12 +5372,15 @@ function renderMatchPrint(route){
   var useDownSet = route.side==="lb" ? (t.lbOneSetDown!==false) : false;
   function playerBlock(id, oppId){
     var cls = displayClassOf(t, id);
+    var p = getPlayer(id);
+    var kana = p && p.kana;
     var fmt = matchFormatFor(id, oppId, useDownSet, t);
     var sets = fmt ? fmt.sets : 0;
     var numbers = [];
     for(var i=0;i<=sets;i++) numbers.push('<span class="mp-num">'+i+'</span>');
     return '<div class="mp-player">'+
       '<div class="mp-name">'+esc(playerNameWithAffiliation(t, id))+'</div>'+
+      (kana ? ('<div class="mp-kana">'+esc(kana)+'</div>') : '')+
       (cls ? ('<div class="mp-class">クラス '+esc(cls)+'</div>') : '')+
       '<div class="mp-numbers">'+numbers.join("")+'</div>'+
     '</div>';
