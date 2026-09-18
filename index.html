@@ -2058,7 +2058,9 @@ function wbMatchDecided(m){
   return !!(m && (m.winner || (m.bye && !m.a && !m.b)));
 }
 // roundIdx(1始まり)・組番号(0始まり)の対戦を、本物のデータがあればそれを、
-// 無ければ1つ前のラウンドの該当ペアを再帰的にたどって組み立てた仮対戦を返す(両者が決まっていなければnull)
+// 無ければ1つ前のラウンドの該当ペアを再帰的にたどって組み立てた仮対戦を返す(どちらも決まっていなければnull)。
+// 片方だけ決まっている場合(例: 1回戦シードの不戦勝)は、対戦相手が未定のまま
+// 判明している選手だけをその枠に先出しするプレビュー対戦を返す(対戦開始・得点入力はできない)。
 function virtualWbMatch(g, roundIdx, mi){
   if(roundIdx<=1){
     return (g.wb.rounds[0] && g.wb.rounds[0][mi]) || null;
@@ -2067,8 +2069,16 @@ function virtualWbMatch(g, roundIdx, mi){
   if(realRound && realRound[mi]) return realRound[mi];
   var m1 = virtualWbMatch(g, roundIdx-1, mi*2);
   var m2 = virtualWbMatch(g, roundIdx-1, mi*2+1);
-  if(!wbMatchDecided(m1) || !wbMatchDecided(m2)) return null;
-  var a = m1.winner, b = m2.winner;
+  var d1 = wbMatchDecided(m1), d2 = wbMatchDecided(m2);
+  if(!d1 && !d2) return null;
+  var a = d1 ? m1.winner : null, b = d2 ? m2.winner : null;
+  if(!d1 || !d2){
+    return {
+      id: "ph_r"+roundIdx+"_m"+mi, round:roundIdx, a:a, b:b, bye:false,
+      winner:null, deltas:null, score:{a:null,b:null}, started:false,
+      preview:true, wbFuture:false
+    };
+  }
   var stored = (g.futureWbByPos && g.futureWbByPos[roundIdx+"_"+mi]) || null;
   var bye = (!a || !b);
   return {
@@ -5128,6 +5138,25 @@ function renderOneGroup(t, g, timeColorMap){
   return sec;
 }
 
+// 予選グループの勝者側で、最終ラウンド(=決勝トーナメントに直結するラウンド)まで
+// 既に判明している勝者のidだけを配列で返す(敗者復活側はまだ対象外)
+function projectedElimAdvancersForGroup(t, g){
+  var wbTarget = (hasLoserBracket(t) && t.advancePerGroupWB!=null) ? t.advancePerGroupWB : t.advancePerGroup;
+  var cappedRoundsG = roundsNeededForTarget(g.targetSize, wbTarget);
+  var lastRound = buildWbDisplayRounds(g, cappedRoundsG)[cappedRoundsG-1] || [];
+  var known = lastRound.filter(function(m){ return m && wbMatchDecided(m) && m.winner; }).map(function(m){ return m.winner; });
+  return known.slice(0, wbTarget);
+}
+// 進出者が一部でも判明している場合の、決勝トーナメント枠の暫定組み合わせ(未確定の枠はnullのまま、
+// 不戦扱いにはしない = buildBracketFromSlotsとは別の軽量な組み立て)
+function buildProjectedFinalsBracket(slots){
+  var round1 = [];
+  for(var i=0;i<slots.length;i+=2){
+    round1.push({id:"pf0_m"+(i/2), round:1, a:slots[i]||null, b:slots[i+1]||null, winner:null, deltas:null, bye:false, preview:true, score:{a:null,b:null}});
+  }
+  var totalRounds = Math.max(1, Math.round(Math.log2(slots.length)));
+  return {totalRounds:totalRounds, rounds:[round1], eliminatedRound:{}, entrants:slots.filter(function(x){ return x; })};
+}
 function renderFinalsPlaceholder(t){
   var count, bracket, noteExtra = "";
   if(t.format==="blockPrelim"){
@@ -5144,6 +5173,13 @@ function renderFinalsPlaceholder(t){
     }
   } else {
     count = Math.max(2, (t.groups||[]).length * (t.advancePerGroup||1));
+    var knownIds = [];
+    (t.groups||[]).forEach(function(g){ knownIds = knownIds.concat(projectedElimAdvancersForGroup(t, g)); });
+    if(knownIds.length){
+      var size2 = 1; while(size2<count) size2*=2;
+      bracket = buildProjectedFinalsBracket(computeDefaultBracketSlots(knownIds, size2, t.entries));
+      noteExtra = "判明している対戦結果に基づき、既に進出が決まっている選手だけを先に配置した暫定的な組み合わせです。予選の対戦結果が進むと自動的に更新され、「予選を締めて決勝進出者を確定する」を押すと正式に決定します。";
+    }
   }
   if(!bracket){
     var size = 1; while(size<count) size*=2;
