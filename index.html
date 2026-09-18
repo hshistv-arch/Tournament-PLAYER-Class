@@ -224,6 +224,11 @@ details[open] > summary:before{content:"▾ ";}
 .h2h-head h3{margin:0;}
 .h2h-players{font-weight:600; margin:.2rem 0;}
 .h2h-record{color:var(--muted); margin:.2rem 0 .8rem;}
+.guide-flow{display:flex; flex-direction:column; align-items:center; gap:0; max-width:640px; margin:0 auto;}
+.guide-step{background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius); padding:.9rem 1.1rem; width:100%; box-sizing:border-box;}
+.guide-step h3{margin:0 0 .3rem; font-size:1rem;}
+.guide-step p{margin:0;}
+.guide-arrow{font-size:1.4rem; color:var(--accent); line-height:1; padding:.3rem 0;}
 .bflow-slot-edit select{width:100%; font-size:.7rem; padding:1px 2px;}
 .bflow-side{
   display:flex; align-items:center; gap:.3rem; padding:.25rem .5rem; flex:1; font-size:.78rem; cursor:pointer;
@@ -3146,11 +3151,13 @@ function renderSettings(){
   else if(tab==="setcounts") body = renderSettingsSetCounts();
   else if(tab==="champion") body = renderSettingsChampion();
   else if(tab==="data") body = renderSettingsData();
+  else if(tab==="guide") body = renderSettingsGuide();
   return ''+
   '<div class="page-head"><div><h1>設定</h1><p class="sub">クラス区分・勝敗ポイント表・ボーナス条件を変更できます</p></div></div>'+
   '<div class="tabs">'+
     tabBtn("bounds","クラス区分")+tabBtn("matrix","勝敗ポイント表")+tabBtn("bonus","ボーナス設定")+
     tabBtn("setcounts","セット数")+tabBtn("champion","前回優勝者")+tabBtn("data","データ管理")+
+    tabBtn("guide","使い方ガイド")+
   '</div>'+
   body;
 }
@@ -3391,6 +3398,27 @@ function renderSettingsData(){
     '</div>'+
     (cloudBackupsError ? ('<p class="hint" style="color:var(--loss)">通信エラー: '+esc(cloudBackupsError)+'</p>') : '')+
     backupListHTML+
+  '</div>';
+}
+function renderSettingsGuide(){
+  var steps = [
+    {title:"① 選手をロースターに登録", desc:"「選手ロースター」画面で、参加する可能性のある選手をあらかじめ登録しておきます(氏名・読みカナ・ポイント)。エントリー受付で選手を選ぶ際は、ここに登録済みの選手が対象になります。"},
+    {title:"② 大会を作成する", desc:"「▶大会を作成」から大会名・開催日を入力して作成します。この時点ではまだ試合形式は決めず、エントリー受付が始まります。"},
+    {title:"③ エントリー受付", desc:"作成した大会の画面で、出場する選手にチェックを入れて「エントリー」します(参加費受領・抽選番号もここで管理できます)。「📱 スマホ用エントリー・抽選画面を開く」のQRコードを使えば、選手自身にエントリー・抽選をしてもらうこともできます。"},
+    {title:"④ 試合形式を選択して大会を開始する", desc:"「①トーナメント戦(予選+決勝)」「②予選リーグ戦+決勝トーナメント」のいずれかと、フォーマット(人数)を選び、「大会を開始する」を押します。出場選手は自動的に組み合わせへ割り当てられます。"},
+    {title:"⑤ 予選の対戦結果を入力する", desc:"トーナメント表・ブロック表の対戦カードで勝者を選ぶだけで、クラスに応じたポイントが自動加減算されます。「🤖 AI再配置」で所属が近い選手同士をできるだけ離す組み直しもできます。"},
+    {title:"⑥ 決勝進出者を確定する(必要に応じて予備決勝戦)", desc:"「予選を締めて決勝進出者を確定する」を押すと決勝トーナメントに進みます。①で予選グループを複数に分けている場合、選出人数によっては「予備決勝戦」(1ラウンドの絞り込み試合)を経てから決勝トーナメントに進みます。"},
+    {title:"⑦ 決勝トーナメントの結果を入力する", desc:"決勝トーナメント表で勝者を選んでいきます。優勝・準優勝が決まると進出・優勝ボーナスなどが自動計算され、大会が「終了」状態になります(このとき、クラウドにバックアップを保存するか確認するポップアップが表示されます)。"},
+    {title:"⑧ 大会結果を共有する", desc:"「大会結果共有」で観戦用の大画面表示、「📺 配信用スコアボード」でYouTube Live配信向けのスコアボード、「大会結果を印刷する」で優勝・順位・対戦結果の印刷ができます。"},
+    {title:"⑨ バックアップを確認する", desc:"「設定」→「データ管理」タブの「クラウド上のバックアップ」から、いつでも手動でバックアップの保存・一覧確認・過去の状態への復元ができます(大会終了時のポップアップで「はい」を選んだ場合は、この時点で既に保存されています)。"}
+  ];
+  var stepsHTML = steps.map(function(s, i){
+    var arrow = i>0 ? '<div class="guide-arrow">↓</div>' : '';
+    return arrow+'<div class="guide-step"><h3>'+esc(s.title)+'</h3><p class="hint">'+esc(s.desc)+'</p></div>';
+  }).join("");
+  return '<div class="card"><h3>アプリの使い方フローチャート</h3>'+
+    '<p class="hint">大会の作成から、結果の共有・バックアップの確認までの基本的な流れをまとめています。</p>'+
+    '<div class="guide-flow">'+stepsHTML+'</div>'+
   '</div>';
 }
 
@@ -5533,8 +5561,12 @@ document.addEventListener("click", function(e){
       var loserId = winner2===match.a ? match.b : match.a;
       tour4.finals.eliminatedRound[loserId] = match.round;
       maybeAdvanceRounds(tour4.finals);
-      if(match.round===tour4.finals.totalRounds) finalizeTournamentResult(tour4);
+      var justCompleted = match.round===tour4.finals.totalRounds;
+      if(justCompleted) finalizeTournamentResult(tour4);
       saveState(); render();
+      if(justCompleted && confirm("大会が終了しました。今すぐクラウドにバックアップを保存しますか?")){
+        createCloudBackup();
+      }
     }
   }
   else if(action==="undo-bracket"){
