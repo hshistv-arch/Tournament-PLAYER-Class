@@ -5889,15 +5889,6 @@ document.addEventListener("click", function(e){
     if(preFinalsHasProgress(tourpa) && !confirm("抽選結果を組み合わせに反映すると、既に入力されている対戦結果は取り消されます。よろしいですか?")) return;
     applyPreFinalsDraw(tourpa); saveState(); render();
   }
-  else if(action==="assign-prefinals-slot"){
-    var tidps=t.getAttribute("data-tid"); var tourps=findTournament(tidps);
-    if(!tourps || !tourps.preFinals) return;
-    if(preFinalsHasProgress(tourps) && !confirm("組み合わせを変更すると、既に入力されている対戦結果は取り消されます。よろしいですか?")) return;
-    var slotIdxPS = Number(t.getAttribute("data-slot"));
-    var newSlots = assignPreFinalsSlot(tourps, slotIdxPS, t.value||null);
-    rebuildPreFinalsFromSlots(tourps, newSlots);
-    saveState(); render();
-  }
   else if(action==="topFormat-radio"){
     var tidTF=t.getAttribute("data-tid"); var tourTF=findTournament(tidTF); if(!tourTF) return;
     var ntf = ensureTournamentSetupState(tourTF); ntf.format = t.value; render();
@@ -6150,6 +6141,19 @@ document.addEventListener("compositionend", function(e){
   }
 }, false);
 
+// 出場選手の割当プルダウン(トーナメント表・ブロック表・決勝・予備決勝戦)にフォーカスした状態でDeleteキーを押すと、
+// マウスでプルダウンを開いて「(不戦/空き)」を選び直さなくても、その場で選択を空き(不戦)に戻せる
+document.addEventListener("keydown", function(e){
+  if(e.key!=="Delete") return;
+  var el = e.target;
+  if(!el || el.tagName!=="SELECT") return;
+  var action = el.getAttribute("data-action");
+  if(action!=="assign-slot" && action!=="assign-finals-slot" && action!=="assign-prefinals-slot") return;
+  if(el.value==="") return;
+  el.value = "";
+  el.dispatchEvent(new Event("change", {bubbles:true}));
+  e.preventDefault();
+}, false);
 document.addEventListener("change", function(e){
   setUserInteracting(false);
   var t = e.target;
@@ -6464,6 +6468,15 @@ document.addEventListener("change", function(e){
     }
     var slotsF = assignFinalsSlot(tourf, slotIdxF, t.value);
     rebuildFinalsFromSlots(tourf, slotsF);
+    saveState(); render();
+  }
+  else if(action==="assign-prefinals-slot"){
+    var tidps=t.getAttribute("data-tid"); var tourps=findTournament(tidps);
+    if(!tourps || !tourps.preFinals) return;
+    if(preFinalsHasProgress(tourps) && !confirm("組み合わせを変更すると、既に入力されている対戦結果は取り消されます。よろしいですか?")) return;
+    var slotIdxPS = Number(t.getAttribute("data-slot"));
+    var newSlots = assignPreFinalsSlot(tourps, slotIdxPS, t.value||null);
+    rebuildPreFinalsFromSlots(tourps, newSlots);
     saveState(); render();
   }
   else if(action==="resize-group"){
