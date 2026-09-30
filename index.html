@@ -102,6 +102,11 @@ button{font-family:inherit;}
   padding:1.1rem 1.2rem; box-shadow:var(--shadow);
 }
 .card > h2, .card > h3{margin-bottom:.8rem;}
+.wb-lb-row{display:flex; gap:1rem; align-items:flex-start;}
+.wb-lb-row > .card{flex:1 1 0; min-width:0;}
+@media (max-width: 900px){
+  .wb-lb-row{flex-direction:column;}
+}
 .stat-row{display:flex; gap:.7rem; flex-wrap:wrap;}
 .stat{
   background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
@@ -220,7 +225,11 @@ details[open] > summary:before{content:"▾ ";}
   box-shadow:var(--shadow); display:flex; flex-direction:column; position:relative; z-index:1;
 }
 .bflow-match.preview{border-style:dashed; opacity:.75;}
-.bflow-slot-edit{display:flex; flex-direction:column; gap:2px; padding:.2rem .35rem; border-top:1px solid var(--border); background:var(--surface-2);}
+.bflow-slot-edit{border-top:1px solid var(--border); background:var(--surface-2);}
+.bflow-slot-edit summary{cursor:pointer; font-size:.68rem; color:var(--muted); padding:.2rem .35rem; list-style:none; user-select:none;}
+.bflow-slot-edit summary::-webkit-details-marker{display:none;}
+.bflow-slot-edit summary:hover{color:var(--text);}
+.bflow-slot-edit-body{display:flex; flex-direction:column; gap:2px; padding:0 .35rem .3rem;}
 .h2h-overlay{position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:80; display:flex; align-items:center; justify-content:center; padding:1rem;}
 .h2h-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); max-width:520px; width:100%; max-height:82vh; overflow-y:auto; padding:1.1rem 1.2rem;}
 .h2h-head{display:flex; justify-content:space-between; align-items:center; gap:.6rem; margin-bottom:.4rem;}
@@ -3947,20 +3956,19 @@ function renderDisplayGroup(t, g, timeColorMap){
   cappedRounds = Math.max(cappedRounds, g.wb.rounds.length);
   var lbProj = hasLoserBracket(t) ? computeLbSlotProjections(g, t, cappedRounds) : null;
   var wbRoundsForDisplay2 = buildWbDisplayRounds(g, cappedRounds);
-  var sec = '<div class="card"><h3>グループ'+(g.index+1)+' ・ 勝者側ブラケット</h3>'+
+  var wbCardHTML2 = '<div class="card"><h3>グループ'+(g.index+1)+' ・ 勝者側ブラケット</h3>'+
     renderBracketFlow(wbRoundsForDisplay2, function(ri){ return "グループ"+(g.index+1)+" "+(ri+1)+"回戦"; }, {
       resolvable:false, showUndo:false, hideScoreInput:true, actionName:"", undoActionName:"", scoreScope:"", extraAttrs:"", side:"wb", timeColorMap:timeColorMap, tournament:t, lbProjections: lbProj, scheduleGroup: g
     })+
   '</div>';
-  if(hasLoserBracket(t)){
-    sec += '<div class="card"><h3>グループ'+(g.index+1)+' ・ 敗者復活ブロック</h3>'+
-      renderSimpleRounds(lbRoundsForDisplay(g, lbProj), null, {
-        resolvable:false, showUndo:false, hideScoreInput:true, actionName:"", undoActionName:"", scoreScope:"", extraAttrs:"",
-        useDownSet: t.lbOneSetDown!==false, tournament:t
-      })+
-    '</div>';
-  }
-  return sec;
+  if(!hasLoserBracket(t)) return wbCardHTML2;
+  var lbCardHTML2 = '<div class="card"><h3>グループ'+(g.index+1)+' ・ 敗者復活ブロック</h3>'+
+    renderSimpleRounds(lbRoundsForDisplay(g, lbProj), null, {
+      resolvable:false, showUndo:false, hideScoreInput:true, actionName:"", undoActionName:"", scoreScope:"", extraAttrs:"",
+      useDownSet: t.lbOneSetDown!==false, tournament:t
+    })+
+  '</div>';
+  return '<div class="wb-lb-row">'+wbCardHTML2+lbCardHTML2+'</div>';
 }
 function renderDisplayFinals(t){
   if(t.preFinals){
@@ -4737,10 +4745,11 @@ function renderBracketFlow(rounds, roundLabelFn, opts){
       var slotEditHTML = "";
       if(opts.slotEditable && ri===0 && !m.preview){
         var slotIdxA = mi*2, slotIdxB = mi*2+1;
-        slotEditHTML = '<div class="bflow-slot-edit no-print">'+
+        slotEditHTML = '<details class="bflow-slot-edit no-print"><summary>✏️ 選手を組み替える</summary>'+
+          '<div class="bflow-slot-edit-body">'+
           '<select '+opts.slotEditAttrsFor(slotIdxA)+'>'+opts.slotEditOptionsFor(slotIdxA)+'</select>'+
           '<select '+opts.slotEditAttrsFor(slotIdxB)+'>'+opts.slotEditOptionsFor(slotIdxB)+'</select>'+
-        '</div>';
+          '</div></details>';
       }
       var h2hBtnBf = (opts.showH2H && m.a && m.b && !m.bye) ? '<button class="btn btn-sm btn-ghost no-print" type="button" data-action="show-h2h" data-a="'+m.a+'" data-b="'+m.b+'">🤝 対戦成績</button>' : "";
       var canToggleStartBf = !opts.hideScoreInput && m.a && m.b && !m.bye && !m.winner;
@@ -4916,6 +4925,15 @@ function formatSwitchHTML(t){
       '<span class="hint">予選グループ数</span>'+
       '<input type="number" min="1" style="width:6rem" data-action="update-elim-group-count" data-tid="'+t.id+'" value="'+(t.elimGroupCount||t.groups.length)+'">'+
       '<span class="hint">グループ数を変更すると、出場選手が自動で再割当され、既に入力されている対戦結果はリセットされます(96名以上など大規模な大会では、複数グループに分けての運営がおすすめです)</span>'+
+    '</div>'+
+    '<div class="form-row" style="align-items:center;gap:.6rem;margin-top:.6rem">'+
+      '<span class="hint">予選方式</span>'+
+      '<select data-action="update-prelim-type" data-tid="'+t.id+'">'+
+        '<option value="single"'+(t.prelimType==="single"?" selected":"")+'>シングルエリミネーション</option>'+
+        '<option value="double"'+(t.prelimType==="double"?" selected":"")+'>ダブルエリミネーション</option>'+
+        '<option value="round1Double"'+(t.prelimType==="round1Double"?" selected":"")+'>1回戦のみダブルエリミネーション</option>'+
+      '</select>'+
+      '<span class="hint">方式を変更すると、敗者復活ブロックの有無が切り替わり、既に入力されている対戦結果(場合によっては決勝トーナメントの結果も)はリセットされます</span>'+
     '</div>') :
     ('<div class="form-row" style="align-items:center;gap:.6rem;margin-top:.6rem">'+
       '<span class="hint">予選ブロック数</span>'+
@@ -5201,7 +5219,7 @@ function renderOneGroup(t, g, timeColorMap){
   function usedElsewhereG(si){ return g.slots.filter(function(id, idx){ return idx!==si && id; }).concat(usedInOtherGroupsG); }
   // 各ラウンドの残りの対戦が終わっていなくても、両者が決まった対戦は先に対戦開始・印刷できるようにする
   var wbRoundsForDisplay = buildWbDisplayRounds(g, cappedRounds);
-  var sec = '<div class="card"><h3>グループ'+(g.index+1)+' ・ 勝者側ブラケット</h3>'+
+  var wbCardHTML = '<div class="card"><h3>グループ'+(g.index+1)+' ・ 勝者側ブラケット</h3>'+
     renderElimGroupControls(t, g)+
     renderEditSlots(t, "group", g.index, g.slots, true)+
     '<div class="prelim-status-row">'+
@@ -5227,26 +5245,25 @@ function renderOneGroup(t, g, timeColorMap){
       showH2H: true
     })+
   '</div>';
-  if(hasLoserBracket(t)){
-    sec += '<div class="card"><h3>グループ'+(g.index+1)+' ・ 敗者復活ブロック</h3><p class="hint">'+
-      (t.prelimType==="round1Double"
-        ? '1回戦で敗れた選手だけが入ります。ここで勝てば勝ち残り、負ければ失格です(2回戦以降の敗者は復活できません)。'
-        : '1敗した選手が入り、ここでもう1敗すると失格になります。')+'</p>'+
-      renderSimpleRounds(lbRoundsForDisplay(g, lbProj), null, {
-        resolvable: t.status==="prelim" && !reached,
-        actionName: "resolve-elim-match",
-        undoActionName: "undo-elim-match",
-        scoreScope: "elim",
-        extraAttrs: 'data-tid="'+t.id+'" data-side="lb" data-group="'+g.index+'"',
-        useDownSet: t.lbOneSetDown!==false,
-        tournament: t,
-        printScope: "elim",
-        printIdx: g.index,
-        showH2H: true
-      })+
-    '</div>';
-  }
-  return sec;
+  if(!hasLoserBracket(t)) return wbCardHTML;
+  var lbCardHTML = '<div class="card"><h3>グループ'+(g.index+1)+' ・ 敗者復活ブロック</h3><p class="hint">'+
+    (t.prelimType==="round1Double"
+      ? '1回戦で敗れた選手だけが入ります。ここで勝てば勝ち残り、負ければ失格です(2回戦以降の敗者は復活できません)。'
+      : '1敗した選手が入り、ここでもう1敗すると失格になります。')+'</p>'+
+    renderSimpleRounds(lbRoundsForDisplay(g, lbProj), null, {
+      resolvable: t.status==="prelim" && !reached,
+      actionName: "resolve-elim-match",
+      undoActionName: "undo-elim-match",
+      scoreScope: "elim",
+      extraAttrs: 'data-tid="'+t.id+'" data-side="lb" data-group="'+g.index+'"',
+      useDownSet: t.lbOneSetDown!==false,
+      tournament: t,
+      printScope: "elim",
+      printIdx: g.index,
+      showH2H: true
+    })+
+  '</div>';
+  return '<div class="wb-lb-row">'+wbCardHTML+lbCardHTML+'</div>';
 }
 
 // 予選グループの勝者側で、最終ラウンド(=決勝トーナメントに直結するラウンド)まで
@@ -6288,6 +6305,22 @@ document.addEventListener("change", function(e){
     var tidGc = t.getAttribute("data-tid"); var tourGc = findTournament(tidGc);
     if(!tourGc) return;
     changeBracketFormat(tourGc, Number(t.value));
+  }
+  else if(action==="update-prelim-type"){
+    var tidPT2 = t.getAttribute("data-tid"); var tourPT2 = findTournament(tidPT2);
+    if(!tourPT2 || tourPT2.format!=="elimPrelim") return;
+    var newTypePT2 = t.value;
+    if(["single","double","round1Double"].indexOf(newTypePT2)<0 || newTypePT2===tourPT2.prelimType) return;
+    var hasProgPT2 = tourPT2.groups.some(function(g, gi){ return groupOrBlockHasProgress(tourPT2, gi); }) || !!tourPT2.finals || !!tourPT2.preFinals;
+    if(hasProgPT2 && !confirm("予選方式を変更すると、敗者復活ブロックの有無が切り替わり、既に入力されている対戦結果(場合によっては予備決勝戦・決勝トーナメントの結果も)がすべて取り消されます。よろしいですか?")){
+      render();
+      return;
+    }
+    if(tourPT2.preFinals) unwindPreFinalsIfNeeded(tourPT2);
+    else if(tourPT2.finals) unwindFinalsIfNeeded(tourPT2);
+    tourPT2.prelimType = newTypePT2;
+    tourPT2.groups.forEach(function(g){ rebuildGroupFromSlots(tourPT2, g); });
+    saveState(); render();
   }
   else if(action==="update-block-count"){
     var tidBK = t.getAttribute("data-tid"); var tourBK = findTournament(tidBK);
