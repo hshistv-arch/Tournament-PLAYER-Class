@@ -239,7 +239,11 @@ details[open] > summary:before{content:"▾ ";}
 .tsh-txt .tsh-name{flex:none;}
 .tsh-box .tsh-lbl{color:var(--muted); font-size:10px; flex:1; text-align:center;}
 .tsh-slot{padding:0;}
-.tsh-slot .tsh-txt{padding:0 5px;}
+.tsh-slot .tsh-txt{padding:0 20px 0 5px;}
+.tsh-slot[data-numat="right"] .tsh-txt{padding:0 5px 0 20px;}
+.tsh-slot[data-numat="right"] .tsh-edit{right:auto; left:1px;}
+.tsh-v.tsh-slot .tsh-txt{padding:0;}
+.tsh-v.tsh-slot .tsh-edit{top:auto; bottom:1px;}
 .tsh-sno{flex:none; width:26px; height:100%; display:flex; align-items:center; justify-content:center; font-size:11px; background:var(--surface-2,#efebdf); color:var(--muted);}
 .tsh-slot[data-numat="left"] .tsh-sno{border-right:1px solid var(--text);}
 .tsh-slot[data-numat="right"]{flex-direction:row-reverse;}
@@ -263,6 +267,8 @@ details[open] > summary:before{content:"▾ ";}
 .tsh-v .tsh-name{padding:0; text-overflow:clip;}
 .tsh-v .tsh-lbl{writing-mode:vertical-rl; flex:1;}
 .tsh-v .tsh-sno{width:100%; height:20px; border:0 !important; border-bottom:1px solid var(--text) !important;}
+.tsh-edit{position:absolute; top:1px; right:1px; width:16px; height:16px; padding:0; border:1px solid var(--border); border-radius:4px; background:var(--surface); color:var(--muted); font-size:11px; line-height:14px; cursor:pointer; opacity:.55; z-index:2;}
+.tsh-edit:hover{opacity:1; color:var(--text); background:var(--surface-2,#efebdf);}
 .tsh-no{position:absolute; display:block; box-sizing:border-box; font-size:11px; line-height:14px; text-align:center; font-family:inherit; color:var(--text); background:transparent; border:0; padding:0; border-radius:7px; white-space:nowrap;}
 .tsh-nv{line-height:16px;}
 button.tsh-no{cursor:pointer;}
@@ -3600,7 +3606,7 @@ function render(){
   else if(route.screen==="tournament") html = renderTournamentScreen(route.id);
   else html = renderRoster();
   main.innerHTML = html;
-  document.getElementById("h2h-modal-root").innerHTML = h2hModal ? renderH2HModal() : (tplModal ? renderTplMatchModal() : (gridCellModal ? renderGridCellModal() : ""));
+  document.getElementById("h2h-modal-root").innerHTML = h2hModal ? renderH2HModal() : (tplSlotModal ? renderTplSlotModal() : (tplModal ? renderTplMatchModal() : (gridCellModal ? renderGridCellModal() : "")));
   function applyInnerScrolls(){
     innerScrollers.forEach(function(s){
       var el = document.getElementById(s.id);
@@ -5733,6 +5739,7 @@ var TSH = {BH:34, BW:134, SN:26, STUB:14, TAIL:30, LBP:44, GAP:30, VT:44, VL:116
 var tshZoom = 1;            // 表の表示倍率(画面の一時設定。保存しない)
 var tshLayoutCache = {};
 var tplModal = null;        // 試合の詳細(スコア入力など)ポップアップ {tid, gi, side, mid}
+var tplSlotModal = null;    // 表の選手枠から開く「選手を変更」ポップアップ {tid, kind:"group"|"finals", idx, slot}
 function tshBuild(def){
   var C = TSH, CW = C.STUB + C.TAIL, T = 2;
   var items = [];
@@ -5889,6 +5896,10 @@ function renderTplSheet(def, o){
     if(it.role==="champ" && !occ) inner += '<span class="tsh-lbl">優勝</span>';
     else if(occ) inner += tshPlayerHTML(t, occ);
     else if(it.lsrc!=null) inner += '<span class="tsh-lbl">'+it.lsrc+'-L</span>';
+    if(it.role==="slot" && o.slotEdit){
+      var editAttrs = o.slotEdit(it);
+      if(editAttrs) inner += '<button type="button" class="tsh-edit no-print" data-action="open-tpl-slot" '+editAttrs+' title="この枠の選手を変更">✎</button>';
+    }
     var title = occ ? (' title="'+esc(playerNameWithAffiliation(t, occ)+(displayClassOf(t, occ) ? " / "+displayClassOf(t, occ) : ""))+'"') : "";
     var numPos = it.role==="slot" ? (' data-numat="'+it.numAt+'"') : "";
     boxes += '<div class="'+cls+'" style="'+pos+'"'+attrs+title+numPos+'>'+inner+'</div>';
@@ -5925,6 +5936,7 @@ function tplSheetCardHTML(t, g, readOnly){
     },
     attrsFor:function(m){ return 'data-tid="'+t.id+'" data-side="'+def.matches[m.no].side+'" data-group="'+g.index+'"'; },
     allowPending:true,
+    slotEdit: readOnly ? null : function(it){ return 'data-tid="'+t.id+'" data-kind="group" data-idx="'+g.index+'" data-slot="'+(it.slot-1)+'"'; },
     openAttrs:function(m){ return 'data-tid="'+t.id+'" data-scope="elim" data-side="'+def.matches[m.no].side+'" data-group="'+g.index+'" data-mid="'+m.id+'"'; }
   });
   var legend = readOnly ? "" :
@@ -5960,11 +5972,41 @@ function tplFinalsSheetHTML(t, bracket, readOnly){
     goalOf:function(){ return false; },
     attrsFor:function(){ return 'data-tid="'+t.id+'"'; },
     allowPending:false, actionName:"resolve-bracket",
+    slotEdit: (readOnly || t.status!=="finals") ? null : function(it){ return 'data-tid="'+t.id+'" data-kind="finals" data-idx="0" data-slot="'+(it.slot-1)+'"'; },
     openAttrs:function(m){ return 'data-tid="'+t.id+'" data-scope="bracket" data-mid="'+m.id+'"'; }
   });
   var legend = readOnly ? "" :
     '<p class="hint" style="margin:.2rem 0 .4rem">対戦する2人の名前の枠をクリックすると、その選手が勝者に決まります。線の上の番号(試合番号)をクリックすると、スコア入力・試合開始・取消などができます。</p>';
   return legend + '<div style="margin-bottom:.3rem">'+tshZoomSelectHTML()+'</div>' + sheet;
+}
+// 表の選手枠の ✎ をクリックしたときの「選手を変更」(エントリー選手から選び直す)
+function renderTplSlotModal(){
+  if(!tplSlotModal) return "";
+  var t = findTournament(tplSlotModal.tid);
+  if(!t) return "";
+  var si = tplSlotModal.slot, selHTML = "", cur = null;
+  var activeElsewhere = playersActiveInOtherTournaments(t.id);
+  if(tplSlotModal.kind==="finals"){
+    if(!t.finals || t.status!=="finals") return "";
+    var fs = finalsSlotsArray(t);
+    cur = fs[si];
+    selHTML = '<select data-action="assign-finals-slot" data-tid="'+t.id+'" data-slot="'+si+'" style="width:100%">'+
+      rosterOptionsHTML(t, cur, true, t.finalists, fs.filter(function(id, idx){ return idx!==si && id; }), activeElsewhere)+'</select>';
+  } else {
+    var g = t.groups && t.groups[tplSlotModal.idx];
+    if(!g) return "";
+    cur = g.slots[si];
+    var usedOther = playersUsedInOtherContainers(t, "group", g.index);
+    selHTML = '<select data-action="assign-slot" data-kind="group" data-idx="'+g.index+'" data-slot="'+si+'" data-tid="'+t.id+'" style="width:100%">'+
+      rosterOptionsHTML(t, cur, true, t.eligiblePlayerIds, g.slots.filter(function(id, idx){ return idx!==si && id; }).concat(usedOther), activeElsewhere)+'</select>';
+  }
+  var manualCls = (!usePointsAndSets(t) && cur) ? ('<div style="margin-top:.5rem">'+manualClassSelectHTML(t, cur, "update-manual-class-live")+'</div>') : "";
+  return '<div class="h2h-overlay"><div class="h2h-card" style="max-width:480px">'+
+    '<div class="h2h-head"><h3>枠 No.'+(si+1)+' の選手を変更</h3><button class="btn btn-sm btn-ghost no-print" type="button" data-action="close-tpl-slot">✕ 閉じる</button></div>'+
+    '<p class="hint" style="margin:.2rem 0 .5rem">現在: '+(cur ? esc(playerNameWithAffiliation(t, cur)) : "(空き)")+'</p>'+
+    selHTML+manualCls+
+    '<p class="hint" style="margin:.5rem 0 0">エントリーしている選手から選び直せます。「(不戦/空き)」を選ぶと、その枠は空きになります。対戦結果が入力済みの場合は、変更すると結果が取り消されます(確認が出ます)。</p>'+
+  '</div></div>';
 }
 // 試合番号をクリックしたときの詳細(スコア入力・試合開始・取消・対戦成績)。表の中の対戦カードをそのままポップアップで表示する
 function renderTplMatchModal(){
@@ -6502,6 +6544,14 @@ document.addEventListener("click", function(e){
   }
   else if(action==="close-h2h"){
     h2hModal = null;
+    render();
+  }
+  else if(action==="open-tpl-slot"){
+    tplSlotModal = { tid: t.getAttribute("data-tid"), kind: t.getAttribute("data-kind"), idx: Number(t.getAttribute("data-idx")), slot: Number(t.getAttribute("data-slot")) };
+    render();
+  }
+  else if(action==="close-tpl-slot"){
+    tplSlotModal = null;
     render();
   }
   else if(action==="open-tpl-match"){
@@ -7400,6 +7450,7 @@ document.addEventListener("change", function(e){
     render();
   }
   else if(action==="assign-slot"){
+    tplSlotModal = null;
     var tida=t.getAttribute("data-tid"); var toura=findTournament(tida);
     if(!toura) return;
     var idx=Number(t.getAttribute("data-idx"));
@@ -7420,6 +7471,7 @@ document.addEventListener("change", function(e){
     saveState(); render();
   }
   else if(action==="assign-finals-slot"){
+    tplSlotModal = null;
     var tidf=t.getAttribute("data-tid"); var tourf=findTournament(tidf);
     if(!tourf || !tourf.finals) return;
     var slotIdxF=Number(t.getAttribute("data-slot"));
