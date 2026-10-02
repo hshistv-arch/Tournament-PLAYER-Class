@@ -232,6 +232,12 @@ details[open] > summary:before{content:"▾ ";}
 .tsh-box{position:absolute; box-sizing:border-box; border:1.5px solid var(--text); background:var(--surface); display:flex; align-items:center; overflow:hidden; white-space:nowrap; line-height:1.1; padding:0 5px; font-size:12px;}
 .tsh-txt{display:flex; flex-direction:column; justify-content:center; flex:1; min-width:0; overflow:hidden; line-height:1.2;}
 .tsh-txt .tsh-name{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:none; font-size:12px;}
+.tsh-score{flex:none; min-width:18px; margin-left:3px; padding:0 4px; border-radius:9px; background:var(--surface-2,#efebdf); color:var(--text); font-size:12px; font-weight:700; line-height:18px; text-align:center; font-family:var(--font-num);}
+.tsh-score.win{background:color-mix(in srgb, var(--win,#2e7d4f) 30%, var(--surface)); color:var(--text);}
+.tsh-slot .tsh-score{margin-right:18px;}
+.tsh-slot[data-numat="right"] .tsh-score{margin-right:0;}
+.tsh-v .tsh-score{writing-mode:horizontal-tb; margin:2px 0 0; min-width:0; align-self:center;}
+.tsh-v.tsh-slot .tsh-score{margin-right:0; margin-bottom:18px;}
 .tsh-sub{display:flex; align-items:center; gap:3px; overflow:hidden; white-space:nowrap; font-size:10px; color:var(--muted); font-weight:400;}
 .tsh-sub .tsh-aff{overflow:hidden; text-overflow:ellipsis; min-width:0;}
 .tsh-sub .badge{flex:none; display:inline-block; font-size:9px !important; padding:0 4px !important; line-height:12px !important; height:12px; min-width:0; border-radius:6px; margin:0;}
@@ -5894,7 +5900,15 @@ function renderTplSheet(def, o){
     var inner = "";
     if(it.role==="slot") inner += '<span class="tsh-sno">'+it.slot+'</span>';
     if(it.role==="champ" && !occ) inner += '<span class="tsh-lbl">優勝</span>';
-    else if(occ) inner += tshPlayerHTML(t, occ);
+    else if(occ){
+      inner += tshPlayerHTML(t, occ);
+      // この対戦のスコア(入力済みの数字。勝者でスコア未入力の場合は「W」)を選手名の右に表示
+      if(m && it.cons && !m.bye && m.a && m.b){
+        var sc = m.score || {a:null, b:null}, sv = sc[it.cons.side], isWin = !!m.winner && m.winner===occ;
+        var stxt = (sv!=null) ? sv : (isWin ? "W" : null);
+        if(stxt!=null) inner += '<span class="tsh-score'+(isWin?' win':'')+'" title="スコア">'+esc(stxt)+'</span>';
+      }
+    }
     else if(it.lsrc!=null) inner += '<span class="tsh-lbl">'+it.lsrc+'-L</span>';
     if(it.role==="slot" && o.slotEdit){
       var editAttrs = o.slotEdit(it);
