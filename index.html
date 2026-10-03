@@ -287,6 +287,8 @@ button.tsh-no:hover{background:var(--surface-2,#efebdf); text-decoration:underli
 .tsh-cap{position:absolute; font-size:11px; font-weight:700; letter-spacing:.04em; color:var(--muted); display:flex; align-items:flex-end; white-space:nowrap;}
 .h2h-card .bflow-round-label{display:none;}
 .h2h-card .bflow-round{padding-top:0;}
+#qr-print-root{display:none;}
+@media print{ body.qr-print-only .app-shell, body.qr-print-only .display-updated, body.qr-print-only .display-close-btn{display:none !important;} body.qr-print-only #qr-print-root{display:block; padding:2rem;} }
 @media print{ .tsh-scroll{overflow:visible; border:0;} .tsh-zoom{zoom:.55 !important;} }
 .h2h-overlay{position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:80; display:flex; align-items:center; justify-content:center; padding:1rem;}
 .h2h-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); max-width:520px; width:100%; max-height:82vh; overflow-y:auto; padding:1.1rem 1.2rem;}
@@ -769,6 +771,62 @@ function streamScoreboardUrlFor(tid, scope, idx, side, mid, transparent){
   if(side) u += "&side="+side;
   if(transparent) u += "&bg=transparent";
   return u;
+}
+// 大会結果共有ページのQRコード(このページ自身のURL)。ボタンで表示/非表示を切り替え、PNG画像として保存もできる
+var displayQrOpen = false;
+function displayQrPanelHTML(t){
+  var url = displayUrlFor(t.id);
+  var btn = '<button class="btn btn-sm'+(displayQrOpen?' btn-felt':' btn-ghost')+' no-print" type="button" data-action="toggle-display-qr" style="margin-top:.5rem">📱 QRコードを発行'+(displayQrOpen?'(閉じる)':'')+'</button>';
+  if(!displayQrOpen) return btn;
+  var model = qrPickAndEncode(url);
+  if(!model) return btn+'<p class="hint">URLが長すぎるためQRコードを作成できません。</p>';
+  return btn+
+    '<div class="qr-panel" style="margin-top:.6rem;padding:.7rem;border:1px solid var(--border);border-radius:.5rem;background:var(--surface);display:block;width:fit-content;max-width:100%">'+
+      '<div style="width:260px;max-width:100%">'+qrToSvg(model, {cellSize:5, margin:3})+'</div>'+
+      '<div class="hint" style="margin-top:.4rem;word-break:break-all;max-width:260px">'+esc(url)+'</div>'+
+      '<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.5rem" class="no-print">'+
+        '<button class="btn btn-sm btn-primary" type="button" data-action="download-display-qr" data-url="'+esc(url)+'" data-name="'+esc(t.name)+'">画像(PNG)で保存</button>'+
+        '<button class="btn btn-sm btn-ghost" type="button" data-action="print-display-qr" data-url="'+esc(url)+'" data-name="'+esc(t.name)+'">QRコードだけを印刷</button>'+
+      '</div>'+
+    '</div>';
+}
+// QRコードだけを印刷する(印刷用の一時領域に大会名・QR・URLを入れ、画面の他の部分は印刷しない)
+function printDisplayQr(url, name){
+  var model = qrPickAndEncode(url);
+  if(!model) return;
+  var root = document.getElementById("qr-print-root");
+  if(!root){ root = document.createElement("div"); root.id = "qr-print-root"; document.body.appendChild(root); }
+  root.innerHTML = '<h2 style="margin:0 0 .6rem;text-align:center">'+esc(name||"")+'</h2>'+
+    '<div style="width:320px;margin:0 auto">'+qrToSvg(model, {cellSize:5, margin:3})+'</div>'+
+    '<p style="margin:.6rem 0 0;text-align:center;word-break:break-all;font-size:12px">'+esc(url)+'</p>';
+  document.body.classList.add("qr-print-only");
+  window.print();
+  document.body.classList.remove("qr-print-only");
+  root.innerHTML = "";
+}
+function downloadQrPng(url, name){
+  var model = qrPickAndEncode(url);
+  if(!model) return;
+  var px = 640;
+  var svg = qrToSvg(model, {cellSize:5, margin:4}).replace('width="100%" height="100%"', 'width="'+px+'" height="'+px+'"');
+  var img = new Image();
+  img.onload = function(){
+    var cv = document.createElement("canvas");
+    cv.width = px; cv.height = px;
+    var ctx = cv.getContext("2d");
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, px, px);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(img, 0, 0, px, px);
+    cv.toBlob(function(blob){
+      if(!blob) return;
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "QR_"+String(name||"大会結果").replace(/[\\/:*?"<>|]/g, "_")+".png";
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(a.href); }, 2000);
+    }, "image/png");
+  };
+  img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
 }
 function qrDetailsHTML(url){
   var model = qrPickAndEncode(url);
@@ -3568,9 +3626,21 @@ function reassertScroll(x, y){
     });
   }
 }
+// トーナメント表(.tsh-scroll)の横・縦スクロール位置は、再描画(ポップアップの表示・勝者の決定・自動更新など)のたびに
+// 先頭へ戻らないよう、再描画の前に控えて、描画後に同じ位置へ戻す
+function captureTshScroll(){
+  return Array.from(document.querySelectorAll(".tsh-scroll")).map(function(el){ return {l:el.scrollLeft, t:el.scrollTop}; });
+}
+function restoreTshScroll(snap){
+  var els = document.querySelectorAll(".tsh-scroll");
+  snap.forEach(function(s, i){ var el = els[i]; if(el){ el.scrollLeft = s.l; el.scrollTop = s.t; } });
+}
 function render(){
   if(DISPLAY_MODE){
+    var dispScrollX = window.scrollX, dispScrollY = window.scrollY, dispTsh = captureTshScroll();
     document.getElementById("main").innerHTML = renderDisplayScreen();
+    reassertScroll(dispScrollX, dispScrollY);
+    restoreTshScroll(dispTsh);
     return;
   }
   if(STREAM_MODE){
@@ -3598,6 +3668,7 @@ function render(){
   var bflowScrollers = Array.from(document.querySelectorAll(".bflow-wrap")).map(function(el){
     return {scrollLeft: el.scrollLeft, scrollTop: el.scrollTop};
   });
+  var tshScrollers = captureTshScroll();
   var focusInfo = captureFocusInfo();
   renderNav();
   var main = document.getElementById("main");
@@ -3623,6 +3694,7 @@ function render(){
       var el = newBflowScrollers[i];
       if(el){ el.scrollLeft = s.scrollLeft; el.scrollTop = s.scrollTop; }
     });
+    restoreTshScroll(tshScrollers);
   }
   reassertScroll(scrollX, scrollY);
   applyInnerScrolls();
@@ -4620,7 +4692,8 @@ function renderDisplayScreen(){
     } else {
       var STATUS_LABEL = {entryPending:"エントリー受付中", assigning:"組み合わせ待ち", prelim:"予選中", preFinals:"予備決勝戦中", finals:"決勝トーナメント中", completed:"終了"};
       body = '<div class="page-head"><div><h1>'+esc(t.name)+'</h1><p class="sub">'+tournamentFormatLabel(t)+' ・ 開催日: '+eventDateOf(t)+' ・ <span class="pill '+t.status+'">'+(STATUS_LABEL[t.status]||t.status)+'</span></p>'+
-        '<button class="btn btn-sm btn-ghost" type="button" data-action="copy-url" data-url="'+esc(displayUrlFor(t.id))+'" style="margin-top:.5rem">URLをコピー</button>'+
+        '<button class="btn btn-sm btn-ghost" type="button" data-action="copy-url" data-url="'+esc(displayUrlFor(t.id))+'" style="margin-top:.5rem">URLをコピー</button> '+
+        displayQrPanelHTML(t)+
       '</div></div>';
       var displayTimeColorMap = buildTimeSlotColorMap(t);
       if(t.format==="blockPrelim"){
@@ -5542,9 +5615,20 @@ function renderAffiliationCheckNotice(t){
     '</div>'+body+
   '</div>';
 }
+// 「AI再配置」のカードを非表示にできる(この端末のブラウザに保存。大会ごとではなく共通の設定)
+var AI_CARD_HIDDEN_KEY = "gspec_ai_card_hidden";
+function isAiCardHidden(){
+  try{ return localStorage.getItem(AI_CARD_HIDDEN_KEY)==="1"; }catch(e){ return false; }
+}
+function setAiCardHidden(v){
+  try{ if(v) localStorage.setItem(AI_CARD_HIDDEN_KEY, "1"); else localStorage.removeItem(AI_CARD_HIDDEN_KEY); }catch(e){}
+}
 function renderAiReseedCard(t){
   if(t.status==="completed") return "";
   if(usePointsAndSets(t)) return "";
+  if(isAiCardHidden()){
+    return '<div class="no-print" style="margin:.2rem 0 .6rem"><button class="btn btn-sm btn-ghost" type="button" data-action="toggle-ai-card">🤖 AI再配置を表示</button></div>';
+  }
   var noteExtra = t.format==="blockPrelim"
     ? "同じ所属の選手はできるだけ別のブロックに分かれるよう調整します。"
     : "同じ所属の選手はできるだけ1回戦で対戦しないよう調整します。";
@@ -5552,7 +5636,8 @@ function renderAiReseedCard(t){
     ? "同じブロックに同じ所属の選手がいないか"
     : "1回戦・2回戦目まで(勝ち上がり次第で対戦する可能性がある範囲)で同じ所属の選手が対戦することにならないか";
   var undoBtn = t.aiReseedUndo ? '<button class="btn btn-sm btn-ghost" data-action="undo-ai-reseed" data-tid="'+t.id+'">↩ 直前の配置に戻す</button>' : "";
-  return '<div class="card"><h3>🤖 AI再配置</h3>'+
+  return '<div class="card"><div class="form-row" style="align-items:center;justify-content:space-between;gap:.5rem"><h3 style="margin:0">🤖 AI再配置</h3>'+
+    '<button class="btn btn-sm btn-ghost no-print" type="button" data-action="toggle-ai-card" title="このカードを非表示にします(「AI再配置を表示」でいつでも戻せます)">非表示にする</button></div>'+
     '<p class="hint">現在の出場選手を、シード順(抽選番号・ポイント順)を保ったまま組み直します。'+noteExtra+'所属の重複が多すぎる場合は、できる限り離す結果になります(G-SPeCポイントに影響しない試合でのみ利用できます)。</p>'+
     '<div class="form-row" style="gap:.5rem;flex-wrap:wrap">'+
       '<button class="btn btn-sm btn-ghost" data-action="ai-reseed-tournament" data-tid="'+t.id+'">🤖 AI再配置</button>'+
@@ -6560,6 +6645,10 @@ document.addEventListener("click", function(e){
     h2hModal = null;
     render();
   }
+  else if(action==="toggle-ai-card"){
+    setAiCardHidden(!isAiCardHidden());
+    render();
+  }
   else if(action==="open-tpl-slot"){
     tplSlotModal = { tid: t.getAttribute("data-tid"), kind: t.getAttribute("data-kind"), idx: Number(t.getAttribute("data-idx")), slot: Number(t.getAttribute("data-slot")) };
     render();
@@ -6668,6 +6757,16 @@ document.addEventListener("click", function(e){
     setTimeout(function(){
       alert("このタブ/ウインドウを自動では閉じられませんでした。お使いのブラウザの操作(タブ一覧・戻るボタンなど)で閉じてください。");
     }, 300);
+  }
+  else if(action==="toggle-display-qr"){
+    displayQrOpen = !displayQrOpen;
+    render();
+  }
+  else if(action==="print-display-qr"){
+    printDisplayQr(t.getAttribute("data-url"), t.getAttribute("data-name"));
+  }
+  else if(action==="download-display-qr"){
+    downloadQrPng(t.getAttribute("data-url"), t.getAttribute("data-name"));
   }
   else if(action==="copy-url"){
     var copyUrl = t.getAttribute("data-url");
