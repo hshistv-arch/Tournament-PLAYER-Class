@@ -932,6 +932,7 @@ function defaultState(){
       manualClassSetCountsC: JSON.parse(JSON.stringify(MANUAL_SET_COUNT_C_DEFAULT)),
       manualClassDownSetCountsC: JSON.parse(JSON.stringify(MANUAL_DOWN_SET_COUNT_C_DEFAULT)),
       setTableDMigrated: true,
+      setTableCDefaultsV2: true,
       minPoints: MIN_POINTS_DEFAULT
     },
     players: PLAYER_SEED.map(function(row,i){
@@ -1039,6 +1040,12 @@ function migrateAddBeClass(parsed){
     Object.keys(MANUAL_DOWN_SET_COUNT_C_DEFAULT).forEach(function(cls){
       if(s.manualClassDownSetCountsC[cls]===undefined) s.manualClassDownSetCountsC[cls] = MANUAL_DOWN_SET_COUNT_C_DEFAULT[cls];
     });
+  }
+  if(!s.setTableCDefaultsV2){
+    function sameTable(a, b){ return Object.keys(b).every(function(k){ return a && a[k]===b[k]; }); }
+    if(sameTable(s.manualClassSetCountsC, MANUAL_SET_COUNT_C_V1)) s.manualClassSetCountsC = JSON.parse(JSON.stringify(MANUAL_SET_COUNT_C_DEFAULT));
+    if(sameTable(s.manualClassDownSetCountsC, MANUAL_DOWN_SET_COUNT_C_V1)) s.manualClassDownSetCountsC = JSON.parse(JSON.stringify(MANUAL_DOWN_SET_COUNT_C_DEFAULT));
+    s.setTableCDefaultsV2 = true;
   }
   if(s.minPoints===undefined) s.minPoints = MIN_POINTS_DEFAULT;
   return parsed;
@@ -1307,10 +1314,14 @@ var DOWN_SET_COUNT_B_DEFAULT = {SA:5,AA:5,AB:5,AC:5,BA:4,BB:4,BC:4,CA:3,CB:3,CC:
 var SET_TABLE_OPTIONS = ["A","B"];
 var MANUAL_SET_COUNT_DEFAULT = {P:6,LP:5,SA:5,A:5,B:4,C:3,Be:2};
 var MANUAL_SET_COUNT_B_DEFAULT = {P:6,LP:6,SA:6,A:6,B:5,C:4,Be:4};
-// セット数C(ポイントに影響しない試合用): 勝者側 P6 LP5 SA5 A5 B4 C3 / 敗者側 P5 LP4 SA4 A4 B4 C3。
+// セット数C(ポイントに影響しない試合用): 勝者側 P5 LP5 SA5 A5 B4 C3 Be3 / 敗者側 P5 LP4 SA4 A4 B4 C3 Be3。
+// 勝者側のP・LP・SAは、A以下と対戦しても5セットのまま(Pが SA と対戦するときの従来の1セット減もしない)。
 // 勝者側では、P・LP・SAと対戦するAは1セットダウン(敗者側のAは4のまま)。「セット数を定めない」選択はセット数D
-var MANUAL_SET_COUNT_C_DEFAULT = {P:6,LP:5,SA:5,A:5,B:4,C:3,Be:2};
-var MANUAL_DOWN_SET_COUNT_C_DEFAULT = {P:5,LP:4,SA:4,A:4,B:4,C:3,Be:2};
+var MANUAL_SET_COUNT_C_DEFAULT = {P:5,LP:5,SA:5,A:5,B:4,C:3,Be:3};
+var MANUAL_DOWN_SET_COUNT_C_DEFAULT = {P:5,LP:4,SA:4,A:4,B:4,C:3,Be:3};
+// 初版のセット数Cの既定値(まだ編集されていなければ、現在の既定値へ更新する)
+var MANUAL_SET_COUNT_C_V1 = {P:6,LP:5,SA:5,A:5,B:4,C:3,Be:2};
+var MANUAL_DOWN_SET_COUNT_C_V1 = {P:5,LP:4,SA:4,A:4,B:4,C:3,Be:2};
 var MANUAL_C_A_DOWN_OPPONENTS = ["P","LP","SA"];
 var MINUTES_BY_SETS = {2:15,3:20,4:25,5:30,6:35};
 function classSubRank(code){
@@ -1424,7 +1435,7 @@ function matchFormatFor(playerId, opponentId, useDownSet, t){
     var mDef = manualSetCountDefaultsFor(t, useDownSet);
     var mSets = mTable[mCls]!=null ? mTable[mCls] : (mDef[mCls] || 3);
     var oCls = displayClassOf(t, opponentId);
-    if(mCls==="P" && oCls==="SA") mSets = Math.max(1, mSets-1);
+    if(mTbl!=="C" && mCls==="P" && oCls==="SA") mSets = Math.max(1, mSets-1);
     // セット数C: 勝者側では、P・LP・SAと対戦するAは1セットダウン(敗者側のAは表の4のまま)
     if(mTbl==="C" && !useDownSet && mCls==="A" && MANUAL_C_A_DOWN_OPPONENTS.indexOf(oCls)>=0) mSets = Math.max(1, mSets-1);
     if(previousChampionOf(t) === playerId) mSets += 1;
