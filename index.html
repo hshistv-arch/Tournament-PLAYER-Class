@@ -6232,7 +6232,8 @@ function renderTplMatchModal(){
     printIdx: g.index,
     scheduleGroup: g,
     showH2H: true,
-    useDownSet: t.lbOneSetDown!==false
+    // 勝者側の対戦は通常のセット数、敗者側の対戦だけワンセットダウン(敗者側用)のセット数を使う
+    useDownSet: tplModal.side==="lb" && t.lbOneSetDown!==false
   });
   return '<div class="h2h-overlay"><div class="h2h-card" style="max-width:640px">'+
     '<div class="h2h-head"><h3>試合 No.'+m.no+'</h3><button class="btn btn-sm btn-ghost no-print" type="button" data-action="close-tpl-match">✕ 閉じる</button></div>'+
