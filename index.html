@@ -1323,6 +1323,9 @@ var MANUAL_DOWN_SET_COUNT_C_DEFAULT = {P:5,LP:4,SA:4,A:4,B:4,C:3,Be:3};
 var MANUAL_SET_COUNT_C_V1 = {P:6,LP:5,SA:5,A:5,B:4,C:3,Be:2};
 var MANUAL_DOWN_SET_COUNT_C_V1 = {P:5,LP:4,SA:4,A:4,B:4,C:3,Be:2};
 var MANUAL_C_A_DOWN_OPPONENTS = ["P","LP","SA"];
+// セット数C・勝者側: P・LP・SAと対戦するB・C・Beは3セット(敗者側は表のまま)
+var MANUAL_C_LOW_CLASSES_VS_TOP = ["B","C","Be"];
+var MANUAL_C_LOW_CLASSES_SETS = 3;
 var MINUTES_BY_SETS = {2:15,3:20,4:25,5:30,6:35};
 function classSubRank(code){
   if(code==="Be") code="BB";
@@ -1408,7 +1411,7 @@ function manualSetTableSummary(key, useDownSet){
       return c+" "+v;
     }).join(" ");
   }
-  if(key==="C") return "勝者側 "+line(false)+"(P・LP・SAと対戦するAは1セットダウン) / 敗者側 "+line(true);
+  if(key==="C") return "勝者側 "+line(false)+"(P・LP・SAと対戦するAは1セットダウン、B・C・Beは3セット) / 敗者側 "+line(true);
   return MANUAL_CLASS_OPTIONS_WITH_SETS.map(function(c){
     var table = manualSetCountTableFor(ref), def = manualSetCountDefaultsFor(ref);
     var v = table[c]!=null ? table[c] : def[c];
@@ -1438,6 +1441,7 @@ function matchFormatFor(playerId, opponentId, useDownSet, t){
     if(mTbl!=="C" && mCls==="P" && oCls==="SA") mSets = Math.max(1, mSets-1);
     // セット数C: 勝者側では、P・LP・SAと対戦するAは1セットダウン(敗者側のAは表の4のまま)
     if(mTbl==="C" && !useDownSet && mCls==="A" && MANUAL_C_A_DOWN_OPPONENTS.indexOf(oCls)>=0) mSets = Math.max(1, mSets-1);
+    if(mTbl==="C" && !useDownSet && MANUAL_C_LOW_CLASSES_VS_TOP.indexOf(mCls)>=0 && MANUAL_C_A_DOWN_OPPONENTS.indexOf(oCls)>=0) mSets = MANUAL_C_LOW_CLASSES_SETS;
     if(previousChampionOf(t) === playerId) mSets += 1;
     var mMinutes = MINUTES_BY_SETS[mSets] != null ? MINUTES_BY_SETS[mSets] : 30;
     return {sets:mSets, minutes:mMinutes, hasBreak:false};
@@ -4118,7 +4122,7 @@ function renderManualSetCountTableCardC(){
   return '<div class="card">'+
     '<h3>セット数C・手動クラス(ポイント・セット数を使用しない大会用)</h3>'+
     '<p class="hint">'+manualSetTableSummary("C")+'</p>'+
-    '<p class="hint">勝者側では、P・LP・SAと対戦するAは表の数値から1セットダウンします(敗者側のAは表の数値のままです)。敗者側の列は、大会の「敗者側(敗者復活ブロック)はワンセットダウンのセット数を採用する」がオンのときに使います。</p>'+
+    '<p class="hint">勝者側では、P・LP・SAと対戦するAは表の数値から1セットダウンし、P・LP・SAと対戦するB・C・Beは3セットになります(敗者側は表の数値のままです)。敗者側の列は、大会の「敗者側(敗者復活ブロック)はワンセットダウンのセット数を採用する」がオンのときに使います。</p>'+
     '<div class="table-wrap"><table class="data"><thead><tr><th>クラス</th><th>勝者側セット数</th><th>持ち時間</th><th>敗者側セット数</th><th>持ち時間</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
     '<div style="margin-top:.8rem"><button class="btn btn-sm" data-action="reset-manual-class-set-counts" data-table="C">セット数Cをデフォルトに戻す</button></div>'+
   '</div>';
