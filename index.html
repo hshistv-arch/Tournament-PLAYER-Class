@@ -1900,6 +1900,7 @@ function resolveMatch(match, winnerId, t){
   if(!usePointsAndSets(t)){
     match.winner = winnerId;
     match.deltas = [];
+    match.finishedAt = Date.now();
     return [];
   }
   var wClass = entryClassOf(t, winnerId), lClass = entryClassOf(t, loserId);
@@ -1915,9 +1916,11 @@ function resolveMatch(match, winnerId, t){
   }
   match.winner = winnerId;
   match.deltas = deltas;
+  match.finishedAt = Date.now();
   return deltas;
 }
 function undoMatchDeltas(match){
+  match.finishedAt = null;
   if(!match.winner || !match.deltas) { match.winner=null; match.deltas=null; return; }
   match.deltas.forEach(function(d){ var p=getPlayer(d.playerId); if(p) p.points -= d.amount; });
   match.winner=null; match.deltas=null;
@@ -2209,6 +2212,210 @@ function computeTournamentProgressBase(t){
   }
   return null;
 }
+// ---------- 試合開始の予測時間(概算) ----------
+// 進捗状況(終わった試合・試合中の試合)と、台数・1試合の所要時間から、残りの試合の開始・終了の見込み時刻を計算する。
+// 各対戦は「前の対戦(勝者・敗者の入る元の試合)が終わってから」始められるものとして、台数の空きに合わせて順に割り当てる。
+var estModal = null;           // 予測ポップアップの表示状態({tid})
+var EST_DEFAULT_TABLES = 4;
+var EST_DEFAULT_MINUTES = 20;
+// 実際に試合開始〜結果入力にかかった時間の平均(分)。3試合以上の実績があるときだけ返す
+function measuredMatchMinutes(t){
+  var ds = [];
+  function take(m){ if(m && m.startedAt && m.finishedAt && m.winner && !m.bye){ var d = (m.finishedAt - m.startedAt)/60000; if(d>=3 && d<=180) ds.push(d); } }
+  (t.groups||[]).forEach(function(g){
+    ((g.wb && g.wb.rounds)||[]).concat((g.lb && g.lb.rounds)||[]).forEach(function(r){ r.forEach(take); });
+  });
+  (t.blocks||[]).forEach(function(b){ (b.matches||[]).forEach(take); });
+  if(t.finals) t.finals.rounds.forEach(function(r){ r.forEach(take); });
+  if(ds.length < 3) return null;
+  return {minutes: Math.round(ds.reduce(function(a,b){ return a+b; }, 0)/ds.length), count: ds.length};
+}
+function estimateSettings(t){
+  var meas = measuredMatchMinutes(t);
+  var tables = (t.estTables>0) ? t.estTables : EST_DEFAULT_TABLES;
+  var minutes = (t.estMinutes>0) ? t.estMinutes : (meas ? meas.minutes : EST_DEFAULT_MINUTES);
+  return {tables:tables, minutes:minutes, measured:meas, minutesIsAuto:!(t.estMinutes>0)};
+}
+// nodes: [{id, deps:[id], state:"done"|"live"|"todo"|"bye", startedAt, order, label}] を台数tablesで割り当て、各nodeのstart/finish(ms)を返す
+function estimateSchedule(nodes, tables, minutes, now){
+  var byId = {}; nodes.forEach(function(n){ byId[n.id] = n; });
+  var dur = minutes*60000, free = [];
+  for(var i=0;i<tables;i++) free.push(now);
+  var fin = {};
+  function finishOf(id, seen){
+    var n = byId[id]; if(!n) return 0;
+    if(fin[id]!=null) return fin[id];
+    if(n.state==="done") return (fin[id] = 0);
+    if(n.state==="bye"){
+      var mx = 0; (n.deps||[]).forEach(function(d){ var f = finishOf(d); if(f==null) mx = null; else if(mx!=null) mx = Math.max(mx, f); });
+      if(mx==null) return null;
+      return (fin[id] = mx);
+    }
+    return null;   // live/todoは割り当て後に設定される
+  }
+  // 試合中の対戦は、その台を占有する(開始から所要時間が過ぎていれば、あと少しで終わるものとする)
+  var live = nodes.filter(function(n){ return n.state==="live"; }).sort(function(a,b){ return (a.startedAt||now)-(b.startedAt||now); });
+  live.forEach(function(n, i){
+    var st = n.startedAt || now, end = st + dur;
+    if(end <= now) end = now + dur*0.3;
+    n.start = st; n.finish = end; fin[n.id] = end;
+    if(i < free.length) free[i] = end;
+  });
+  var todo = nodes.filter(function(n){ return n.state==="todo"; });
+  var guard = todo.length + 5;
+  while(todo.length && guard-- > 0){
+    var best = null, bestStart = Infinity;
+    todo.forEach(function(n){
+      var ready = now, ok = true;
+      (n.deps||[]).forEach(function(d){ var f = finishOf(d); if(f==null) ok = false; else ready = Math.max(ready, f); });
+      if(!ok) return;
+      var minFree = Math.min.apply(null, free), st = Math.max(ready, minFree);
+      if(st < bestStart || (st===bestStart && best && n.order < best.order)){ best = n; bestStart = st; }
+    });
+    if(!best) break;
+    var ti = 0; for(var k=1;k<free.length;k++){ if(free[k] < free[ti]) ti = k; }
+    best.start = bestStart; best.finish = bestStart + dur; fin[best.id] = best.finish; free[ti] = best.finish;
+    todo.splice(todo.indexOf(best), 1);
+  }
+  return nodes;
+}
+// 大会の進捗から、予測の行(区分・開始見込み・終了見込み・残り試合数)と、予選・決勝の終了見込みを作る
+function buildEstimate(t){
+  var st = estimateSettings(t), now = Date.now(), rows = [], notes = [];
+  var nodes = [], order = 0, prelimGroups = [];
+  var prelimNodesStart = 0;
+  if(t.format==="blockPrelim"){
+    var remaining = 0;
+    (t.blocks||[]).forEach(function(b){ (b.matches||[]).forEach(function(m){ if(!m.winner){ remaining++; } }); });
+    var liveCount = 0; (t.blocks||[]).forEach(function(b){ (b.matches||[]).forEach(function(m){ if(m.started && !m.winner) liveCount++; }); });
+    var waves = remaining ? Math.ceil(Math.max(0, remaining - Math.min(liveCount, st.tables)) / st.tables) : 0;
+    var endMs = remaining ? now + (liveCount ? st.minutes*0.5*60000 : 0) + waves*st.minutes*60000 : now;
+    if(t.status==="prelim") rows.push({label:"予選リーグの全試合が終了", start:null, finish:endMs, count:remaining, kind:"prelimEnd"});
+    var prelimEnd = (t.status==="prelim") ? endMs : now;
+  } else {
+    var gIndexNodes = [];
+    (t.groups||[]).forEach(function(g, gi){
+      if(groupReached(t, g)) return;     // 決勝進出人数まで絞り込み済みのグループは、これ以上試合しない
+      if(g.tpl){
+        var def = TPL_DEFS[g.tpl], idx = tplIndex(g), cap = cappedRoundsFor(t, g);
+        def.order.forEach(function(no){
+          var dm = def.matches[no], m = idx[no];
+          if(dm.side==="wb" && def.type!=="double" && dm.round>cap) return;     // 決勝進出人数まで絞り込むのに不要なラウンド
+          var state = (m.bye || m.dead) ? "bye" : (m.winner ? "done" : (m.started ? "live" : "todo"));
+          var deps = [];
+          [dm.a, dm.b].forEach(function(src){ var fn = (src.w!=null) ? src.w : src.l; if(fn!=null) deps.push("g"+gi+"_"+fn); });
+          nodes.push({id:"g"+gi+"_"+no, deps:deps, state:state, startedAt:m.startedAt, order:order++, group:gi, side:dm.side, round:dm.round, no:no, lbTpl:(def.type!=="single")});
+        });
+      } else if(g.wb){
+        // 従来形式の表: 判明している対戦だけを対象にする
+        g.wb.rounds.concat(g.lb ? g.lb.rounds : []).forEach(function(r, ri){
+          r.forEach(function(m, mi){
+            if(m.bye || !m.a || !m.b) return;
+            nodes.push({id:"g"+gi+"_"+m.id, deps:[], state:(m.winner ? "done" : (m.started ? "live" : "todo")), startedAt:m.startedAt, order:order++, group:gi, side:"wb", round:(m.round||ri+1), no:null});
+          });
+        });
+        notes.push("グループ"+(gi+1)+"は従来形式の表のため、判明している対戦だけを対象にした予測です。");
+      }
+    });
+    estimateSchedule(nodes, st.tables, st.minutes, now);
+    // 区分(勝者側/敗者側・回戦)ごとの開始・終了見込み(残っている対戦だけ)
+    var groupsMulti = (t.groups||[]).length>1;
+    var seen = {}, keyOrder = [];
+    nodes.forEach(function(n){
+      if(n.state==="done" || n.state==="bye") return;
+      var key = n.group+"|"+n.side+"|"+n.round;
+      if(!seen[key]){ seen[key] = {group:n.group, side:n.side, round:n.round, start:Infinity, finish:0, count:0, live:0}; keyOrder.push(key); }
+      var r = seen[key]; r.count++; if(n.state==="live") r.live++;
+      r.start = Math.min(r.start, n.start); r.finish = Math.max(r.finish, n.finish);
+    });
+    var hasLb = hasLoserBracket(t);
+    keyOrder.sort(function(a,b){ var x=seen[a], y=seen[b]; return (x.start-y.start) || (x.group-y.group); });
+    keyOrder.forEach(function(k){
+      var r = seen[k];
+      var sideLabel = hasLb ? (r.side==="lb" ? "敗者側 " : "勝者側 ") : "";
+      rows.push({label:(groupsMulti ? ("グループ"+(r.group+1)+" ") : "")+sideLabel+r.round+"回戦", start:r.start, finish:r.finish, count:r.count, live:r.live, kind:"round"});
+    });
+    var prelimEnd = now;
+    nodes.forEach(function(n){ if(n.state==="todo" || n.state==="live") prelimEnd = Math.max(prelimEnd, n.finish); });
+    if(t.status==="prelim") rows.push({label:"予選が終了(決勝進出者が確定)", start:null, finish:prelimEnd, count:nodes.filter(function(n){ return n.state==="todo" || n.state==="live"; }).length, kind:"prelimEnd"});
+  }
+  // 決勝トーナメント
+  if(t.status==="finals" && t.finals){
+    var fn = [], fo = 0;
+    t.finals.rounds.forEach(function(round, ri){
+      round.forEach(function(m, mi){
+        var state = (m.bye || m.dead) ? "bye" : (m.winner ? "done" : (m.started ? "live" : "todo"));
+        var deps = ri>0 ? [ "f"+(ri-1)+"_"+(2*mi), "f"+(ri-1)+"_"+(2*mi+1) ] : [];
+        fn.push({id:"f"+ri+"_"+mi, deps:deps, state:state, startedAt:m.startedAt, order:fo++, round:ri+1});
+      });
+    });
+    estimateSchedule(fn, st.tables, st.minutes, now);
+    var fseen = {}, forder = [];
+    fn.forEach(function(n){
+      if(n.state==="done" || n.state==="bye") return;
+      if(!fseen[n.round]){ fseen[n.round] = {round:n.round, start:Infinity, finish:0, count:0, live:0}; forder.push(n.round); }
+      var r = fseen[n.round]; r.count++; if(n.state==="live") r.live++; r.start = Math.min(r.start, n.start); r.finish = Math.max(r.finish, n.finish);
+    });
+    forder.sort(function(a,b){ return a-b; }).forEach(function(rd){
+      var r = fseen[rd];
+      rows.push({label:"決勝トーナメント "+roundName(rd, t.finals.totalRounds), start:r.start, finish:r.finish, count:r.count, live:r.live, kind:"finals"});
+    });
+  } else if(t.status==="prelim" || t.status==="preFinals"){
+    var nFin = earlyFinalsExpectedCount(t), size = 1; while(size<nFin) size*=2;
+    var total = Math.max(1, Math.round(Math.log2(size)));
+    var startMs = (t.status==="prelim") ? prelimEnd : now;
+    if(t.status==="preFinals" && t.preFinals){
+      var pf = t.preFinals.matches.filter(function(m){ return !m.winner; }).length;
+      if(pf){ rows.push({label:"予備決勝戦", start:now, finish:now + Math.ceil(pf/st.tables)*st.minutes*60000, count:pf, live:0, kind:"prelimEnd"}); startMs = now + Math.ceil(pf/st.tables)*st.minutes*60000; }
+    }
+    var cur = startMs;
+    for(var rd=1; rd<=total; rd++){
+      var cnt = (rd===1) ? Math.max(0, nFin - size/2) : size/Math.pow(2, rd);
+      if(cnt<=0) continue;
+      var fin2 = cur + Math.ceil(cnt/st.tables)*st.minutes*60000;
+      rows.push({label:"決勝トーナメント "+roundName(rd, total), start:cur, finish:fin2, count:cnt, live:0, kind:"finals", rough:true});
+      cur = fin2;
+    }
+    notes.push("決勝トーナメントは、予選が終わってからすぐ始まるものとした目安です(進出者数は設定の人数で計算)。");
+  }
+  return {settings:st, rows:rows, notes:notes, now:now};
+}
+function fmtClock(ms){
+  var d = new Date(ms), p = function(n){ return (n<10?"0":"")+n; };
+  return p(d.getHours())+":"+p(d.getMinutes());
+}
+function fmtUntil(ms, now){
+  var mins = Math.round((ms-now)/60000);
+  if(mins<=0) return "まもなく";
+  if(mins<60) return "あと約"+mins+"分";
+  return "あと約"+Math.floor(mins/60)+"時間"+(mins%60 ? (mins%60)+"分" : "");
+}
+function renderEstimateModal(){
+  if(!estModal) return "";
+  var t = findTournament(estModal.tid);
+  if(!t) return "";
+  var est = buildEstimate(t), st = est.settings, now = est.now;
+  var rowsHTML = est.rows.length ? est.rows.map(function(r){
+    var live = r.live ? ('・試合中'+r.live) : '';
+    var startCell = (r.start==null) ? '<span class="hint">-</span>' : ((r.start<=now+30000 ? '<b>まもなく / 開始済み</b>' : '<b>'+fmtClock(r.start)+'頃</b> <span class="hint">('+fmtUntil(r.start, now)+')</span>'));
+    return '<tr><td>'+esc(r.label)+(r.rough?' <span class="hint">(目安)</span>':'')+'</td><td>'+startCell+'</td>'+
+      '<td><b>'+fmtClock(r.finish)+'頃</b> <span class="hint">('+fmtUntil(r.finish, now)+')</span></td><td class="num">'+(Math.round(r.count*10)/10)+live+'</td></tr>';
+  }).join("") : '<tr><td colspan="4" class="hint">予測できる残りの試合がありません。</td></tr>';
+  var measuredHint = st.measured ? ('実績: これまでの'+st.measured.count+'試合の平均は約'+st.measured.minutes+'分') : '実績がまだ少ないため、初期値を使っています(試合開始ボタンで開始、結果入力で終了を記録し、3試合以上たまると平均を自動で使います)';
+  return '<div class="h2h-overlay"><div class="h2h-card" style="max-width:640px">'+
+    '<div class="h2h-head"><h3>⏱ 試合開始の予測時間(概算)</h3><button class="btn btn-sm btn-ghost no-print" type="button" data-action="close-estimate">✕ 閉じる</button></div>'+
+    '<p class="hint" style="margin:.2rem 0 .5rem">現在 '+fmtClock(now)+' の進捗を基準に、残りの試合をいつごろ始められるかを概算します(進捗が進むと自動で更新されます)。</p>'+
+    '<div class="form-row" style="gap:.8rem;flex-wrap:wrap;align-items:flex-end">'+
+      '<div class="field" style="width:8rem"><label>使える台数</label><input type="number" class="num" min="1" max="40" value="'+st.tables+'" data-action="update-est-tables" data-tid="'+t.id+'"></div>'+
+      '<div class="field" style="width:11rem"><label>1試合の所要時間(分)</label><input type="number" class="num" min="3" max="180" value="'+st.minutes+'" data-action="update-est-minutes" data-tid="'+t.id+'"></div>'+
+      (st.minutesIsAuto ? '<span class="hint" style="align-self:center">'+(st.measured?'(実績から自動)':'(初期値)')+'</span>' : '<button class="btn btn-sm btn-ghost" type="button" data-action="reset-est-minutes" data-tid="'+t.id+'">'+(st.measured?'実績の平均に戻す':'初期値に戻す')+'</button>')+
+    '</div>'+
+    '<p class="hint" style="margin:.3rem 0 .6rem">'+measuredHint+'</p>'+
+    '<div class="table-wrap"><table class="data"><thead><tr><th>区分</th><th>開始の見込み</th><th>終了の見込み</th><th>残り試合数</th></tr></thead><tbody>'+rowsHTML+'</tbody></table></div>'+
+    est.notes.map(function(n){ return '<p class="hint" style="margin:.4rem 0 0">'+esc(n)+'</p>'; }).join("")+
+    '<p class="hint" style="margin:.5rem 0 0">※概算です。試合の長さ・休憩・遅れで前後します。「開始の見込み」は、その区分で最初の試合を始められそうな時刻です(前の試合の結果が出てから始められるものとして計算)。</p>'+
+  '</div></div>';
+}
 function renderProgressNav(t){
   var prog = computeTournamentProgress(t);
   if(!prog) return "";
@@ -2243,10 +2450,11 @@ function renderProgressNav(t){
     ? ('<div style="margin-top:.5rem"><span class="hint">進行中(スコア入力済み・未確定)の対戦:</span>'+
         '<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.3rem">'+prog.inProgress.map(function(info){ return matchBtnHTML(info, "btn-ghost"); }).join("")+'</div></div>')
     : '';
+  var estBtn = '<button class="btn btn-sm btn-ghost no-print" type="button" data-action="open-estimate" data-tid="'+t.id+'" title="進捗状況から、勝者側2回戦・敗者側などの試合を始められそうな時刻を概算します">⏱ 試合開始の予測時間</button>';
   return '<div class="card">'+
     '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.6rem">'+
       '<div><strong>'+esc(prog.stageLabel)+'</strong> <span class="hint">'+prog.done+'/'+prog.total+'試合完了('+pct+'%)</span></div>'+
-      priorityToggleHTML+
+      '<div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">'+priorityToggleHTML+estBtn+'</div>'+
     '</div>'+
     nextHTML+inProgressHTML+
   '</div>';
@@ -3950,7 +4158,7 @@ function render(){
   else if(route.screen==="tournament") html = renderTournamentScreen(route.id);
   else html = renderRoster();
   main.innerHTML = html;
-  document.getElementById("h2h-modal-root").innerHTML = h2hModal ? renderH2HModal() : (tplSlotModal ? renderTplSlotModal() : (tplModal ? renderTplMatchModal() : (gridCellModal ? renderGridCellModal() : "")));
+  document.getElementById("h2h-modal-root").innerHTML = h2hModal ? renderH2HModal() : (estModal ? renderEstimateModal() : (tplSlotModal ? renderTplSlotModal() : (tplModal ? renderTplMatchModal() : (gridCellModal ? renderGridCellModal() : ""))));
   function applyInnerScrolls(){
     innerScrollers.forEach(function(s){
       var el = document.getElementById(s.id);
@@ -7032,6 +7240,19 @@ document.addEventListener("click", function(e){
     setAiCardHidden(!isAiCardHidden());
     render();
   }
+  else if(action==="open-estimate"){
+    estModal = { tid: t.getAttribute("data-tid") };
+    render();
+  }
+  else if(action==="close-estimate"){
+    estModal = null;
+    render();
+  }
+  else if(action==="reset-est-minutes"){
+    var tourER = findTournament(t.getAttribute("data-tid")); if(!tourER) return;
+    tourER.estMinutes = null;
+    saveState(); render();
+  }
   else if(action==="open-tpl-slot"){
     tplSlotModal = { tid: t.getAttribute("data-tid"), kind: t.getAttribute("data-kind"), idx: Number(t.getAttribute("data-idx")), slot: Number(t.getAttribute("data-slot")) };
     render();
@@ -7116,6 +7337,7 @@ document.addEventListener("click", function(e){
     }
     if(matchMST && !matchMST.winner){
       matchMST.started = !matchMST.started;
+      matchMST.startedAt = matchMST.started ? Date.now() : null;
       saveState(); render();
     }
   }
@@ -7713,6 +7935,16 @@ document.addEventListener("change", function(e){
     tourTV.advancePerGroup = newTotalTV;
     applyTplAdvance(tourTV);
     tourTV.groups.forEach(function(g){ rebuildGroupFromSlots(tourTV, g); });
+    saveState(); render();
+  }
+  else if(action==="update-est-tables"){
+    var tourET = findTournament(t.getAttribute("data-tid")); if(!tourET) return;
+    var vET = Math.round(Number(t.value)); tourET.estTables = (vET>=1 && vET<=40) ? vET : null;
+    saveState(); render();
+  }
+  else if(action==="update-est-minutes"){
+    var tourEM2 = findTournament(t.getAttribute("data-tid")); if(!tourEM2) return;
+    var vEM = Math.round(Number(t.value)); tourEM2.estMinutes = (vEM>=3 && vEM<=180) ? vEM : null;
     saveState(); render();
   }
   else if(action==="set-tsh-zoom"){
