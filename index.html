@@ -273,6 +273,10 @@ details[open] > summary:before{content:"▾ ";}
 .tsh-v .tsh-name{padding:0; text-overflow:clip;}
 .tsh-v .tsh-lbl{writing-mode:vertical-rl; flex:1;}
 .tsh-v .tsh-sno{width:100%; height:20px; border:0 !important; border-bottom:1px solid var(--text) !important;}
+.nav-pl{display:inline-flex; flex-direction:column; align-items:flex-start; line-height:1.2; vertical-align:middle;}
+.nav-pl .nav-sub{font-size:.68rem; font-weight:400; opacity:.9; white-space:nowrap;}
+.nav-vs{font-weight:400; margin:0 .15rem; vertical-align:middle;}
+button[data-action="jump-to-match"]{text-align:left;}
 .tsh-edit{position:absolute; top:1px; right:1px; width:16px; height:16px; padding:0; border:1px solid var(--border); border-radius:4px; background:var(--surface); color:var(--muted); font-size:11px; line-height:14px; cursor:pointer; opacity:.55; z-index:2;}
 .tsh-edit:hover{opacity:1; color:var(--text); background:var(--surface-2,#efebdf);}
 .tsh-no{position:absolute; display:block; box-sizing:border-box; font-size:11px; line-height:14px; text-align:center; font-family:inherit; color:var(--text); background:transparent; border:0; padding:0; border-radius:7px; white-space:nowrap;}
@@ -2153,12 +2157,20 @@ function renderProgressNav(t){
   var prog = computeTournamentProgress(t);
   if(!prog) return "";
   var pct = prog.total>0 ? Math.round(prog.done/prog.total*100) : 0;
+  // 呼び出し用: 名前に、所属とクラスを添えて表示する
+  function navPlayerHTML(id, fallbackName){
+    var p = id ? getPlayer(id) : null;
+    var aff = (p && p.affiliation) ? p.affiliation : "";
+    var cl = id ? displayClassOf(t, id) : "";
+    var sub = [aff, cl].filter(function(x){ return !!x; }).join("・");
+    return '<span class="nav-pl">'+esc(id ? playerName(id) : fallbackName)+(sub ? '<span class="nav-sub">'+esc(sub)+'</span>' : '')+'</span>';
+  }
   function matchBtnHTML(info, cls){
     return '<button class="btn btn-sm '+cls+'" type="button" data-action="jump-to-match" data-tid="'+t.id+'" data-scope="'+info.scope+'" data-mid="'+esc(info.mid)+'"'+
       (info.groupIdx!=null?(' data-group="'+info.groupIdx+'"'):'')+
       (info.blockIdx!=null?(' data-block="'+info.blockIdx+'"'):'')+
       (info.side?(' data-side="'+info.side+'"'):'')+
-      '>'+esc(info.aName)+' vs '+esc(info.bName)+'</button>';
+      '>'+navPlayerHTML(info.aId, info.aName)+' <span class="nav-vs">vs</span> '+navPlayerHTML(info.bId, info.bName)+'</button>';
   }
   var priorityToggleHTML = prog.showPriorityToggle
     ? ('<div class="form-row" style="gap:.4rem;align-items:center;margin:0">'+
