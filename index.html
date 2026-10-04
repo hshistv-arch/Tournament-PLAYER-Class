@@ -72,6 +72,8 @@ button{font-family:inherit;}
 .sidenav{
   width:216px; flex:0 0 216px; background:var(--surface-2); border-right:1px solid var(--border);
   padding:1.1rem .9rem; display:flex; flex-direction:column; gap:1.4rem;
+  /* 画面をスクロールしても、左側のメニューが一緒に表示され続ける */
+  position:sticky; top:0; align-self:flex-start; height:100vh; overflow-y:auto; z-index:30;
 }
 .brand{display:flex; flex-direction:column; gap:.4rem; padding:0 .35rem; align-items:center; text-align:center;}
 .brand-logo{width:100%; max-width:168px; aspect-ratio:692/800; background-image:var(--logo-url); background-size:contain; background-position:center; background-repeat:no-repeat;}
@@ -376,7 +378,7 @@ button.tsh-no:hover{background:var(--surface-2,#efebdf); text-decoration:underli
 
 @media (max-width: 760px){
   .app-shell{flex-direction:column;}
-  .sidenav{width:auto; flex:none; flex-direction:row; overflow-x:auto; align-items:center;}
+  .sidenav{width:auto; flex:none; flex-direction:row; overflow-x:auto; overflow-y:hidden; align-items:center; height:auto; align-self:stretch; position:static;}   /* 狭い画面ではメニューが上部に横並びになるため、追従させない */
   .navgroup{flex-direction:row;}
   .nav-spacer{display:none;}
   .main{padding:1.2rem 1rem 3rem;}
