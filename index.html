@@ -2391,17 +2391,21 @@ function fmtUntil(ms, now){
   if(mins<60) return "あと約"+mins+"分";
   return "あと約"+Math.floor(mins/60)+"時間"+(mins%60 ? (mins%60)+"分" : "");
 }
-function renderEstimateModal(){
-  if(!estModal) return "";
-  var t = findTournament(estModal.tid);
-  if(!t) return "";
-  var est = buildEstimate(t), st = est.settings, now = est.now;
-  var rowsHTML = est.rows.length ? est.rows.map(function(r){
+function estimateRowsHTML(est){
+  var now = est.now;
+  return est.rows.length ? est.rows.map(function(r){
     var live = r.live ? ('・試合中'+r.live) : '';
     var startCell = (r.start==null) ? '<span class="hint">-</span>' : ((r.start<=now+30000 ? '<b>まもなく / 開始済み</b>' : '<b>'+fmtClock(r.start)+'頃</b> <span class="hint">('+fmtUntil(r.start, now)+')</span>'));
     return '<tr><td>'+esc(r.label)+(r.rough?' <span class="hint">(目安)</span>':'')+'</td><td>'+startCell+'</td>'+
       '<td><b>'+fmtClock(r.finish)+'頃</b> <span class="hint">('+fmtUntil(r.finish, now)+')</span></td><td class="num">'+(Math.round(r.count*10)/10)+live+'</td></tr>';
   }).join("") : '<tr><td colspan="4" class="hint">予測できる残りの試合がありません。</td></tr>';
+}
+function renderEstimateModal(){
+  if(!estModal) return "";
+  var t = findTournament(estModal.tid);
+  if(!t) return "";
+  var est = buildEstimate(t), st = est.settings, now = est.now;
+  var rowsHTML = estimateRowsHTML(est);
   var measuredHint = st.measured ? ('実績: これまでの'+st.measured.count+'試合の平均は約'+st.measured.minutes+'分') : '実績がまだ少ないため、大会作成時に設定した目安('+st.initial+'分)を使っています(試合開始ボタンで開始、結果入力で終了を記録し、3試合以上たまると平均を自動で使います)';
   return '<div class="h2h-overlay"><div class="h2h-card" style="max-width:640px">'+
     '<div class="h2h-head"><h3>⏱ 試合開始の予測時間(概算)</h3><button class="btn btn-sm btn-ghost no-print" type="button" data-action="close-estimate">✕ 閉じる</button></div>'+
@@ -5211,7 +5215,7 @@ function startDisplayAutoScroll(){
     if(lastT==null) lastT = ts;
     var dt = Math.min(200, ts - lastT); lastT = ts;
     if(Math.abs(window.scrollY - lastSet) > 2) pos = window.scrollY;   // 利用者が動かした/再描画で位置が変わった場合は、その位置から続ける
-    var active = isDisplayAutoScrollOn() && !displayQrOpen && now >= pausedUntil && now >= holdUntil && maxY > 4;
+    var active = isDisplayAutoScrollOn() && !displayQrOpen && !displayEstOpen && now >= pausedUntil && now >= holdUntil && maxY > 4;
     if(active){
       pos += (maxY / (DISPLAY_SCROLL_SECONDS*1000)) * dt;
       if(pos >= maxY){
@@ -5226,6 +5230,23 @@ function startDisplayAutoScroll(){
   }
   // タイマーで動かす(画面が見えていない間に止まるrequestAnimationFrameではなく、一定間隔で位置を進める)
   setInterval(frame, 40);
+}
+// 大会結果共有ページ用の「試合開始の予測時間」(表示専用。台数・所要時間は大会画面で設定した値を使う)
+var displayEstOpen = false;
+function displayEstimateHTML(t){
+  var btn = '<button class="btn btn-sm'+(displayEstOpen?' btn-felt':' btn-ghost')+' no-print" type="button" data-action="toggle-display-estimate" style="margin-top:.5rem">⏱ 試合開始の予測時間'+(displayEstOpen?'(閉じる)':'')+'</button>';
+  if(!displayEstOpen) return btn;
+  if(t.status==="entryPending" || t.status==="assigning" || t.status==="completed"){
+    return btn+'<div class="hint" style="margin-top:.5rem">'+(t.status==="completed" ? 'この大会は終了しています。' : '大会が始まると、試合開始の予測時間を確認できます。')+'</div>';
+  }
+  var est = buildEstimate(t), st = est.settings;
+  return btn+
+    '<div class="est-panel" style="margin-top:.6rem;padding:.7rem .8rem;border:1px solid var(--border);border-radius:.5rem;background:var(--surface);max-width:760px">'+
+      '<p class="hint" style="margin:0 0 .4rem">現在 '+fmtClock(est.now)+' の進捗を基準にした概算です(使用 '+st.tables+'台・1試合 約'+st.minutes+'分で計算。進捗が進むと自動で更新されます)。</p>'+
+      '<div class="table-wrap"><table class="data"><thead><tr><th>区分</th><th>開始の見込み</th><th>終了の見込み</th><th>残り試合数</th></tr></thead><tbody>'+estimateRowsHTML(est)+'</tbody></table></div>'+
+      est.notes.map(function(n){ return '<p class="hint" style="margin:.4rem 0 0">'+esc(n)+'</p>'; }).join("")+
+      '<p class="hint" style="margin:.4rem 0 0">※概算です。試合の長さ・休憩・遅れで前後します。</p>'+
+    '</div>';
 }
 function displayAutoScrollButtonHTML(){
   var on = isDisplayAutoScrollOn();
@@ -5255,6 +5276,7 @@ function renderDisplayScreen(){
       body = '<div class="page-head"><div><h1>'+esc(t.name)+'</h1><p class="sub">'+tournamentFormatLabel(t)+' ・ 開催日: '+eventDateOf(t)+' ・ <span class="pill '+t.status+'">'+(STATUS_LABEL[t.status]||t.status)+'</span></p>'+
         '<button class="btn btn-sm btn-ghost" type="button" data-action="copy-url" data-url="'+esc(displayUrlFor(t.id))+'" style="margin-top:.5rem">URLをコピー</button> '+
         displayAutoScrollButtonHTML()+' '+
+        displayEstimateHTML(t)+' '+
         displayQrPanelHTML(t)+
       '</div></div>';
       var displayTimeColorMap = buildTimeSlotColorMap(t);
@@ -7378,6 +7400,10 @@ document.addEventListener("click", function(e){
   }
   else if(action==="toggle-display-autoscroll"){
     setDisplayAutoScrollOn(!isDisplayAutoScrollOn());
+    render();
+  }
+  else if(action==="toggle-display-estimate"){
+    displayEstOpen = !displayEstOpen;
     render();
   }
   else if(action==="toggle-display-qr"){
