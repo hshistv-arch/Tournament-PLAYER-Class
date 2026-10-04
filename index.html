@@ -2216,8 +2216,8 @@ function computeTournamentProgressBase(t){
 // 進捗状況(終わった試合・試合中の試合)と、台数・1試合の所要時間から、残りの試合の開始・終了の見込み時刻を計算する。
 // 各対戦は「前の対戦(勝者・敗者の入る元の試合)が終わってから」始められるものとして、台数の空きに合わせて順に割り当てる。
 var estModal = null;           // 予測ポップアップの表示状態({tid})
-var EST_DEFAULT_TABLES = 4;
-var EST_DEFAULT_MINUTES = 20;
+var EST_DEFAULT_TABLES = 8;
+var EST_DEFAULT_MINUTES = 40;
 // 実際に試合開始〜結果入力にかかった時間の平均(分)。3試合以上の実績があるときだけ返す
 function measuredMatchMinutes(t){
   var ds = [];
@@ -2233,8 +2233,9 @@ function measuredMatchMinutes(t){
 function estimateSettings(t){
   var meas = measuredMatchMinutes(t);
   var tables = (t.estTables>0) ? t.estTables : EST_DEFAULT_TABLES;
-  var minutes = (t.estMinutes>0) ? t.estMinutes : (meas ? meas.minutes : EST_DEFAULT_MINUTES);
-  return {tables:tables, minutes:minutes, measured:meas, minutesIsAuto:!(t.estMinutes>0)};
+  var initial = (t.estMinutesInitial>0) ? t.estMinutesInitial : EST_DEFAULT_MINUTES;   // 大会作成時に設定した所要時間の目安
+  var minutes = (t.estMinutes>0) ? t.estMinutes : (meas ? meas.minutes : initial);
+  return {tables:tables, minutes:minutes, measured:meas, initial:initial, minutesIsAuto:!(t.estMinutes>0)};
 }
 // nodes: [{id, deps:[id], state:"done"|"live"|"todo"|"bye", startedAt, order, label}] を台数tablesで割り当て、各nodeのstart/finish(ms)を返す
 function estimateSchedule(nodes, tables, minutes, now){
@@ -2401,14 +2402,14 @@ function renderEstimateModal(){
     return '<tr><td>'+esc(r.label)+(r.rough?' <span class="hint">(目安)</span>':'')+'</td><td>'+startCell+'</td>'+
       '<td><b>'+fmtClock(r.finish)+'頃</b> <span class="hint">('+fmtUntil(r.finish, now)+')</span></td><td class="num">'+(Math.round(r.count*10)/10)+live+'</td></tr>';
   }).join("") : '<tr><td colspan="4" class="hint">予測できる残りの試合がありません。</td></tr>';
-  var measuredHint = st.measured ? ('実績: これまでの'+st.measured.count+'試合の平均は約'+st.measured.minutes+'分') : '実績がまだ少ないため、初期値を使っています(試合開始ボタンで開始、結果入力で終了を記録し、3試合以上たまると平均を自動で使います)';
+  var measuredHint = st.measured ? ('実績: これまでの'+st.measured.count+'試合の平均は約'+st.measured.minutes+'分') : '実績がまだ少ないため、大会作成時に設定した目安('+st.initial+'分)を使っています(試合開始ボタンで開始、結果入力で終了を記録し、3試合以上たまると平均を自動で使います)';
   return '<div class="h2h-overlay"><div class="h2h-card" style="max-width:640px">'+
     '<div class="h2h-head"><h3>⏱ 試合開始の予測時間(概算)</h3><button class="btn btn-sm btn-ghost no-print" type="button" data-action="close-estimate">✕ 閉じる</button></div>'+
     '<p class="hint" style="margin:.2rem 0 .5rem">現在 '+fmtClock(now)+' の進捗を基準に、残りの試合をいつごろ始められるかを概算します(進捗が進むと自動で更新されます)。</p>'+
     '<div class="form-row" style="gap:.8rem;flex-wrap:wrap;align-items:flex-end">'+
       '<div class="field" style="width:8rem"><label>使える台数</label><input type="number" class="num" min="1" max="40" value="'+st.tables+'" data-action="update-est-tables" data-tid="'+t.id+'"></div>'+
       '<div class="field" style="width:11rem"><label>1試合の所要時間(分)</label><input type="number" class="num" min="3" max="180" value="'+st.minutes+'" data-action="update-est-minutes" data-tid="'+t.id+'"></div>'+
-      (st.minutesIsAuto ? '<span class="hint" style="align-self:center">'+(st.measured?'(実績から自動)':'(初期値)')+'</span>' : '<button class="btn btn-sm btn-ghost" type="button" data-action="reset-est-minutes" data-tid="'+t.id+'">'+(st.measured?'実績の平均に戻す':'初期値に戻す')+'</button>')+
+      (st.minutesIsAuto ? '<span class="hint" style="align-self:center">'+(st.measured?'(実績から自動)':'(初期の目安)')+'</span>' : '<button class="btn btn-sm btn-ghost" type="button" data-action="reset-est-minutes" data-tid="'+t.id+'">'+(st.measured?'実績の平均に戻す':'初期の目安('+st.initial+'分)に戻す')+'</button>')+
     '</div>'+
     '<p class="hint" style="margin:.3rem 0 .6rem">'+measuredHint+'</p>'+
     '<div class="table-wrap"><table class="data"><thead><tr><th>区分</th><th>開始の見込み</th><th>終了の見込み</th><th>残り試合数</th></tr></thead><tbody>'+rowsHTML+'</tbody></table></div>'+
@@ -3464,6 +3465,9 @@ function finalizeTournamentSetup(t, opts){
   t.usePointsAndSets = opts.usePointsAndSets!==false;
   t.setCountTable = normalizeSetTable(opts.setCountTable, t.usePointsAndSets);
   t.useSchedule = opts.useSchedule===true;
+  t.estTables = (opts.estTables>=1 && opts.estTables<=40) ? Math.round(opts.estTables) : EST_DEFAULT_TABLES;
+  t.estMinutesInitial = (opts.estMinutes>=3 && opts.estMinutes<=180) ? Math.round(opts.estMinutes) : EST_DEFAULT_MINUTES;
+  t.estMinutes = null;
   var eligible = eligiblePlayerIdsForTournament(t, t.usePointsAndSets);
   var basePool = eligible.length ? eligible : state.players.map(function(p){ return p.id; });
   t.eligiblePlayerIds = (opts.selectedIds && opts.selectedIds.length)
@@ -4818,6 +4822,8 @@ function ensureTournamentSetupState(t){
       usePointsAndSets: true,
       setCountTable: "A",
       useSchedule: false,
+      estTables: EST_DEFAULT_TABLES,
+      estMinutes: EST_DEFAULT_MINUTES,
       totalParticipants: 8
     };
   }
@@ -4867,6 +4873,13 @@ function renderTournamentSetupSection(t){
           {value:"no", title:"作成しない", desc:"従来通り、対戦カードに開始時間の指定は表示されません。"},
           {value:"yes", title:"作成する", desc:"各試合に開始時間を指定できるようになります(大会開始後も対戦カードからいつでも編集できます)。"}
         ], nt.useSchedule===true ? "yes" : "no")+
+        '<div class="field" style="max-width:34rem"><label>使用台数・所要時間の目安(試合開始の予測時間に使います)</label>'+
+          '<div class="form-row" style="gap:.6rem;align-items:center;flex-wrap:wrap">'+
+            '<span class="hint">使用台数</span><input type="number" class="num" min="1" max="40" style="width:5.5rem" value="'+(nt.estTables>0?nt.estTables:EST_DEFAULT_TABLES)+'" data-action="estTables-input" data-tid="'+t.id+'"><span class="hint">台</span>'+
+            '<span class="hint" style="margin-left:.6rem">1試合の所要時間</span><input type="number" class="num" min="3" max="180" style="width:5.5rem" value="'+(nt.estMinutes>0?nt.estMinutes:EST_DEFAULT_MINUTES)+'" data-action="estMinutes-input" data-tid="'+t.id+'"><span class="hint">分</span>'+
+          '</div>'+
+          '<p class="hint" style="margin:.2rem 0 0">大会画面の「⏱ 試合開始の予測時間」で、勝者側2回戦・敗者側などの開始見込みを計算するための目安です(初期値は'+EST_DEFAULT_TABLES+'台・'+EST_DEFAULT_MINUTES+'分)。大会開始後も、予測のポップアップから変更できます。所要時間は、試合の実績が3試合以上たまると実績の平均を自動で使います。</p>'+
+        '</div>'+
       '</div>'+
     '</div>'+
     '<div class="card">'+
@@ -8171,6 +8184,14 @@ document.addEventListener("change", function(e){
       t.value = "";
     }
   }
+  else if(action==="estTables-input"){
+    var tourEt = findTournament(t.getAttribute("data-tid")); if(!tourEt) return;
+    var vEt = Math.round(Number(t.value)); ensureTournamentSetupState(tourEt).estTables = (vEt>=1 && vEt<=40) ? vEt : EST_DEFAULT_TABLES; render();
+  }
+  else if(action==="estMinutes-input"){
+    var tourEm = findTournament(t.getAttribute("data-tid")); if(!tourEm) return;
+    var vEm = Math.round(Number(t.value)); ensureTournamentSetupState(tourEm).estMinutes = (vEm>=3 && vEm<=180) ? vEm : EST_DEFAULT_MINUTES; render();
+  }
   else if(action==="advancePerGroup-input"){
     var tidAG2=t.getAttribute("data-tid"); var tourAG2=findTournament(tidAG2); if(!tourAG2) return;
     var ntag = ensureTournamentSetupState(tourAG2);
@@ -8431,11 +8452,11 @@ document.addEventListener("submit", function(e){
       }
       if(hasLoserBracketType(nt.prelimType) && effectiveAdvancePerGroup<1){ alert("決勝進出人数(勝者側+敗者側)は1名以上にしてください。"); return; }
       if(bracketSize < effectiveAdvancePerGroup){ alert("決勝進出人数がフォーマットの人数より多くなっています。"); return; }
-      finalizeTournamentSetup(tourTS, {format:"elimPrelim", prelimType:nt.prelimType, lbOneSetDown:nt.lbOneSetDown, bracketSize:bracketSize, advancePerGroup:effectiveAdvancePerGroup, advancePerGroupWB:nt.advancePerGroupWB, advancePerGroupLB:nt.advancePerGroupLB, totalParticipants:nt.totalParticipants, selectedIds:nt.selectedIds, usePointsAndSets:nt.usePointsAndSets, setCountTable:nt.setCountTable, useSchedule:nt.useSchedule});
+      finalizeTournamentSetup(tourTS, {format:"elimPrelim", prelimType:nt.prelimType, lbOneSetDown:nt.lbOneSetDown, bracketSize:bracketSize, advancePerGroup:effectiveAdvancePerGroup, advancePerGroupWB:nt.advancePerGroupWB, advancePerGroupLB:nt.advancePerGroupLB, totalParticipants:nt.totalParticipants, selectedIds:nt.selectedIds, usePointsAndSets:nt.usePointsAndSets, setCountTable:nt.setCountTable, useSchedule:nt.useSchedule, estTables:nt.estTables, estMinutes:nt.estMinutes});
     } else {
       if(nt.totalParticipants < nt.blockCount*2){ alert("参加人数がブロック数に対して少なすぎます。"); return; }
       if(Math.floor(nt.totalParticipants/nt.blockCount) < nt.advancePerBlock){ alert("各ブロックからの決勝進出人数が、1ブロックあたりの人数より多くなっています。"); return; }
-      finalizeTournamentSetup(tourTS, {format:"blockPrelim", groupCount:nt.blockCount, advancePerBlock:nt.advancePerBlock, totalParticipants:nt.totalParticipants, selectedIds:nt.selectedIds, usePointsAndSets:nt.usePointsAndSets, setCountTable:nt.setCountTable, useSchedule:nt.useSchedule});
+      finalizeTournamentSetup(tourTS, {format:"blockPrelim", groupCount:nt.blockCount, advancePerBlock:nt.advancePerBlock, totalParticipants:nt.totalParticipants, selectedIds:nt.selectedIds, usePointsAndSets:nt.usePointsAndSets, setCountTable:nt.setCountTable, useSchedule:nt.useSchedule, estTables:nt.estTables, estMinutes:nt.estMinutes});
     }
   }
 }, false);
