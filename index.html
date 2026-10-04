@@ -3702,6 +3702,7 @@ function render(){
   if(DISPLAY_MODE){
     var dispScrollX = window.scrollX, dispScrollY = window.scrollY, dispTsh = captureTshScroll();
     document.getElementById("main").innerHTML = renderDisplayScreen();
+    applyTshFit();
     reassertScroll(dispScrollX, dispScrollY);
     restoreTshScroll(dispTsh);
     return;
@@ -3759,6 +3760,7 @@ function render(){
     });
     restoreTshScroll(tshScrollers);
   }
+  applyTshFit();
   reassertScroll(scrollX, scrollY);
   applyInnerScrolls();
   if(window.requestAnimationFrame){
@@ -5912,7 +5914,22 @@ function renderElimPrelimTournament(t){
 //  ・シングルエリミネーション: 32名用以上は左右の山が中央の決勝に向かう形、16名用・24名用は下から上に勝ち上がる縦の形
 // 各結合線の番号が試合番号。選手名の枠をクリックでその試合の勝者に決定、番号をクリックでスコア入力・試合開始・取消など。
 var TSH = {BH:34, BW:134, SN:26, STUB:14, TAIL:30, LBP:44, GAP:30, VT:44, VL:116, VSN:22, CG:92, PAD:12};
-var tshZoom = 1;            // 表の表示倍率(画面の一時設定。保存しない)
+// 表の表示倍率(画面の一時設定。保存しない)。数値=その倍率、"fit"=画面に全体を収める、"fitw"=画面の幅に合わせる。
+// 大会結果共有ページ(観戦用ディスプレイ)は、トーナメント全体が見える「全体表示」が初期値
+var tshZoom = DISPLAY_MODE ? "fit" : 1;
+// 「全体表示」「幅に合わせる」のときの倍率を、表ごとに画面の大きさから計算して当てる(拡大はせず、最大100%)
+function applyTshFit(){
+  Array.prototype.forEach.call(document.querySelectorAll(".tsh-zoom[data-fit]"), function(z){
+    var mode = z.getAttribute("data-fit"), w = Number(z.getAttribute("data-w")), h = Number(z.getAttribute("data-h"));
+    var box = z.parentElement, availW = box ? box.clientWidth - 12 : 0;
+    if(!w || !h || availW<=0) return;
+    var scale = availW / w;
+    if(mode==="fit") scale = Math.min(scale, (window.innerHeight - 30) / h);
+    scale = Math.max(0.2, Math.min(1, scale));
+    z.style.zoom = scale.toFixed(3);
+  });
+}
+window.addEventListener("resize", applyTshFit);
 var tshLayoutCache = {};
 var tplModal = null;        // 試合の詳細(スコア入力など)ポップアップ {tid, gi, side, mid}
 var tplSlotModal = null;    // 表の選手枠から開く「選手を変更」ポップアップ {tid, kind:"group"|"finals", idx, slot}
@@ -6088,7 +6105,8 @@ function renderTplSheet(def, o){
     var numPos = it.role==="slot" ? (' data-numat="'+it.numAt+'"') : "";
     boxes += '<div class="'+cls+'" style="'+pos+'"'+attrs+title+numPos+'>'+inner+'</div>';
   });
-  return '<div class="tsh-scroll"><div class="tsh-zoom" style="zoom:'+tshZoom+'"><div class="tsh" style="width:'+lay.w+'px;height:'+lay.h+'px">'+lines+boxes+labels+'</div></div></div>';
+  var fitMode = (tshZoom==="fit" || tshZoom==="fitw");
+  return '<div class="tsh-scroll"><div class="tsh-zoom" style="zoom:'+(fitMode?1:tshZoom)+'"'+(fitMode?(' data-fit="'+tshZoom+'" data-w="'+lay.w+'" data-h="'+lay.h+'"'):'')+'><div class="tsh" style="width:'+lay.w+'px;height:'+lay.h+'px">'+lines+boxes+labels+'</div></div></div>';
 }
 // 表の枠に入れる選手の表示: 1行目に名前、2行目に所属とクラス
 function tshPlayerHTML(t, id){
@@ -6101,7 +6119,7 @@ function tshPlayerHTML(t, id){
 }
 function tshZoomSelectHTML(){
   return '<label class="hint no-print" style="display:inline-flex;align-items:center;gap:.3rem">表示倍率 <select data-action="set-tsh-zoom">'+
-    [[0.35,"35%"],[0.5,"50%"],[0.65,"65%"],[0.8,"80%"],[1,"100%"],[1.25,"125%"]].map(function(z){ return '<option value="'+z[0]+'"'+(tshZoom===z[0]?" selected":"")+'>'+z[1]+'</option>'; }).join("")+
+    [["fit","全体表示(画面に収める)"],["fitw","幅に合わせる"],[0.35,"35%"],[0.5,"50%"],[0.65,"65%"],[0.8,"80%"],[1,"100%"],[1.25,"125%"]].map(function(z){ return '<option value="'+z[0]+'"'+(tshZoom===z[0]?" selected":"")+'>'+z[1]+'</option>'; }).join("")+
   '</select></label>';
 }
 // 予選グループ(表に対応する形式)を、表と同じ見た目で描く。readOnly=true は観戦ディスプレイ用(クリック操作なし)
@@ -7398,7 +7416,7 @@ document.addEventListener("change", function(e){
     saveState(); render();
   }
   else if(action==="set-tsh-zoom"){
-    tshZoom = Number(t.value) || 1;
+    tshZoom = (t.value==="fit" || t.value==="fitw") ? t.value : (Number(t.value) || 1);
     render();
   }
   else if(action==="update-bracket-format"){
