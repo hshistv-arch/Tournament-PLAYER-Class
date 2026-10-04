@@ -1056,6 +1056,16 @@ function migrateAddBeClass(parsed){
 }
 // これまで「セット数C」だった「セット数を定めない」大会は、名称変更に合わせて「セット数D」へ一度だけ移行する
 // (新しい「セット数C」は P6 LP5 SA5 A5 B4 C3 の表のため)
+// 保存済みの決勝トーナメントを、全ラウンドの対戦が揃った形へ変換する(選手が揃った対戦から進められるようにするため)
+function migrateFinalsEager(parsed){
+  if(!parsed) return parsed;
+  (parsed.tournaments||[]).forEach(function(t){
+    if(t && t.finals && t.finals.rounds && t.finals.rounds.length && t.finals.rounds.length < t.finals.totalRounds){
+      try{ finalsSyncBracket(t.finals, !!(t.status==="prelim" || t.status==="preFinals")); }catch(e){}
+    }
+  });
+  return parsed;
+}
 function migrateSetTableD(parsed){
   if(!(parsed && parsed.settings) || parsed.settings.setTableDMigrated) return parsed;
   (parsed.tournaments||[]).forEach(function(t){ if(t && t.setCountTable==="C") t.setCountTable = "D"; });
@@ -1087,7 +1097,7 @@ function loadState(){
       var parsed = JSON.parse(raw);
       if(parsed && parsed.settings && parsed.players){
         parsed.entries = parsed.entries || {};
-        return applyRosterUpdate(migrateSetTableD(migrateAddBeClass(migrateBestBorC(parsed))));
+        return applyRosterUpdate(migrateFinalsEager(migrateSetTableD(migrateAddBeClass(migrateBestBorC(parsed)))));
       }
     }
     var legacy = localStorage.getItem("billiards_tourney_state_v3");
@@ -1095,7 +1105,7 @@ function loadState(){
       var parsedLegacy = JSON.parse(legacy);
       if(parsedLegacy && parsedLegacy.settings && parsedLegacy.players){
         parsedLegacy.entries = {};
-        return applyRosterUpdate(migrateSetTableD(migrateAddBeClass(migrateBestBorC(parsedLegacy))));
+        return applyRosterUpdate(migrateFinalsEager(migrateSetTableD(migrateAddBeClass(migrateBestBorC(parsedLegacy)))));
       }
     }
   }catch(e){ console.warn("state load failed", e); }
@@ -1164,7 +1174,7 @@ function syncFromServer(cb){
     return r.json();
   }).then(function(serverState){
     if(serverState && serverState.players){
-      state = applyRosterUpdate(migrateSetTableD(migrateAddBeClass(migrateBestBorC(serverState))));
+      state = applyRosterUpdate(migrateFinalsEager(migrateSetTableD(migrateAddBeClass(migrateBestBorC(serverState)))));
       state.entries = state.entries || {};
       state.currentTournamentId = state.currentTournamentId || null;
       if(!cb && !isComposingText && !userInteracting) render();
@@ -2898,14 +2908,63 @@ function finalsInteractive(t){
 function finalsPoolIds(t){
   return isEarlyFinals(t) ? currentLineupIds(t) : t.finalists;
 }
-function buildEarlyBracketFromSlots(slots){
+// ---------- 決勝トーナメント: 全ラウンドの対戦を最初から作り、選手が揃った対戦から順に進められる ----------
+// 各ラウンドの対戦は、前のラウンドの2試合の勝者がそろった時点で出場者が決まり、他の試合の終了を待たずに開始・結果入力できる。
+// 相手が空き(不戦)の対戦は、勝ち上がる選手が決まり次第そのまま次へ進む。early=true(予選の途中の先行編成)では、空き枠は不戦ではなく「未定」
+function finalsEmptyMatch(round, mi){
+  return {id:"r"+round+"_m"+mi, round:round, a:null, b:null, winner:null, deltas:null, bye:false, score:{a:null,b:null}};
+}
+// 出場者・勝者から各対戦の出場者・不戦・待ち状態を再計算する(結果と矛盾する入力済みの結果は取り消す)
+function finalsSyncBracket(f, early){
+  for(var r=f.rounds.length; r<f.totalRounds; r++){   // 従来の「ラウンドごとに作る」形式で保存された大会を、全ラウンドが揃った形へ変換
+    var cnt = Math.max(1, Math.ceil(f.rounds[r-1].length/2)), arr = [];
+    for(var q=0;q<cnt;q++) arr.push(finalsEmptyMatch(r+1, q));
+    f.rounds.push(arr);
+  }
+  f.rounds.forEach(function(round, ri){
+    round.forEach(function(m, mi){
+      if(ri===0){
+        if(m.winner && !m.bye){ m.dead = false; m.preview = false; return; }
+        m.bye = !early && (!m.a || !m.b);
+        m.dead = m.bye && !m.a && !m.b;
+        m.winner = m.bye ? (m.a || m.b || null) : null;
+        if(m.bye) m.deltas = null;
+        m.preview = !m.bye && (!m.a || !m.b);
+        return;
+      }
+      var fa = f.rounds[ri-1][2*mi], fb = f.rounds[ri-1][2*mi+1];
+      var aId = (fa && !fa.dead && fa.winner) ? fa.winner : null, bId = (fb && !fb.dead && fb.winner) ? fb.winner : null;
+      if(m.winner && !m.bye && (!aId || !bId || (m.winner!==aId && m.winner!==bId))){
+        var loserOld = m.winner===m.a ? m.b : m.a;
+        if(loserOld && f.eliminatedRound) delete f.eliminatedRound[loserOld];
+        undoMatchDeltas(m); m.score = {a:null,b:null}; m.started = false;
+      }
+      m.a = aId; m.b = bId;
+      m.deadA = !!(fa && fa.dead); m.deadB = !!(fb && fb.dead);
+      m.dead = m.deadA && m.deadB;
+      m.bye = m.deadA || m.deadB;
+      if(m.bye){
+        if(m.deltas) undoMatchDeltas(m);
+        m.winner = m.dead ? null : (m.deadA ? bId : aId);
+        m.deltas = null;
+        m.preview = false;
+      } else {
+        m.preview = !aId || !bId;
+      }
+    });
+  });
+}
+function finalsSync(t){
+  if(t && t.finals) finalsSyncBracket(t.finals, isEarlyFinals(t));
+}
+function buildFinalsBracket(slots, early){
   var round1 = [];
   for(var i=0;i<slots.length;i+=2){
-    round1.push({id:"r1_m"+(i/2), round:1, a:slots[i]||null, b:slots[i+1]||null, winner:null, deltas:null, bye:false, score:{a:null,b:null}});
+    var m = finalsEmptyMatch(1, i/2); m.a = slots[i] || null; m.b = slots[i+1] || null; round1.push(m);
   }
   var totalRounds = Math.max(1, Math.round(Math.log2(slots.length)));
   var bracket = {totalRounds:totalRounds, rounds:[round1], eliminatedRound:{}, entrants:slots.filter(function(x){ return x; })};
-  maybeAdvanceRounds(bracket);
+  finalsSyncBracket(bracket, !!early);
   return bracket;
 }
 function earlyFinalsExpectedCount(t){
@@ -2925,7 +2984,7 @@ function createEarlyFinals(t){
     (t.groups||[]).forEach(function(g){ known = known.concat(projectedElimAdvancersForGroup(t, g)); });
   }
   var slots = known.length ? computeDefaultBracketSlots(known, size, t.entries) : new Array(size).fill(null);
-  t.finals = buildEarlyBracketFromSlots(slots);
+  t.finals = buildFinalsBracket(slots, true);
   t.finalists = null;
 }
 function cancelEarlyFinals(t){
@@ -2945,7 +3004,7 @@ function mergeEarlyFinals(t, advancers){
     t.finals.rounds.forEach(function(r){ r.forEach(function(m){ if(m.winner && !m.bye) undoMatchDeltas(m); }); });
     var all = placed.concat(fresh);
     t.finalists = all;
-    t.finals = buildBracket(all, t.entries);
+    t.finals = buildFinalsBracket(computeDefaultBracketSlots(all, null, t.entries), false);
     t.status = "finals";
     alert("決勝トーナメントの枠が足りなかったため、先に入力した決勝の結果を取り消して組み直しました。");
     return;
@@ -2959,14 +3018,11 @@ function mergeEarlyFinals(t, advancers){
   t.finals.rounds[0].forEach(function(m, mi){
     if(m.winner && !m.bye) return;   // 結果が入力済みの対戦は両者が決まっている
     m.a = slots[mi*2] || null; m.b = slots[mi*2+1] || null;
-    m.bye = (!m.a || !m.b);
-    m.winner = m.bye ? (m.a || m.b) : null;
-    m.deltas = null;
   });
   t.finals.entrants = slots.filter(function(x){ return x; });
   t.finalists = t.finals.entrants.slice();
-  maybeAdvanceRounds(t.finals);
   t.status = "finals";
+  finalsSync(t);
 }
 function applyAdvanceBonusAndBuildFinals(t, advancers){
   var bonus = usePointsAndSets(t) ? (state.settings.bonuses.finalsAdvance || 0) : 0;
@@ -2978,7 +3034,7 @@ function applyAdvanceBonusAndBuildFinals(t, advancers){
   });
   if(isEarlyFinals(t)){ mergeEarlyFinals(t, advancers); return; }
   t.finalists = advancers;
-  t.finals = buildBracket(advancers, t.entries);
+  t.finals = buildFinalsBracket(computeDefaultBracketSlots(advancers, null, t.entries), false);
   t.status = "finals";
 }
 
@@ -3036,23 +3092,23 @@ function reverseFinalize(t){
 }
 function correctBracketMatch(t, matchId){
   var finals = t.finals;
-  var match=null, matchRound=null;
-  finals.rounds.forEach(function(r,ri){ r.forEach(function(m){ if(m.id===matchId){ match=m; matchRound=ri+1; } }); });
+  var match=null, ri0=-1, mi0=-1;
+  finals.rounds.forEach(function(r,ri){ r.forEach(function(m,mi){ if(m.id===matchId){ match=m; ri0=ri; mi0=mi; } }); });
   if(!match || match.bye || !match.winner) return;
   if(t.status==="completed"){ reverseFinalize(t); t.status="finals"; }
-  while(finals.rounds.length > matchRound){
-    var popped = finals.rounds.pop();
-    popped.forEach(function(m){
-      if(m.winner && !m.bye){
-        var loserId = m.winner===m.a?m.b:m.a;
-        delete finals.eliminatedRound[loserId];
-        undoMatchDeltas(m);
-      }
-    });
+  // この対戦と、その結果に依存する後の対戦(勝ち上がり先)の結果をまとめて取り消す
+  var ri = ri0, mi = mi0;
+  while(ri < finals.rounds.length){
+    var m = finals.rounds[ri][mi];
+    if(m && m.winner && !m.bye){
+      var loserId = m.winner===m.a ? m.b : m.a;
+      if(loserId) delete finals.eliminatedRound[loserId];
+      undoMatchDeltas(m);
+      m.score = {a:null,b:null}; m.started = false;
+    }
+    ri++; mi = Math.floor(mi/2);
   }
-  var loserId2 = match.winner===match.a?match.b:match.a;
-  delete finals.eliminatedRound[loserId2];
-  undoMatchDeltas(match);
+  finalsSync(t);
 }
 function unwindFinalsIfNeeded(t){
   if(!t.finals) return;
@@ -6735,7 +6791,7 @@ function redrawFinals(t){
   }
   var size=1; while(size<shuffled.length) size*=2;
   while(shuffled.length<size) shuffled.push(null);
-  t.finals = buildBracketFromSlots(shuffled);
+  t.finals = buildFinalsBracket(shuffled, false);
   t.status = "finals";
 }
 function finalsCardHalfSize(t){
@@ -6805,8 +6861,8 @@ function assignFinalsSlot(t, slotIdx, newPlayerId){
 function rebuildFinalsFromSlots(t, slots){
   if(t.status==="completed") reverseFinalize(t);
   t.finals.rounds.forEach(function(r){ r.forEach(function(m){ if(m.winner && !m.bye) undoMatchDeltas(m); }); });
-  if(isEarlyFinals(t)){ t.finals = buildEarlyBracketFromSlots(slots); return; }
-  t.finals = buildBracketFromSlots(slots);
+  if(isEarlyFinals(t)){ t.finals = buildFinalsBracket(slots, true); return; }
+  t.finals = buildFinalsBracket(slots, false);
   t.status = "finals";
 }
 // ---------- 予備決勝戦: 組み合わせ変更(再抽選/手動編集/トランプ抽選)。決勝トーナメントの同機能と同じ体験を、1ラウンドの試合リストに対して提供する ----------
@@ -7410,7 +7466,7 @@ document.addEventListener("click", function(e){
       resolveMatch(match, winner2, tour4);
       var loserId = winner2===match.a ? match.b : match.a;
       tour4.finals.eliminatedRound[loserId] = match.round;
-      maybeAdvanceRounds(tour4.finals);
+      finalsSync(tour4);
       var justCompleted = match.round===tour4.finals.totalRounds;
       if(justCompleted) finalizeTournamentResult(tour4);
       saveState(); render();
