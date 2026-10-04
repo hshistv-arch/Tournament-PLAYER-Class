@@ -4776,7 +4776,12 @@ function setDisplayAutoScrollOn(v){
 }
 function startDisplayAutoScroll(){
   var pos = window.scrollY, lastSet = pos, lastT = null, holdUntil = 0, pausedUntil = 0;
-  function interact(){ pausedUntil = Date.now() + DISPLAY_SCROLL_RESUME_MS; }
+  // 表示倍率・自動スクロールのボタンの操作では止めない(倍率を変えてもスクロールを続ける)
+  function interact(e){
+    var el = e && e.target;
+    if(el && el.closest && el.closest('[data-action="set-tsh-zoom"],[data-action="toggle-display-autoscroll"]')) return;
+    pausedUntil = Date.now() + DISPLAY_SCROLL_RESUME_MS;
+  }
   ["wheel","touchstart","mousedown","keydown"].forEach(function(ev){ window.addEventListener(ev, interact, {passive:true}); });
   function frame(){
     var ts = performance.now();
