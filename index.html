@@ -4760,6 +4760,51 @@ function renderDrawScreen(){
   }
   return closeHTML + body + updatedHTML;
 }
+// ---------- 大会結果共有ページの自動スクロール ----------
+// ページ全体を、上から下まで60秒かけて自動でゆっくりスクロールする(下まで来たら少し止まって先頭へ戻り、繰り返す)。
+// 画面を操作(ホイール・タッチ・クリック・キー)したら一時停止し、20秒操作がなければ再開する。
+// 「自動スクロール」ボタンでオン/オフでき、この端末のブラウザに保存する(初期値はオン)
+var DISPLAY_AUTOSCROLL_KEY = "gspec_display_autoscroll";
+var DISPLAY_SCROLL_SECONDS = 60;
+var DISPLAY_SCROLL_EDGE_PAUSE_MS = 3000;
+var DISPLAY_SCROLL_RESUME_MS = 20000;
+function isDisplayAutoScrollOn(){
+  try{ return localStorage.getItem(DISPLAY_AUTOSCROLL_KEY)!=="0"; }catch(e){ return true; }
+}
+function setDisplayAutoScrollOn(v){
+  try{ localStorage.setItem(DISPLAY_AUTOSCROLL_KEY, v ? "1" : "0"); }catch(e){}
+}
+function startDisplayAutoScroll(){
+  var pos = window.scrollY, lastSet = pos, lastT = null, holdUntil = 0, pausedUntil = 0;
+  function interact(){ pausedUntil = Date.now() + DISPLAY_SCROLL_RESUME_MS; }
+  ["wheel","touchstart","mousedown","keydown"].forEach(function(ev){ window.addEventListener(ev, interact, {passive:true}); });
+  function frame(){
+    var ts = performance.now();
+    var now = Date.now();
+    var maxY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+    if(lastT==null) lastT = ts;
+    var dt = Math.min(200, ts - lastT); lastT = ts;
+    if(Math.abs(window.scrollY - lastSet) > 2) pos = window.scrollY;   // 利用者が動かした/再描画で位置が変わった場合は、その位置から続ける
+    var active = isDisplayAutoScrollOn() && !displayQrOpen && now >= pausedUntil && now >= holdUntil && maxY > 4;
+    if(active){
+      pos += (maxY / (DISPLAY_SCROLL_SECONDS*1000)) * dt;
+      if(pos >= maxY){
+        pos = maxY; holdUntil = now + DISPLAY_SCROLL_EDGE_PAUSE_MS; window.scrollTo(0, pos); lastSet = window.scrollY;
+        setTimeout(function(){ pos = 0; window.scrollTo(0, 0); lastSet = window.scrollY; holdUntil = Date.now() + DISPLAY_SCROLL_EDGE_PAUSE_MS; }, DISPLAY_SCROLL_EDGE_PAUSE_MS);
+      } else {
+        window.scrollTo(0, pos); lastSet = window.scrollY;
+      }
+    } else {
+      pos = window.scrollY; lastSet = pos;
+    }
+  }
+  // タイマーで動かす(画面が見えていない間に止まるrequestAnimationFrameではなく、一定間隔で位置を進める)
+  setInterval(frame, 40);
+}
+function displayAutoScrollButtonHTML(){
+  var on = isDisplayAutoScrollOn();
+  return '<button class="btn btn-sm'+(on?' btn-felt':' btn-ghost')+' no-print" type="button" data-action="toggle-display-autoscroll" style="margin-top:.5rem" title="ページ全体を60秒かけて上から下へ自動でスクロールします">'+(on?'⏸ 自動スクロール中(停止)':'▶ 自動スクロールを開始')+'</button>';
+}
 function renderDisplayScreen(){
   var updatedHTML = '<div class="display-updated">🔄 自動更新 '+displayTimeStamp()+'</div>';
   var closeHTML = '<button type="button" class="display-close-btn" data-action="close-display-window">✕ 閉じる</button>';
@@ -4783,6 +4828,7 @@ function renderDisplayScreen(){
       var STATUS_LABEL = {entryPending:"エントリー受付中", assigning:"組み合わせ待ち", prelim:"予選中", preFinals:"予備決勝戦中", finals:"決勝トーナメント中", completed:"終了"};
       body = '<div class="page-head"><div><h1>'+esc(t.name)+'</h1><p class="sub">'+tournamentFormatLabel(t)+' ・ 開催日: '+eventDateOf(t)+' ・ <span class="pill '+t.status+'">'+(STATUS_LABEL[t.status]||t.status)+'</span></p>'+
         '<button class="btn btn-sm btn-ghost" type="button" data-action="copy-url" data-url="'+esc(displayUrlFor(t.id))+'" style="margin-top:.5rem">URLをコピー</button> '+
+        displayAutoScrollButtonHTML()+' '+
         displayQrPanelHTML(t)+
       '</div></div>';
       var displayTimeColorMap = buildTimeSlotColorMap(t);
@@ -6865,6 +6911,10 @@ document.addEventListener("click", function(e){
       alert("このタブ/ウインドウを自動では閉じられませんでした。お使いのブラウザの操作(タブ一覧・戻るボタンなど)で閉じてください。");
     }, 300);
   }
+  else if(action==="toggle-display-autoscroll"){
+    setDisplayAutoScrollOn(!isDisplayAutoScrollOn());
+    render();
+  }
   else if(action==="toggle-display-qr"){
     displayQrOpen = !displayQrOpen;
     render();
@@ -7923,7 +7973,7 @@ if(DRAW_MODE){ document.body.classList.add("display-mode-active"); }
 if(GUIDE_MODE){ document.body.classList.add("guide-mode-active"); }
 render();
 syncFromServer();
-if(DISPLAY_MODE){ setInterval(syncFromServer, DISPLAY_POLL_MS); }
+if(DISPLAY_MODE){ setInterval(syncFromServer, DISPLAY_POLL_MS); startDisplayAutoScroll(); }
 if(STREAM_MODE){ setInterval(syncFromServer, STREAM_POLL_MS); }
 if(DRAW_MODE){ setInterval(syncFromServer, DRAW_POLL_MS); }
 
