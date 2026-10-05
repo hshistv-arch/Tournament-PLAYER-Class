@@ -1323,9 +1323,9 @@ var FEE_METHOD_OPTIONS = [
   {value:"gchip", label:"Gチップ"}
 ];
 var BRACKET_SIZES = [8,16,24,32,48,64,96,128];
-// 24名用はシングルエリミネーションの表(24S)がある予選方式でのみ選べる
+// 24名用はどの予選方式にも表がある(シングル=24S・ダブル=24W-8・1回戦のみダブル=24R1)
 function bracketSizesFor(prelimType){
-  return BRACKET_SIZES.filter(function(sz){ return sz!==24 || prelimType!=="double"; });
+  return BRACKET_SIZES.slice();
 }
 function smallestBracketSizeFor(n, prelimType){
   var sizes = bracketSizesFor(prelimType);
@@ -2876,9 +2876,9 @@ var TPL_DEFS = (function(){
   specs["64W-16"] = doubleSpec(64, 3);
   specs["128W-16"] = doubleSpec(128, 4);
   specs["128W-32"] = doubleSpec(128, 3);
-  // ---- 48名・96名 ダブルエリミネーション(48W-16・96W-16・96W-32) ----
+  // ---- 24名・48名・96名 ダブルエリミネーション(24W-8・48W-16・96W-16・96W-32) ----
   // 3人1組(枠3k+1・3k+2が1回戦、枠3k+3はシードで2回戦から)。1回戦の敗者は敗者側1回戦へ。
-  //  48W-16は添付の表そのもの。96名用はその構成を2倍にしたもの(96W-32)と、勝者側をもう1段進めたもの(96W-16)。
+  //  48W-16は添付の表そのもの。24名用(24W-8)はその構成を半分にしたもの、96名用は2倍にしたもの(96W-32)と、勝者側をもう1段進めたもの(96W-16)。
   //  - 敗者側1回戦: 1回戦の敗者と、反対側の山の2回戦の敗者
   //  - 敗者側2回戦: 敗者側1回戦の勝者どうし / 敗者側3回戦: 敗者側2回戦の勝者と、勝者側3回戦の敗者(山ごとに後ろの試合から順)
   //  - 勝者側4回戦以降(96W-16): 勝者側k回戦 → 敗者側(2k-4)回戦(直前の勝者どうし) → 敗者側(2k-3)回戦(直前の勝者と勝者側k回戦の敗者を後ろの試合から順)
@@ -2903,6 +2903,7 @@ var TPL_DEFS = (function(){
     return {type:"double", trio:"byeLast", size:size, slotCount:size, wbAdvance:wbAdv, lbAdvance:lbAdv,
       title:size+"名 ダブルエリミネーション 決勝進出"+(wbAdv+lbAdv)+"名", list:list, straightWbRounds:[0]};
   }
+  specs["24W-8"] = trioDoubleSpec(24, 3);
   specs["48W-16"] = trioDoubleSpec(48, 3);
   specs["96W-32"] = trioDoubleSpec(96, 3);
   specs["96W-16"] = trioDoubleSpec(96, 4);
@@ -8096,7 +8097,6 @@ document.addEventListener("change", function(e){
     else if(tourPT2.finals) unwindFinalsIfNeeded(tourPT2);
     var hadKeyPT2 = tplKeyFor(tourPT2, tourPT2.bracketSize), hadSizePT2 = tourPT2.bracketSize;
     tourPT2.prelimType = newTypePT2;
-    if(tourPT2.bracketSize===24 && newTypePT2!=="single") tourPT2.bracketSize = 32;
     if(hasLoserBracket(tourPT2) && tourPT2.advancePerGroupWB==null){
       tourPT2.advancePerGroupWB = Math.ceil(tourPT2.advancePerGroup/2);
       tourPT2.advancePerGroupLB = tourPT2.advancePerGroup - tourPT2.advancePerGroupWB;
