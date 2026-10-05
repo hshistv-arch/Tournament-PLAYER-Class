@@ -3159,9 +3159,93 @@ function isEarlyFinals(t){
 function finalsInteractive(t){
   return !!(t && t.finals && (t.status==="finals" || isEarlyFinals(t)));
 }
-// 決勝の枠に入れる選手の候補(通常は決勝進出者、先行編成中はこの大会の出場選手全員)
+// 決勝の枠に入れる選手の候補(通常は決勝進出者、先行編成中は決勝進出が確定している選手のみ)
 function finalsPoolIds(t){
-  return isEarlyFinals(t) ? currentLineupIds(t) : t.finalists;
+  return isEarlyFinals(t) ? confirmedFinalistIds(t) : t.finalists;
+}
+// 予選がまだ終わっていない時点で、決勝トーナメントへの進出が確定している選手のid
+//  ②予選リーグ: ブロックの全対戦が終わったブロックの上位進出者(境界が同数の場合は手動選択済みのときだけ確定)
+//  ①トーナメント戦: 勝者側の最終ラウンドの勝者(projectedElimAdvancersForGroup)と、グループが進出人数まで絞り込まれたときの勝ち残り(敗者復活側を含む)
+//  予備決勝戦が必要な構成(複数グループで決勝進出人数が少ない)では、全グループが絞り込まれてから予備決勝戦の不戦者・勝者だけが確定
+function confirmedFinalistIds(t){
+  var ids = [];
+  function add(id){ if(id && ids.indexOf(id)<0) ids.push(id); }
+  if(t.status==="preFinals"){
+    (t.preFinalsByeIds||[]).forEach(add);
+    ((t.preFinals && t.preFinals.matches) || []).forEach(function(m){ add(m.winner); });
+    return ids;
+  }
+  if(t.format==="blockPrelim"){
+    (t.blocks||[]).forEach(function(block){
+      var matches = block.matches || [];
+      if(!matches.every(function(m){ return !!m.winner; })) return;
+      var tie = blockTieInfo(t, block, t.advancePerBlock);
+      var standings = blockStandings(t, block).map(function(s){ return s.id; });
+      if(tie){
+        var chosen = ((t.tieBreakSelections && t.tieBreakSelections[block.index]) || []).filter(function(id){ return tie.tiedIds.indexOf(id)>=0; });
+        if(chosen.length < tie.needCount) return;   // 同数でどちらが進出するか未選択 → 確定していない
+        tie.guaranteedIds.concat(chosen.slice(0, tie.needCount)).forEach(add);
+      } else {
+        standings.slice(0, t.advancePerBlock).forEach(add);
+      }
+    });
+    return ids;
+  }
+  var groups = t.groups || [];
+  var lbSplit = hasLoserBracket(t) && t.advancePerGroupWB!=null;
+  var perGroup = lbSplit ? (t.advancePerGroupWB + (t.advancePerGroupLB||0)) : (t.advancePerGroup||1);
+  var needPreFinals = groups.length>1 && t.finalsTargetSize!=null && groups.length*perGroup > t.finalsTargetSize;
+  function reachedAdvancers(g){
+    if(lbSplit){
+      var wbAlive = g.wb.entrants.filter(function(id){ return (g.losses[id]||0)===0; });
+      var lbAlive = g.wb.entrants.filter(function(id){ return (g.losses[id]||0)===1 && !g.eliminated[id]; });
+      var byPts = function(a,b){ return entryPointsOf(t, b)-entryPointsOf(t, a); };
+      return wbAlive.sort(byPts).slice(0, t.advancePerGroupWB).concat(lbAlive.sort(byPts).slice(0, t.advancePerGroupLB));
+    }
+    var alive = g.wb.entrants.filter(function(id){ return !g.eliminated[id]; });
+    return alive.sort(function(a,b){ return entryPointsOf(t, b)-entryPointsOf(t, a); }).slice(0, t.advancePerGroup);
+  }
+  if(needPreFinals){
+    if(!groups.every(function(g){ return groupReached(t, g); })) return ids;
+    var all = [];
+    groups.forEach(function(g){ all = all.concat(reachedAdvancers(g)); });
+    if(all.length > t.finalsTargetSize){
+      var overflow = Math.min(all.length - t.finalsTargetSize, Math.floor(all.length/2));
+      var ranked = all.slice().sort(function(a,b){ return entryPointsOf(t,b)-entryPointsOf(t,a); });
+      ranked.slice(0, ranked.length - overflow*2).forEach(add);   // 予備決勝戦を免除される選手のみ確定
+    } else {
+      all.forEach(add);
+    }
+    return ids;
+  }
+  groups.forEach(function(g){
+    projectedElimAdvancersForGroup(t, g).forEach(add);
+    if(groupReached(t, g)) reachedAdvancers(g).forEach(add);
+  });
+  return ids;
+}
+// 先行編成中の決勝の枠から、進出が確定していない選手を外す(予選結果の取消などで確定でなくなった場合)。
+// 外した選手が出ていた対戦の結果と、その結果に依存する後のラウンドの結果は取り消す
+function pruneEarlyFinals(t){
+  if(!isEarlyFinals(t)) return;
+  var ok = confirmedFinalistIds(t), f = t.finals, changed = false;
+  f.rounds[0].forEach(function(m){
+    ["a","b"].forEach(function(k){
+      if(m[k] && ok.indexOf(m[k])<0){
+        if(m.winner && !m.bye){
+          var loserId = m.winner===m.a ? m.b : m.a;
+          if(loserId && f.eliminatedRound) delete f.eliminatedRound[loserId];
+          undoMatchDeltas(m);
+          m.score = {a:null,b:null}; m.started = false;
+        }
+        m[k] = null;
+        changed = true;
+      }
+    });
+  });
+  if(!changed) return;
+  f.entrants = finalsSlotsArray(t).filter(Boolean);
+  finalsSyncBracket(f, true);
 }
 // ---------- 決勝トーナメント: 全ラウンドの対戦を最初から作り、選手が揃った対戦から順に進められる ----------
 // 各ラウンドの対戦は、前のラウンドの2試合の勝者がそろった時点で出場者が決まり、他の試合の終了を待たずに開始・結果入力できる。
@@ -3230,14 +3314,7 @@ function earlyFinalsExpectedCount(t){
 function createEarlyFinals(t){
   if(t.finals || t.status!=="prelim") return;
   var count = earlyFinalsExpectedCount(t), size = 1; while(size<count) size*=2;
-  var known = [];
-  if(t.format==="blockPrelim"){
-    (t.blocks||[]).forEach(function(block){
-      blockStandings(t, block).slice(0, t.advancePerBlock||1).forEach(function(x){ known.push(x.id); });
-    });
-  } else {
-    (t.groups||[]).forEach(function(g){ known = known.concat(projectedElimAdvancersForGroup(t, g)); });
-  }
+  var known = confirmedFinalistIds(t);   // 進出が確定している選手だけを最初から枠に入れる
   var slots = known.length ? computeDefaultBracketSlots(known, size, t.entries) : new Array(size).fill(null);
   t.finals = buildFinalsBracket(slots, true);
   t.finalists = null;
@@ -3367,7 +3444,10 @@ function correctBracketMatch(t, matchId){
 }
 function unwindFinalsIfNeeded(t){
   if(!t.finals) return;
-  if(isEarlyFinals(t)) return;   // 予選中に先行編成した決勝は、予選側の変更では取り消さない(「先行編成を取り消す」で消す)
+  if(isEarlyFinals(t)){   // 予選中に先行編成した決勝は、予選側の変更では取り消さない(「先行編成を取り消す」で消す)。ただし進出が確定でなくなった選手は枠から外す
+    pruneEarlyFinals(t);
+    return;
+  }
   if(t.status==="completed") reverseFinalize(t);
   t.finals.rounds.forEach(function(r){ r.forEach(function(m){ if(m.winner && !m.bye) undoMatchDeltas(m); }); });
   if(t.advanceBonusApplied){
@@ -6913,7 +6993,7 @@ function renderFinalsPlaceholder(t){
   }
   return '<div class="card"><h3>決勝トーナメント</h3>'+
     '<p class="hint">予選が確定すると、ここに実際の決勝トーナメントの組み合わせが表示されます(現在の設定では'+count+'名が進出予定)。'+(noteExtra?(' '+noteExtra):'')+'</p>'+
-    (t.status==="prelim" ? '<p class="hint" style="margin:.2rem 0 .5rem"><button class="btn btn-sm btn-primary" type="button" data-action="start-early-finals" data-tid="'+t.id+'">予選の途中から決勝トーナメントを先に編成する</button> 決勝の枠へ選手を選んで入れ、予選の途中でも決勝の試合を開始・結果入力できます。</p>' : '')+
+    (t.status==="prelim" ? '<p class="hint" style="margin:.2rem 0 .5rem"><button class="btn btn-sm btn-primary" type="button" data-action="start-early-finals" data-tid="'+t.id+'">予選の途中から決勝トーナメントを先に編成する</button> 決勝の枠へ、予選で進出が確定した選手を選んで入れ、予選の途中でも決勝の試合を開始・結果入力できます。</p>' : '')+
     tplFinalsSheetHTML(t, bracket, true)+
   '</div>';
 }
@@ -6927,7 +7007,7 @@ function renderFinalsSection(t){
     '<h3 style="margin:0">決勝トーナメント</h3>'+redrawBtn+
     '</div>'+
     (isEarlyFinals(t) ?
-      '<p class="hint" style="margin:.4rem 0">予選の途中から先に決勝トーナメントを編成しています。決勝の枠へ選手を選んで入れ、1回戦の試合を開始・結果入力できます(決勝の最終ラウンドの結果入力は、予選を確定して決勝が始まってから)。「予選を締めて決勝進出者を確定する」を押すと、先に入れた選手と結果はそのまま残り、空いている枠へ残りの進出者が入ります。'+
+      '<p class="hint" style="margin:.4rem 0">予選の途中から先に決勝トーナメントを編成しています。決勝の枠へ、進出が確定した選手だけを選んで入れ、1回戦の試合を開始・結果入力できます(予選の取消などで進出が確定でなくなった選手は枠から外れます。決勝の最終ラウンドの結果入力は、予選を確定して決勝が始まってから)。「予選を締めて決勝進出者を確定する」を押すと、先に入れた選手と結果はそのまま残り、空いている枠へ残りの進出者が入ります。'+
       ' <button class="btn btn-sm btn-ghost" type="button" data-action="cancel-early-finals" data-tid="'+t.id+'">先行編成を取り消す</button></p>' : "")+
     (finalsInteractive(t) ? renderFinalsEditSlots(t) : "")+
     tplFinalsSheetHTML(t, t.finals, false)+
