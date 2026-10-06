@@ -101,6 +101,8 @@ button{font-family:inherit;}
 .main{flex:1; min-width:0; padding:1.6rem 2rem 4rem;}
 .main-inner{max-width:1120px; margin:0 auto; display:flex; flex-direction:column; gap:1.2rem;}
 .page-head{display:flex; align-items:baseline; justify-content:space-between; gap:1rem; flex-wrap:wrap;}
+/* 大会開始後は、大会画面上部のタイトルとボタンをスクロールに追従させる */
+body.t-head-sticky .t-head{position:sticky; top:0; z-index:35; background:var(--bg); padding:.5rem 0; margin-top:-.5rem; border-bottom:1px solid var(--border);}
 .page-head p.sub{color:var(--muted); margin:.15rem 0 0; font-size:.88rem;}
 .tournament-name-input{font:inherit; font-size:1.5rem; font-weight:700; color:var(--text); border:1px solid transparent; background:transparent; padding:.1rem .3rem; margin:0 0 0 -.3rem; border-radius:6px; max-width:100%; width:22rem;}
 .tournament-name-input:hover{border-color:var(--border);}
@@ -389,6 +391,12 @@ button.tsh-no:hover{background:var(--surface-2,#efebdf); text-decoration:underli
 @media (max-width: 760px){
   .app-shell{flex-direction:column;}
   .sidenav{width:auto; flex:none; flex-direction:row; overflow-x:auto; overflow-y:hidden; align-items:center; height:auto; align-self:stretch; position:static;}   /* 狭い画面ではメニューが上部に横並びになるため、追従させない */
+  /* スマホ幅では、追従するタイトル行を低くする(ボタンは横に並べて、はみ出す分は横スクロール) */
+  body.t-head-sticky .t-head{gap:.3rem;}
+  body.t-head-sticky .t-head p.sub{display:none;}
+  body.t-head-sticky .t-head h1{font-size:1.1rem; margin:0;}
+  body.t-head-sticky .t-head > div:last-child{flex-wrap:nowrap !important; overflow-x:auto; width:100%; padding-bottom:.2rem;}
+  body.t-head-sticky .t-head > div:last-child .btn{white-space:nowrap; flex:none;}
   .navgroup{flex-direction:row;}
   .nav-spacer{display:none;}
   .sidenav{gap:.8rem; padding:.6rem .7rem;}
@@ -1717,6 +1725,20 @@ var h2hModal = null;
 var gridCellModal = null;
 // 大会ごとの「エントリーリストを編集」欄の開閉状態(画面遷移をまたいで保持するためrouteの外で管理)
 var entryEditOpenByTid = {};
+// 大会ごとの「大会設定」(大会形式・セット数・エントリー編集・枠の編集など)の表示状態。大会開始後は既定で非表示(画面遷移をまたいで保持するためrouteの外で管理)
+var settingsOpenByTid = {};
+// 大会ごとの「試合時間の記録」欄の開閉状態
+var matchTimesOpenByTid = {};
+function tournamentInPlay(t){
+  return !!t && (t.status==="prelim" || t.status==="preFinals" || t.status==="finals" || t.status==="completed");
+}
+function tournamentSettingsHidden(t){
+  return tournamentInPlay(t) && !settingsOpenByTid[t.id];
+}
+function settingsToggleBtnHTML(t){
+  if(!tournamentInPlay(t)) return "";
+  return '<button class="btn btn-sm btn-ghost no-print" type="button" data-action="toggle-t-settings" data-tid="'+t.id+'">⚙ 大会設定を'+(settingsOpenByTid[t.id] ? "隠す" : "表示")+'</button>';
+}
 // 大会ごとの「エントリー種別」表示モード(大会をまたいで共有されないようrouteの外で管理)
 var entryModeByTid = {};
 // 大会ごとの「同じ所属のチェック」結果({risks:[{label}]}、非表示ならキーなし。画面遷移をまたいで保持する必要がないためrouteの外で管理)
@@ -1730,6 +1752,9 @@ document.addEventListener("toggle", function(e){
   var el = e.target;
   if(el && el.tagName==="DETAILS" && el.hasAttribute("data-entry-edit-tid")){
     entryEditOpenByTid[el.getAttribute("data-entry-edit-tid")] = el.open;
+  }
+  if(el && el.tagName==="DETAILS" && el.hasAttribute("data-match-times-tid")){
+    matchTimesOpenByTid[el.getAttribute("data-match-times-tid")] = el.open;
   }
 }, true);
 // 通常のnavigate()は画面の先頭にスクロールするが、印刷画面などから「戻る」場合に
@@ -2337,6 +2362,80 @@ function measuredMatchMinutes(t){
   if(ds.length < 3) return null;
   return {minutes: Math.round(ds.reduce(function(a,b){ return a+b; }, 0)/ds.length), count: ds.length};
 }
+// 実績の集計: 最初の試合の開始時刻・最後に終わった試合の終了時刻・1試合の平均所要時間(試合開始ボタン〜結果入力の記録から)
+function matchActuals(t){
+  var firstStart = null, lastEnd = null, ds = [];
+  function take(m){
+    if(!m || m.bye) return;
+    if(m.startedAt && (firstStart==null || m.startedAt<firstStart)) firstStart = m.startedAt;
+    if(m.winner && m.finishedAt){
+      if(lastEnd==null || m.finishedAt>lastEnd) lastEnd = m.finishedAt;
+      if(m.startedAt){ var d = (m.finishedAt - m.startedAt)/60000; if(d>0 && d<=180) ds.push(d); }
+    }
+  }
+  (t.groups||[]).forEach(function(g){
+    ((g.wb && g.wb.rounds)||[]).concat((g.lb && g.lb.rounds)||[]).forEach(function(r){ r.forEach(take); });
+  });
+  (t.blocks||[]).forEach(function(b){ (b.matches||[]).forEach(take); });
+  if(t.preFinals) (t.preFinals.matches||[]).forEach(take);
+  if(t.finals) t.finals.rounds.forEach(function(r){ r.forEach(take); });
+  var avg = ds.length ? Math.round(ds.reduce(function(a,b){ return a+b; }, 0)/ds.length*10)/10 : null;
+  return {firstStart:firstStart, lastEnd:lastEnd, avgMinutes:avg, count:ds.length};
+}
+function matchActualsHTML(t){
+  var a = matchActuals(t);
+  function cell(label, val){ return '<div style="min-width:9rem"><div class="hint">'+label+'</div><div><b>'+val+'</b></div></div>'; }
+  return '<div class="form-row" style="gap:1.2rem;flex-wrap:wrap;margin:.3rem 0 .6rem;padding:.5rem .7rem;border:1px solid var(--border);border-radius:.5rem">'+
+    cell("最初の試合の開始", a.firstStart ? fmtClock(a.firstStart) : "-")+
+    cell("最後の試合の終了", a.lastEnd ? fmtClock(a.lastEnd) : "-")+
+    cell("1試合の平均時間", a.avgMinutes!=null ? ("約"+Math.round(a.avgMinutes)+"分 <span class=\"hint\">("+a.count+"試合)</span>") : "-")+
+  '</div>';
+}
+// 試合ごとの開始・終了時刻の一覧(確認・編集用)。出場者が決まっていて、開始または終了が記録されている試合だけ
+function matchTimeRecords(t){
+  var recs = [];
+  function add(m, label){
+    if(!m || m.bye || m.preview || !m.a || !m.b) return;
+    if(!(m.winner || m.started || m.startedAt)) return;
+    recs.push({m:m, label:label});
+  }
+  (t.groups||[]).forEach(function(g, gi){
+    var gl = (t.groups.length>1) ? ("グループ"+(gi+1)+" ") : "";
+    [["勝者側", g.wb], ["敗者側", g.lb]].forEach(function(pair){
+      if(!pair[1] || !pair[1].rounds) return;
+      var sl = g.lb ? (pair[0]+" ") : "";
+      pair[1].rounds.forEach(function(r, ri){
+        r.forEach(function(m){ add(m, gl+sl+(m.no!=null ? ("No."+m.no+" ") : "")+(m.round||(ri+1))+"回戦"); });
+      });
+    });
+  });
+  (t.blocks||[]).forEach(function(b){ (b.matches||[]).forEach(function(m, mi){ add(m, "ブロック"+(b.index+1)+" 第"+(mi+1)+"試合"); }); });
+  if(t.preFinals) (t.preFinals.matches||[]).forEach(function(m){ add(m, "予備決勝戦"); });
+  if(t.finals) t.finals.rounds.forEach(function(r, ri){
+    r.forEach(function(m){ add(m, "決勝トーナメント "+roundName(ri+1, t.finals.totalRounds)); });
+  });
+  return recs;
+}
+// 「試合時間の記録」: 開始・終了時刻と1試合の平均時間。試合終了後(大会終了後)も確認でき、開始・終了時刻は編集できる
+function renderMatchTimesSection(t){
+  if(!t || t.status==="entryPending" || t.status==="assigning") return "";
+  var recs = matchTimeRecords(t);
+  var rows = recs.map(function(r, i){
+    var m = r.m, attrs = 'data-action="edit-match-time" data-tid="'+t.id+'" data-idx="'+i+'"';
+    var dur = (m.startedAt && m.finishedAt && m.finishedAt>m.startedAt) ? (Math.round((m.finishedAt-m.startedAt)/60000)+"分") : "-";
+    return '<tr><td>'+esc(r.label)+'</td><td>'+esc(playerName(m.a))+' vs '+esc(playerName(m.b))+'</td>'+
+      '<td><input type="time" value="'+(m.startedAt ? fmtClock(m.startedAt) : "")+'" data-which="start" '+attrs+'></td>'+
+      '<td>'+(m.winner ? ('<input type="time" value="'+(m.finishedAt ? fmtClock(m.finishedAt) : "")+'" data-which="end" '+attrs+'>') : '<span class="hint">試合中</span>')+'</td>'+
+      '<td class="num">'+dur+'</td></tr>';
+  }).join("");
+  return '<details class="card no-print" data-match-times-tid="'+t.id+'"'+(matchTimesOpenByTid[t.id] ? " open" : "")+'>'+
+    '<summary style="cursor:pointer;font-weight:600">⏱ 試合時間の記録(開始・終了時刻・1試合の平均時間)</summary>'+
+    '<div style="margin-top:.6rem">'+matchActualsHTML(t)+
+    (rows ? ('<p class="hint" style="margin:.2rem 0 .4rem">試合開始・結果入力の時刻が自動で記録されます。時刻は直接修正できます(空欄にすると記録を消します)。</p>'+
+      '<div class="table-wrap"><table class="data"><thead><tr><th>試合</th><th>対戦</th><th>開始</th><th>終了</th><th>所要</th></tr></thead><tbody>'+rows+'</tbody></table></div>') :
+      '<p class="hint">まだ記録された試合はありません。</p>')+
+    '</div></details>';
+}
 function estimateSettings(t){
   var meas = measuredMatchMinutes(t);
   var tables = (t.estTables>0) ? t.estTables : EST_DEFAULT_TABLES;
@@ -2523,6 +2622,7 @@ function renderEstimateModal(){
       (st.minutesIsAuto ? '<span class="hint" style="align-self:center">'+(st.measured?'(実績から自動)':'(初期の目安)')+'</span>' : '<button class="btn btn-sm btn-ghost" type="button" data-action="reset-est-minutes" data-tid="'+t.id+'">'+(st.measured?'実績の平均に戻す':'初期の目安('+st.initial+'分)に戻す')+'</button>')+
     '</div>'+
     '<p class="hint" style="margin:.3rem 0 .6rem">'+measuredHint+'</p>'+
+    matchActualsHTML(t)+
     '<div class="table-wrap"><table class="data"><thead><tr><th>区分</th><th>開始の見込み</th><th>終了の見込み</th><th>残り試合数</th></tr></thead><tbody>'+rowsHTML+'</tbody></table></div>'+
     est.notes.map(function(n){ return '<p class="hint" style="margin:.4rem 0 0">'+esc(n)+'</p>'; }).join("")+
     '<p class="hint" style="margin:.5rem 0 0">※概算です。試合の長さ・休憩・遅れで前後します。「開始の見込み」は、その区分で最初の試合を始められそうな時刻です(前の試合の結果が出てから始められるものとして計算)。</p>'+
@@ -3458,6 +3558,59 @@ function mergeEarlyFinals(t, advancers){
   t.status = "finals";
   finalsSync(t);
 }
+// 予選が全て終わった(②全ブロックの全試合が終了し同点の進出者も選択済み / ①全グループが進出人数まで絞り込まれた)大会は、
+// 「予選を締める」操作なしで自動的に決勝進出者を確定する(先行編成した決勝があれば、その結果を残したまま残りの進出者が入る)
+function prelimIsComplete(t){
+  if(t.status!=="prelim") return false;
+  if(t.format==="blockPrelim"){
+    var blocks = t.blocks || [];
+    if(!blocks.length) return false;
+    return blocks.every(function(b){
+      if(!(b.matches && b.matches.length && b.matches.every(function(m){ return !!m.winner; }))) return false;
+      var tie = blockTieInfo(t, b, t.advancePerBlock);
+      if(!tie) return true;
+      var chosen = ((t.tieBreakSelections && t.tieBreakSelections[b.index]) || []).filter(function(id){ return tie.tiedIds.indexOf(id)>=0; });
+      return chosen.length >= tie.needCount;
+    });
+  }
+  var groups = t.groups || [];
+  return groups.length>0 && groups.every(function(g){ return !!g.wb && groupReached(t, g); });
+}
+function autoFinalizePrelims(){
+  var changed = false;
+  (state.tournaments||[]).forEach(function(t){
+    if(!t || !prelimIsComplete(t)) return;
+    try{
+      if(t.format==="blockPrelim") finalizeBlockPrelim(t); else finalizeElimPrelim(t);
+      changed = true;
+    }catch(e){}
+  });
+  if(changed) saveState();
+}
+// 予選の途中から始めた決勝トーナメントで決勝まで決まったとき: 予選の残りは行わず、決勝の出場者を進出者として大会を終える
+function completeEarlyFinals(t){
+  var ids = finalsSlotsArray(t).filter(Boolean);
+  var bonus = usePointsAndSets(t) ? (state.settings.bonuses.finalsAdvance || 0) : 0;
+  t.advanceBonusApplied = t.advanceBonusApplied || {};
+  ids.forEach(function(id){
+    if(!t.advanceBonusApplied[id] && bonus){ var p = getPlayer(id); if(p){ p.points += bonus; t.advanceBonusApplied[id] = bonus; } }
+  });
+  t.finalists = ids;
+  t.earlyCompleted = true;
+  t.status = "finals";
+  finalsSync(t);
+}
+// 予選の途中から始めた決勝の結果を取り消すときは、予選中・先行編成の状態へ戻す
+function restoreEarlyIfNeeded(t){
+  if(!t.earlyCompleted || t.status!=="finals") return;
+  if(t.advanceBonusApplied){
+    Object.keys(t.advanceBonusApplied).forEach(function(id){ var p = getPlayer(id); if(p) p.points -= t.advanceBonusApplied[id]; });
+    t.advanceBonusApplied = {};
+  }
+  t.finalists = null;
+  t.earlyCompleted = false;
+  t.status = "prelim";
+}
 function applyAdvanceBonusAndBuildFinals(t, advancers){
   var bonus = usePointsAndSets(t) ? (state.settings.bonuses.finalsAdvance || 0) : 0;
   t.advanceBonusApplied = t.advanceBonusApplied || {};
@@ -3467,6 +3620,7 @@ function applyAdvanceBonusAndBuildFinals(t, advancers){
     }
   });
   if(isEarlyFinals(t)){ mergeEarlyFinals(t, advancers); return; }
+  t.earlyCompleted = false;
   t.finalists = advancers;
   t.finals = buildFinalsBracket(computeDefaultBracketSlots(advancers, null, t.entries), false);
   t.status = "finals";
@@ -3530,6 +3684,7 @@ function correctBracketMatch(t, matchId){
   finals.rounds.forEach(function(r,ri){ r.forEach(function(m,mi){ if(m.id===matchId){ match=m; ri0=ri; mi0=mi; } }); });
   if(!match || match.bye || !match.winner) return;
   if(t.status==="completed"){ reverseFinalize(t); t.status="finals"; }
+  restoreEarlyIfNeeded(t);
   // この対戦と、その結果に依存する後の対戦(勝ち上がり先)の結果をまとめて取り消す
   var ri = ri0, mi = mi0;
   while(ri < finals.rounds.length){
@@ -4333,6 +4488,7 @@ function render(){
     document.getElementById("main").innerHTML = renderGuideScreen();
     return;
   }
+  autoFinalizePrelims();
   var scrollY = (pendingScrollRestore!=null) ? pendingScrollRestore : window.scrollY;
   var scrollX = window.scrollX;
   pendingScrollRestore = null;
@@ -4345,6 +4501,8 @@ function render(){
   var tshScrollers = captureTshScroll();
   var focusInfo = captureFocusInfo();
   renderNav();
+  var navTour = (route.screen==="tournament") ? findTournament(route.id) : null;
+  document.body.classList.toggle("t-head-sticky", tournamentInPlay(navTour));
   var main = document.getElementById("main");
   var html = "";
   if(route.screen==="roster") html = renderRoster();
@@ -4988,7 +5146,7 @@ var GUIDE_STEPS_DEFAULT = [
   {title:"③ エントリー受付", desc:"作成した大会の画面で、出場する選手にチェックを入れて「エントリー」します(参加費受領・抽選番号もここで管理できます)。「📱 スマホ用エントリー・抽選画面を開く」のQRコードを使えば、選手自身にエントリー・抽選をしてもらうこともできます。"},
   {title:"④ 試合形式を選択して大会を開始する", desc:"「①トーナメント戦(予選+決勝)」「②予選リーグ戦+決勝トーナメント」のいずれかと、フォーマット(人数)を選び、「大会を開始する」を押します。出場選手は自動的に組み合わせへ割り当てられます。"},
   {title:"⑤ 予選の対戦結果を入力する", desc:"トーナメント表・ブロック表の対戦カードで勝者を選ぶだけで、クラスに応じたポイントが自動加減算されます。「🤖 AI再配置」で所属が近い選手同士をできるだけ離す組み直しもできます。"},
-  {title:"⑥ 決勝進出者を確定する(必要に応じて予備決勝戦)", desc:"「予選を締めて決勝進出者を確定する」を押すと決勝トーナメントに進みます。①で予選グループを複数に分けている場合、選出人数によっては「予備決勝戦」(1ラウンドの絞り込み試合)を経てから決勝トーナメントに進みます。"},
+  {title:"⑥ 決勝進出者を確定する(必要に応じて予備決勝戦)", desc:"予選が全て終わる(決勝進出人数まで絞り込まれる)と、決勝進出者が自動で確定して決勝トーナメントに進みます。予選の途中でも、決勝トーナメントの欄の「決勝トーナメントを開始する」で、進出が確定した選手から先に決勝を始められます。①で予選グループを複数に分けている場合、選出人数によっては「予備決勝戦」(1ラウンドの絞り込み試合)を経てから決勝トーナメントに進みます。"},
   {title:"⑦ 決勝トーナメントの結果を入力する", desc:"決勝トーナメント表で勝者を選んでいきます。優勝・準優勝が決まると進出・優勝ボーナスなどが自動計算され、大会が「終了」状態になります(このとき、クラウドにバックアップを保存するか確認するポップアップが表示されます)。"},
   {title:"⑧ 大会結果を共有する", desc:"「大会結果共有」で観戦用の大画面表示、「📺 配信用スコアボード」でYouTube Live配信向けのスコアボード、「大会結果を印刷する」で優勝・順位・対戦結果の印刷ができます。"},
   {title:"⑨ バックアップを確認する", desc:"「設定」→「データ管理」タブの「クラウド上のバックアップ」から、いつでも手動でバックアップの保存・一覧確認・過去の状態への復元ができます(大会終了時のポップアップで「はい」を選んだ場合は、この時点で既に保存されています)。"}
@@ -5477,6 +5635,7 @@ function displayEstimateHTML(t){
   return btn+
     '<div class="est-panel" style="margin-top:.6rem;padding:.7rem .8rem;border:1px solid var(--border);border-radius:.5rem;background:var(--surface);max-width:760px">'+
       '<p class="hint" style="margin:0 0 .4rem">現在 '+fmtClock(est.now)+' の進捗を基準にした概算です(使用 '+st.tables+'台・1試合 約'+st.minutes+'分で計算。進捗が進むと自動で更新されます)。</p>'+
+      matchActualsHTML(t)+
       '<div class="table-wrap"><table class="data"><thead><tr><th>区分</th><th>開始の見込み</th><th>終了の見込み</th><th>残り試合数</th></tr></thead><tbody>'+estimateRowsHTML(est)+'</tbody></table></div>'+
       est.notes.map(function(n){ return '<p class="hint" style="margin:.4rem 0 0">'+esc(n)+'</p>'; }).join("")+
       '<p class="hint" style="margin:.4rem 0 0">※概算です。試合の長さ・休憩・遅れで前後します。</p>'+
@@ -6366,27 +6525,24 @@ function renderEntryEditSection(t){
 }
 function renderBlockPrelimTournament(t){
   var STATUS_LABEL = {entryPending:"エントリー受付中", assigning:"組み合わせ待ち", prelim:"予選中", preFinals:"予備決勝戦中", finals:"決勝トーナメント中", completed:"終了"};
-  var header = '<div class="page-head"><div><h1><input type="text" class="tournament-name-input" data-action="update-tournament-name" data-tid="'+t.id+'" value="'+esc(t.name)+'"></h1><p class="sub">'+tournamentFormatLabel(t)+' ・ '+
+  var header = '<div class="page-head t-head"><div><h1><input type="text" class="tournament-name-input" data-action="update-tournament-name" data-tid="'+t.id+'" value="'+esc(t.name)+'"></h1><p class="sub">'+tournamentFormatLabel(t)+' ・ '+
     '<span class="pill '+t.status+'">'+STATUS_LABEL[t.status]+'</span>'+(t.locked?' <span class="pill" style="color:var(--rust-ink);border-color:var(--rust)">🔒 削除ロック中</span>':'')+'</p></div>'+
     '<div style="display:flex;gap:.5rem;flex-wrap:wrap"><a class="btn btn-sm btn-ghost" href="?display=1&id='+t.id+'" target="_blank">大会結果共有</a>'+
     '<a class="btn btn-sm btn-ghost" href="?stream=1&id='+t.id+'" target="_blank">📺 配信用スコアボード</a>'+
     '<button class="btn btn-sm btn-ghost" data-action="toggle-lock-tournament" data-id="'+t.id+'">'+(t.locked?'🔓 ロック解除':'🔒 削除をロック')+'</button>'+
     (t.status!=="assigning"?'<button class="btn btn-sm btn-ghost" data-action="revert-to-assigning" data-tid="'+t.id+'">↩ 組み合わせ待ちに戻す</button>':'')+
+    settingsToggleBtnHTML(t)+
     '<button class="btn btn-sm btn-ghost" data-action="refresh-entries-from-server">🔄 更新</button>'+
     '<button class="btn btn-sm" data-action="nav" data-screen="history">一覧へ戻る</button></div></div>';
-  var out = header + renderProgressNav(t) + formatSwitchHTML(t) + renderEntryEditSection(t) + renderAiReseedCard(t);
+  var out = header + renderProgressNav(t) + renderMatchTimesSection(t) + (tournamentSettingsHidden(t) ? "" : (formatSwitchHTML(t) + renderEntryEditSection(t) + renderAiReseedCard(t)));
   out += t.blocks.map(function(block){ return renderOneBlock(t, block); }).join("");
   if(t.status==="assigning"){
     out += '<div class="card"><p class="hint">各枠の選手を選び終えたら、下のボタンで大会を開始してください。</p>'+
       '<button class="btn btn-primary" data-action="confirm-lineup" data-tid="'+t.id+'">組み合わせを確定して大会を開始する</button></div>';
   }
   if(t.status==="prelim"){
-    var tieBlocks = t.blocks.map(function(block){ return {block:block, tie:blockTieInfo(t, block, t.advancePerBlock)}; }).filter(function(x){ return x.tie; });
+    var tieBlocks = t.blocks.map(function(block){ return {block:block, tie:((block.matches||[]).length && block.matches.every(function(m){ return !!m.winner; })) ? blockTieInfo(t, block, t.advancePerBlock) : null}; }).filter(function(x){ return x.tie; });
     if(tieBlocks.length){
-      var allFilled = tieBlocks.every(function(x){
-        var chosen = (t.tieBreakSelections && t.tieBreakSelections[x.block.index]) || [];
-        return chosen.length === x.tie.needCount;
-      });
       var tieUI = tieBlocks.map(function(x){
         var block=x.block, tie=x.tie;
         var chosen = (t.tieBreakSelections && t.tieBreakSelections[block.index]) || [];
@@ -6398,13 +6554,9 @@ function renderBlockPrelimTournament(t){
         }).join("");
         return '<div style="margin-bottom:1rem"><p class="hint" style="font-weight:600">ブロック'+(block.index+1)+': 同点者から'+tie.needCount+'名を選択(選択中: '+chosen.length+'/'+tie.needCount+')</p>'+rows+'</div>';
       }).join("");
-      out += '<div class="card"><h3>決勝進出者を確定</h3>'+
-        '<p class="hint">勝敗・ポイントが同点の選手がいるため、決勝進出者を手動で選択してください(それ以外の順位は自動で決まります)。</p>'+
-        tieUI+
-        '<button class="btn btn-primary" data-action="finalize-block-prelim" data-tid="'+t.id+'"'+(allFilled?"":" disabled")+'>予選を締めて決勝進出者を確定する</button></div>';
-    } else {
-      out += '<div class="card"><h3>決勝進出者を確定</h3><p class="hint">各ブロック上位'+t.advancePerBlock+'名が決勝トーナメントに進出します'+(usePointsAndSets(t)?('(決勝進出ボーナス '+state.settings.bonuses.finalsAdvance+'pt が付与されます)'):'')+'。</p>'+
-        '<button class="btn btn-primary" data-action="finalize-block-prelim" data-tid="'+t.id+'">予選を締めて決勝進出者を確定する</button></div>';
+      out += '<div class="card"><h3>決勝進出者の選択(同点)</h3>'+
+        '<p class="hint">勝敗・ポイントが同点の選手がいるため、決勝進出者を手動で選択してください(それ以外の順位は自動で決まります)。全て選び終えると、決勝進出者が自動で確定します。</p>'+
+        tieUI+'</div>';
     }
   }
   out += t.finals ? renderFinalsSection(t) : renderFinalsPlaceholder(t);
@@ -6576,8 +6728,8 @@ function renderOneBlock(t, block){
     return roundHeader + matchRow(m, "prelim", 'data-tid="'+t.id+'" data-block="'+block.index+'"', blockMatchLabel(block, mi), t.status==="prelim", t, block.index);
   }).join("");
   return '<div class="card"><h3>ブロック '+(block.index+1)+'</h3>'+
-    renderGroupControls(t, "block", block.index, block.targetSize, "各ブロックの決勝進出人数", t.advancePerBlock, "update-advance-per-block")+
-    renderEditSlots(t, "block", block.index, block.slots, false)+
+    (tournamentSettingsHidden(t) ? "" : (renderGroupControls(t, "block", block.index, block.targetSize, "各ブロックの決勝進出人数", t.advancePerBlock, "update-advance-per-block")+
+    renderEditSlots(t, "block", block.index, block.slots, false)))+
     renderBlockGrid(t, block, {editable:true})+
     '<p class="hint" style="margin-top:.6rem">対戦の順番は、同じ選手が連続で対戦せずに済むよう提案されています。同じラウンド内の対戦は別の台で同時に進行できます。</p>'+
     '<div style="margin-top:.4rem">'+matches+'</div></div>';
@@ -6586,55 +6738,21 @@ function renderOneBlock(t, block){
 // ---------- ① elimination prelim + finals screen ----------
 function renderElimPrelimTournament(t){
   var STATUS_LABEL = {entryPending:"エントリー受付中", assigning:"組み合わせ待ち", prelim:"予選中", preFinals:"予備決勝戦中", finals:"決勝トーナメント中", completed:"終了"};
-  var header = '<div class="page-head"><div><h1><input type="text" class="tournament-name-input" data-action="update-tournament-name" data-tid="'+t.id+'" value="'+esc(t.name)+'"></h1><p class="sub">'+tournamentFormatLabel(t)+' ・ '+
+  var header = '<div class="page-head t-head"><div><h1><input type="text" class="tournament-name-input" data-action="update-tournament-name" data-tid="'+t.id+'" value="'+esc(t.name)+'"></h1><p class="sub">'+tournamentFormatLabel(t)+' ・ '+
     '<span class="pill '+t.status+'">'+STATUS_LABEL[t.status]+'</span>'+(t.locked?' <span class="pill" style="color:var(--rust-ink);border-color:var(--rust)">🔒 削除ロック中</span>':'')+'</p></div>'+
     '<div style="display:flex;gap:.5rem;flex-wrap:wrap"><a class="btn btn-sm btn-ghost" href="?display=1&id='+t.id+'" target="_blank">大会結果共有</a>'+
     '<a class="btn btn-sm btn-ghost" href="?stream=1&id='+t.id+'" target="_blank">📺 配信用スコアボード</a>'+
     '<button class="btn btn-sm btn-ghost" data-action="toggle-lock-tournament" data-id="'+t.id+'">'+(t.locked?'🔓 ロック解除':'🔒 削除をロック')+'</button>'+
     (t.status!=="assigning"?'<button class="btn btn-sm btn-ghost" data-action="revert-to-assigning" data-tid="'+t.id+'">↩ 組み合わせ待ちに戻す</button>':'')+
+    settingsToggleBtnHTML(t)+
     '<button class="btn btn-sm btn-ghost" data-action="refresh-entries-from-server">🔄 更新</button>'+
     '<button class="btn btn-sm" data-action="nav" data-screen="history">一覧へ戻る</button></div></div>';
-  var out = header + renderProgressNav(t) + formatSwitchHTML(t) + renderEntryEditSection(t) + renderAiReseedCard(t) + renderFinalsTargetSizeCard(t);
+  var out = header + renderProgressNav(t) + renderMatchTimesSection(t) + (tournamentSettingsHidden(t) ? "" : (formatSwitchHTML(t) + renderEntryEditSection(t) + renderAiReseedCard(t) + renderFinalsTargetSizeCard(t)));
   var timeColorMap = buildTimeSlotColorMap(t);
   out += t.groups.map(function(g){ return renderOneGroup(t, g, timeColorMap); }).join("");
   if(t.status==="assigning"){
     out += '<div class="card"><p class="hint">各枠の選手を選び終えたら、下のボタンで大会を開始してください。</p>'+
       '<button class="btn btn-primary" data-action="confirm-lineup" data-tid="'+t.id+'">組み合わせを確定して大会を開始する</button></div>';
-  }
-  if(t.status==="prelim"){
-    var canFinalize = t.groups.every(function(g){ return groupReached(t, g); });
-    var finalizeHint;
-    if(t.groups.length>1){
-      var perGroupHint = t.groups.map(function(g, gi){
-        return (hasLoserBracket(t) && t.advancePerGroupWB!=null)
-          ? ('グループ'+(gi+1)+': 勝者側'+g.wbAliveCount+'名・敗者側'+g.lbAliveCount+'名')
-          : ('グループ'+(gi+1)+': 現在'+g.aliveCount+'名');
-      }).join(' / ');
-      if(hasLoserBracket(t) && t.advancePerGroupWB!=null){
-        finalizeHint = canFinalize
-          ? ('各グループの勝者側から上位'+t.advancePerGroupWB+'名・敗者側から上位'+t.advancePerGroupLB+'名(グループ合計最大'+(t.advancePerGroup*t.groups.length)+'名)が選出されます。')
-          : ('各グループとも目安は勝者側'+t.advancePerGroupWB+'名・敗者側'+t.advancePerGroupLB+'名まで絞り込まれた状態です('+perGroupHint+')。まだ絞り込まれていない状態で確定すると、1敗しかしていない選手が選出者から漏れる場合があります。');
-      } else {
-        finalizeHint = canFinalize
-          ? ('各グループの勝ち残り上位'+t.advancePerGroup+'名(グループ合計最大'+(t.advancePerGroup*t.groups.length)+'名)が選出されます。')
-          : ('各グループとも目安は'+t.advancePerGroup+'名まで絞り込まれた状態です('+perGroupHint+')。');
-      }
-    } else {
-      var bonusSuffix = usePointsAndSets(t) ? ('(決勝進出ボーナス '+state.settings.bonuses.finalsAdvance+'pt が付与されます)') : '';
-      var g0 = t.groups[0];
-      if(hasLoserBracket(t) && t.advancePerGroupWB!=null){
-        finalizeHint = canFinalize
-          ? ('勝者側から上位'+t.advancePerGroupWB+'名・敗者側から上位'+t.advancePerGroupLB+'名(合計'+t.advancePerGroup+'名)が決勝トーナメントに進出します'+bonusSuffix+'。')
-          : ('目安は勝者側'+t.advancePerGroupWB+'名・敗者側'+t.advancePerGroupLB+'名まで絞り込まれた状態です(現在: 勝者側'+g0.wbAliveCount+'名・敗者側'+g0.lbAliveCount+'名)。まだ絞り込まれていない状態で確定すると、1敗しかしていない選手が決勝進出者から漏れる場合があります。');
-      } else {
-        finalizeHint = canFinalize
-          ? ('勝ち残り上位'+t.advancePerGroup+'名が決勝トーナメントに進出します'+bonusSuffix+'。')
-          : ('目安は'+t.advancePerGroup+'名まで絞り込まれた状態です(現在: '+g0.aliveCount+'名)。');
-      }
-    }
-    out += '<div class="card"><h3>決勝進出者を確定</h3>'+
-      '<p class="hint">'+finalizeHint+'</p>'+
-      '<button class="btn btn-primary" data-action="finalize-elim-prelim" data-tid="'+t.id+'">予選を締めて決勝進出者を確定する</button></div>';
   }
   if(t.status==="preFinals") out += renderPreFinalsSection(t);
   out += t.finals ? renderFinalsSection(t) : (t.status==="preFinals" ? "" : renderFinalsPlaceholder(t));
@@ -6928,8 +7046,7 @@ function tplFinalsSheetHTML(t, bracket, readOnly){
   var sheet = renderTplSheet(def, {
     tournament:t, interactive:!readOnly, canResolve:(!readOnly && finalsInteractive(t)),
     getMatch:function(no){ return idx[no]; },
-    // 先行編成中(予選の途中)は、決勝(最終ラウンド)の結果入力は予選を確定してから
-    isActive:function(m){ return !(isEarlyFinals(t) && m.round===bracket.totalRounds); },
+    isActive:function(m){ return true; },
     goalOf:function(){ return false; },
     attrsFor:function(){ return 'data-tid="'+t.id+'"'; },
     allowPending:false, actionName:"resolve-bracket",
@@ -6978,7 +7095,7 @@ function renderTplMatchModal(){
     if(t.finals) padBracketRounds(t.finals).forEach(function(r){ r.forEach(function(x){ fno++; if(x.id===tplModal.mid) fm = x; }); });
     if(!fm) return "";
     var fcard = renderBracketFlow([[fm]], function(){ return roundName(fm.round, t.finals.totalRounds); }, {
-      resolvable: finalsInteractive(t) && !fm.preview && !(isEarlyFinals(t) && fm.round===t.finals.totalRounds),
+      resolvable: finalsInteractive(t) && !fm.preview,
       actionName: "resolve-bracket",
       undoActionName: "undo-bracket",
       scoreScope: "bracket",
@@ -7021,8 +7138,8 @@ function renderOneGroup(t, g, timeColorMap){
   var reached = groupReached(t, g);
   if(g.tpl){
     return '<div class="card"><h3>グループ'+(g.index+1)+' ・ '+esc(TPL_DEFS[g.tpl].title)+'</h3>'+
-      renderElimGroupControls(t, g)+
-      renderEditSlots(t, "group", g.index, g.slots, true)+
+      (tournamentSettingsHidden(t) ? "" : (renderElimGroupControls(t, g)+
+      renderEditSlots(t, "group", g.index, g.slots, true)))+
       '<div class="prelim-status-row">'+
       '<span class="hint">現在の勝ち残り: <span class="prelim-alive-pill num" style="color:'+(reached?'var(--win)':'var(--text)')+'">'+g.aliveCount+'</span>名</span>'+
       (reached?'<span class="pill" style="color:var(--win);border-color:var(--win)">進出人数に到達</span>':'')+
@@ -7038,8 +7155,8 @@ function renderOneGroup(t, g, timeColorMap){
   // 各ラウンドの残りの対戦が終わっていなくても、両者が決まった対戦は先に対戦開始・印刷できるようにする
   var wbRoundsForDisplay = buildWbDisplayRounds(g, cappedRounds);
   var wbCardHTML = '<div class="card"><h3>グループ'+(g.index+1)+' ・ 勝者側ブラケット</h3>'+
-    renderElimGroupControls(t, g)+
-    renderEditSlots(t, "group", g.index, g.slots, true)+
+    (tournamentSettingsHidden(t) ? "" : (renderElimGroupControls(t, g)+
+    renderEditSlots(t, "group", g.index, g.slots, true)))+
     '<div class="prelim-status-row">'+
     '<span class="hint">現在の勝ち残り: <span class="prelim-alive-pill num" style="color:'+(reached?'var(--win)':'var(--text)')+'">'+g.aliveCount+'</span>名</span>'+
     (reached?'<span class="pill" style="color:var(--win);border-color:var(--win)">進出人数に到達</span>':'')+
@@ -7130,7 +7247,7 @@ function renderFinalsPlaceholder(t){
     });
     if(projected.length){
       bracket = buildBracket(projected, t.entries);
-      noteExtra = "現在の勝敗数に基づく暫定的な組み合わせです。予選の対戦結果が進むと自動的に更新され、「予選を締めて決勝進出者を確定する」を押すと正式に決定します。";
+      noteExtra = "現在の勝敗数に基づく暫定的な組み合わせです。予選の対戦結果が進むと自動的に更新され、全ブロックの予選が終わると正式に決定します。";
     }
   } else {
     count = Math.max(2, (t.groups||[]).length * (t.advancePerGroup||1));
@@ -7139,7 +7256,7 @@ function renderFinalsPlaceholder(t){
     if(knownIds.length){
       var size2 = 1; while(size2<count) size2*=2;
       bracket = buildProjectedFinalsBracket(computeDefaultBracketSlots(knownIds, size2, t.entries));
-      noteExtra = "判明している対戦結果に基づき、既に進出が決まっている選手だけを先に配置した暫定的な組み合わせです。予選の対戦結果が進むと自動的に更新され、「予選を締めて決勝進出者を確定する」を押すと正式に決定します。";
+      noteExtra = "判明している対戦結果に基づき、既に進出が決まっている選手だけを先に配置した暫定的な組み合わせです。予選の対戦結果が進むと自動的に更新され、全グループが進出人数まで絞り込まれると正式に決定します。";
     }
   }
   if(!bracket){
@@ -7148,7 +7265,7 @@ function renderFinalsPlaceholder(t){
   }
   return '<div class="card"><h3>決勝トーナメント</h3>'+
     '<p class="hint">予選が確定すると、ここに実際の決勝トーナメントの組み合わせが表示されます(現在の設定では'+count+'名が進出予定)。'+(noteExtra?(' '+noteExtra):'')+'</p>'+
-    (t.status==="prelim" ? '<p class="hint" style="margin:.2rem 0 .5rem"><button class="btn btn-sm btn-primary" type="button" data-action="start-early-finals" data-tid="'+t.id+'">予選の途中から決勝トーナメントを先に編成する</button> 決勝の枠へ、予選で進出が確定した選手を選んで入れ、予選の途中でも決勝の試合を開始・結果入力できます。</p>' : '')+
+    (t.status==="prelim" ? '<p class="hint" style="margin:.2rem 0 .5rem"><button class="btn btn-sm btn-primary" type="button" data-action="start-early-finals" data-tid="'+t.id+'">決勝トーナメントを開始する</button> 予選の途中でも、進出が確定した選手を決勝の枠に入れて、決勝の試合を開始・結果入力できます(予選が全て終わると、残りの進出者が空き枠へ自動で入ります)。</p>' : '')+
     tplFinalsSheetHTML(t, bracket, true)+
   '</div>';
 }
@@ -7162,9 +7279,9 @@ function renderFinalsSection(t){
     '<h3 style="margin:0">決勝トーナメント</h3>'+redrawBtn+
     '</div>'+
     (isEarlyFinals(t) ?
-      '<p class="hint" style="margin:.4rem 0">予選の途中から先に決勝トーナメントを編成しています。決勝の枠へ、進出が確定した選手だけを選んで入れ、1回戦の試合を開始・結果入力できます(予選の取消などで進出が確定でなくなった選手は枠から外れます。決勝の最終ラウンドの結果入力は、予選を確定して決勝が始まってから)。「予選を締めて決勝進出者を確定する」を押すと、先に入れた選手と結果はそのまま残り、空いている枠へ残りの進出者が入ります。'+
+      '<p class="hint" style="margin:.4rem 0">予選の途中から先に決勝トーナメントを編成しています。決勝の枠へ、進出が確定した選手だけを選んで入れ、1回戦の試合を開始・結果入力できます(予選の取消などで進出が確定でなくなった選手は枠から外れます)。予選が全て終わると、先に入れた選手と結果はそのまま残り、空いている枠へ残りの進出者が自動で入ります。決勝まで決まった時点で大会は終了します(残りの予選は行いません)。'+
       ' <button class="btn btn-sm btn-ghost" type="button" data-action="cancel-early-finals" data-tid="'+t.id+'">先行編成を取り消す</button></p>' : "")+
-    (finalsInteractive(t) ? renderFinalsEditSlots(t) : "")+
+    (finalsInteractive(t) && !tournamentSettingsHidden(t) ? renderFinalsEditSlots(t) : "")+
     tplFinalsSheetHTML(t, t.finals, false)+
   '</div>';
   if(t.status==="completed"){
@@ -7560,8 +7677,11 @@ document.addEventListener("click", function(e){
     var selJ = null;
     if(scopeJ==="elim"){
       selJ = '.bflow-side[data-mid="'+midJ+'"][data-side="'+t.getAttribute("data-side")+'"][data-group="'+t.getAttribute("data-group")+'"]';
-    } else if(scopeJ==="preFinals" || scopeJ==="bracket"){
-      selJ = '[data-mid="'+midJ+'"]';
+    } else if(scopeJ==="bracket"){
+      // 決勝トーナメント: 表の試合番号(.tsh-no)・選手枠(.tsh-box)・対戦カードの順に探す(予選の対戦と試合IDが重なるため、決勝のものに限定する)
+      selJ = '.tsh-no[data-scope="bracket"][data-mid="'+midJ+'"], .tsh-box[data-action="resolve-bracket"][data-mid="'+midJ+'"], .bflow-side[data-action="resolve-bracket"][data-mid="'+midJ+'"], [data-action="resolve-bracket"][data-mid="'+midJ+'"]';
+    } else if(scopeJ==="preFinals"){
+      selJ = '[data-action="resolve-prefinals-match"][data-mid="'+midJ+'"], [data-mid="'+midJ+'"]';
     } else if(scopeJ==="block"){
       selJ = '.match-row [data-mid="'+midJ+'"]';
     }
@@ -7569,7 +7689,7 @@ document.addEventListener("click", function(e){
     if(!elJ && scopeJ==="elim") elJ = document.querySelector('.tsh-no[data-mid="'+midJ+'"][data-side="'+t.getAttribute("data-side")+'"][data-group="'+t.getAttribute("data-group")+'"]');
     var targetJ = elJ ? (elJ.closest(".bflow-match") || elJ.closest(".match-row") || elJ) : null;
     if(targetJ){
-      targetJ.scrollIntoView({behavior:"smooth", block:"center"});
+      targetJ.scrollIntoView({behavior:"smooth", block:"center", inline:"center"});
       targetJ.classList.add("jump-highlight");
       setTimeout(function(){ targetJ.classList.remove("jump-highlight"); }, 2000);
     }
@@ -7831,6 +7951,11 @@ document.addEventListener("click", function(e){
   else if(action==="refresh-entries-from-server"){
     syncFromServer(render);
   }
+  else if(action==="toggle-t-settings"){
+    var tidTS2 = t.getAttribute("data-tid");
+    settingsOpenByTid[tidTS2] = !settingsOpenByTid[tidTS2];
+    render();
+  }
   else if(action==="cs-rule-add" || action==="cs-rule-del"){
     var csH3 = customSetsHolderOf(t); if(!csH3) return;
     var cs3 = ensureCustomSets(csH3);
@@ -7911,17 +8036,6 @@ document.addEventListener("click", function(e){
   else if(action==="close-affiliation-check"){
     delete affiliationCheckByTid[t.getAttribute("data-tid")];
     render();
-  }
-  else if(action==="finalize-block-prelim"){
-    var tid = t.getAttribute("data-tid"); var tour = findTournament(tid);
-    if(tour){ finalizeBlockPrelim(tour); saveState(); render(); }
-  }
-  else if(action==="finalize-elim-prelim"){
-    var tid0 = t.getAttribute("data-tid"); var tour0 = findTournament(tid0);
-    if(!tour0) return;
-    var allReached0 = tour0.groups.every(function(g){ return groupReached(tour0, g); });
-    if(!allReached0 && !confirm("まだ目安の人数まで絞り込まれていません。1敗しかしていない選手が決勝進出者から漏れる場合があります。このまま決勝進出者を確定しますか?")) return;
-    finalizeElimPrelim(tour0); saveState(); render();
   }
   else if(action==="resolve-prefinals-match"){
     var tidPF = t.getAttribute("data-tid"); var tourPF = findTournament(tidPF);
@@ -8020,17 +8134,16 @@ document.addEventListener("click", function(e){
     var mid3=t.getAttribute("data-mid"); var winner2=t.getAttribute("data-winner");
     var match=null;
     tour4.finals.rounds.forEach(function(r){ r.forEach(function(mm){ if(mm.id===mid3) match=mm; }); });
-    if(match && isEarlyFinals(tour4) && match.round===tour4.finals.totalRounds){
-      alert("決勝(最終ラウンド)の結果は、予選を確定して決勝トーナメントが始まってから入力できます。");
-      return;
-    }
     if(match && !match.winner && !match.bye){
       resolveMatch(match, winner2, tour4);
       var loserId = winner2===match.a ? match.b : match.a;
       tour4.finals.eliminatedRound[loserId] = match.round;
       finalsSync(tour4);
       var justCompleted = match.round===tour4.finals.totalRounds;
-      if(justCompleted) finalizeTournamentResult(tour4);
+      if(justCompleted){
+        if(isEarlyFinals(tour4)) completeEarlyFinals(tour4);
+        finalizeTournamentResult(tour4);
+      }
       saveState(); render();
       if(justCompleted && confirm("大会が終了しました。今すぐクラウドにバックアップを保存しますか?")){
         createCloudBackup();
@@ -8043,7 +8156,7 @@ document.addEventListener("click", function(e){
     var mid4=t.getAttribute("data-mid");
     if(mid4==="final-reopen"){
       if(confirm("大会結果(優勝・準優勝・ボーナス)を取り消してやり直しますか?")){
-        reverseFinalize(tour5); tour5.status="finals"; saveState(); render();
+        reverseFinalize(tour5); tour5.status="finals"; restoreEarlyIfNeeded(tour5); finalsSync(tour5); saveState(); render();
       }
       return;
     }
@@ -8429,6 +8542,18 @@ document.addEventListener("change", function(e){
     var dscVal = Math.max(1, Math.round(Number(t.value))||1);
     if(!state.settings[dscKey]) state.settings[dscKey] = JSON.parse(JSON.stringify(dscDef));
     state.settings[dscKey][dscCls] = dscVal;
+    saveState(); render();
+  }
+  else if(action==="edit-match-time"){
+    var tourETM = findTournament(t.getAttribute("data-tid")); if(!tourETM) return;
+    var recETM = matchTimeRecords(tourETM)[Number(t.getAttribute("data-idx"))]; if(!recETM) return;
+    var mETM = recETM.m, keyETM = t.getAttribute("data-which")==="end" ? "finishedAt" : "startedAt";
+    if(!t.value){ mETM[keyETM] = null; }
+    else {
+      var hmETM = t.value.split(":"), dETM = new Date(mETM[keyETM] || mETM.startedAt || mETM.finishedAt || Date.now());
+      dETM.setHours(Number(hmETM[0])||0, Number(hmETM[1])||0, 0, 0);
+      mETM[keyETM] = dETM.getTime();
+    }
     saveState(); render();
   }
   else if(action==="cs-set" || action==="cs-down"){
