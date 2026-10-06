@@ -240,6 +240,8 @@ details[open] > summary:before{content:"▾ ";}
 /* Excel(表)と同じ見た目のトーナメント表 */
 .tsh-scroll{overflow:auto; max-width:100%; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); padding:.2rem; -webkit-overflow-scrolling:touch;}
 .tsh{position:relative; font-size:12px; color:var(--text);}
+body{cursor:grab;}
+body.dragging, body.dragging *{cursor:grabbing !important; user-select:none !important;}
 .tsh-ln{position:absolute; background:var(--text); display:block;}
 .tsh-box{position:absolute; box-sizing:border-box; border:1.5px solid var(--text); background:var(--surface); display:flex; align-items:center; overflow:hidden; white-space:nowrap; line-height:1.1; padding:0 5px; font-size:12px;}
 .tsh-txt{display:flex; flex-direction:column; justify-content:center; flex:1; min-width:0; overflow:hidden; line-height:1.2;}
@@ -6854,6 +6856,59 @@ function tshApplyTextScale(zoomEl, z){
   ts.vars.split(";").forEach(function(kv){ var i = kv.indexOf(":"); zoomEl.style.setProperty(kv.slice(0,i), kv.slice(i+1)); });
   zoomEl.classList.toggle("tsh-compact", ts.compact);
 }
+// 画面のどこでも、マウスのドラッグでそのまま動かして見たい所へスクロールできるようにする(メニュー・設定画面・表・ポップアップなど。スマホ・タブレットは指でのスワイプ・ピンチ)。
+// 横にも縦にもスクロールできる一番近い領域を動かし、なければページ全体を動かす。
+// ボタン・入力欄・リンクなど操作できる部品の上から始めたドラッグは、スクロールせずそのまま操作として扱う(トーナメント表の選手枠・試合番号の上からは、ドラッグでスクロールできる)。
+// 少しでも動かした(ドラッグした)あとのクリックは、ボタンなどの操作として扱わない
+(function(){
+  var drag = null, justDragged = false;
+  var INTERACTIVE = "input,select,textarea,button,a,label,summary,option,[contenteditable],[data-action],.tsh-edit";
+  function canScroll(el, axis){
+    var cs = getComputedStyle(el), ov = axis==="x" ? cs.overflowX : cs.overflowY;
+    if(ov!=="auto" && ov!=="scroll") return false;
+    return axis==="x" ? el.scrollWidth > el.clientWidth + 1 : el.scrollHeight > el.clientHeight + 1;
+  }
+  function scrollerFor(start, axis){
+    for(var el = start; el && el!==document.body && el!==document.documentElement; el = el.parentElement){
+      if(canScroll(el, axis)) return el;
+    }
+    return null;   // ページ全体
+  }
+  document.addEventListener("mousedown", function(e){
+    if(e.button!==0 || !e.target.closest) return;
+    var inSheet = !!e.target.closest(".tsh-scroll");
+    if(e.target.closest(INTERACTIVE) && !(inSheet && !e.target.closest("input,select,textarea,a,summary,.tsh-edit"))) return;
+    drag = {x:e.clientX, y:e.clientY, moved:false, xs:scrollerFor(e.target, "x"), ys:scrollerFor(e.target, "y")};
+  }, false);
+  document.addEventListener("mousemove", function(e){
+    if(!drag) return;
+    if(e.buttons!==1){ endDrag(); return; }
+    var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if(!drag.moved){
+      if(Math.abs(dx)<5 && Math.abs(dy)<5) return;
+      drag.moved = true;
+      document.body.classList.add("dragging");
+    }
+    drag.x = e.clientX; drag.y = e.clientY;
+    if(drag.xs) drag.xs.scrollLeft -= dx; else window.scrollBy(-dx, 0);
+    if(drag.ys) drag.ys.scrollTop -= dy; else window.scrollBy(0, -dy);
+    e.preventDefault();
+  }, false);
+  function endDrag(){
+    if(!drag) return;
+    if(drag.moved){
+      justDragged = true;
+      setTimeout(function(){ justDragged = false; }, 0);
+      document.body.classList.remove("dragging");
+    }
+    drag = null;
+  }
+  document.addEventListener("mouseup", endDrag, false);
+  window.addEventListener("blur", endDrag, false);
+  document.addEventListener("click", function(e){
+    if(justDragged){ e.stopPropagation(); e.preventDefault(); justDragged = false; }
+  }, true);
+})();
 // 倍率を数字で指定している表(大会の編集画面の初期表示など)も、ブラウザの拡大・縮小に合わせて文字の大きさを調整する
 function applyTshFixedZoomText(){
   var bz = tshBrowserZoom();
