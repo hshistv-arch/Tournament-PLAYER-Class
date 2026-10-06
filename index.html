@@ -1210,12 +1210,17 @@ function saveState(){
   scheduleServerSync();
 }
 function saveLocalOnly(){
+  state.specVersion = APP_SPEC_VERSION;
   try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
   catch(e){ console.warn("state save failed", e); }
 }
 
 // ---------- cross-device sync (shared cloud copy, no login) ----------
 var SYNC_URL = "/api/state";
+// データ仕様のバージョン。クラウドのデータがこのアプリより新しい仕様で保存されているときは、確認なしに上書きしない
+var APP_SPEC_VERSION = 2;
+var specBlocked = false;      // クラウドの仕様が新しいため、同期(取得・保存)を止めている
+var specPrompted = false;     // 新しい仕様の確認ダイアログは、1回の起動で1度だけ出す
 var syncTimer = null;
 var syncInFlight = false;
 var syncDirty = false;
@@ -1226,7 +1231,8 @@ function setSyncStatus(status){
     syncing: "🔄 同期中…",
     ok: "☁ クラウドに同期済み",
     error: "⚠ 同期エラー(この端末にのみ保存されています)",
-    offline: "📴 オフライン(この端末にのみ保存されています)"
+    offline: "📴 オフライン(この端末にのみ保存されています)",
+    specnew: "⚠ クラウドの仕様が新しいため同期していません(ページを再読み込みしてください)"
   }[status] || "";
   el.textContent = label;
   el.className = "nav-foot sync-" + status;
@@ -1237,6 +1243,7 @@ function scheduleServerSync(){
   syncTimer = setTimeout(pushStateToServer, 600);
 }
 function pushStateToServer(){
+  if(specBlocked){ setSyncStatus("specnew"); return; }
   if(syncInFlight){ syncTimer = setTimeout(pushStateToServer, 600); return; }
   syncDirty = false;
   syncInFlight = true;
@@ -1267,6 +1274,21 @@ function syncFromServer(cb){
     if(!r.ok) throw new Error("HTTP "+r.status);
     return r.json();
   }).then(function(serverState){
+    if(serverState && serverState.players && (serverState.specVersion||1) > APP_SPEC_VERSION){
+      // クラウドのデータが、このアプリより新しい仕様で保存されている: 確認するまで取得も保存もしない(古いアプリが新しいデータを上書きしないため)
+      specBlocked = true;
+      setSyncStatus("specnew");
+      if(!specPrompted){
+        specPrompted = true;
+        if(confirm("クラウド上のデータは、このアプリより新しい仕様で保存されています。\n最新のアプリに更新して同期しますか?\n\n[OK] ページを再読み込みして最新のアプリで同期する\n[キャンセル] 同期せず、この端末のデータもクラウドに保存しない")){
+          location.reload();
+          return;
+        }
+      }
+      if(cb) cb();
+      return;
+    }
+    specBlocked = false;
     if(serverState && serverState.players){
       state = applyRosterUpdate(migrateFinalsEager(migrateSetTableD(migrateAddBeClass(migrateBestBorC(serverState)))));
       state.entries = state.entries || {};
