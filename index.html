@@ -245,6 +245,8 @@ details[open] > summary:before{content:"▾ ";}
 .tsh-txt{display:flex; flex-direction:column; justify-content:center; flex:1; min-width:0; overflow:hidden; line-height:1.2;}
 .tsh-txt .tsh-name{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:none; font-size:var(--nfs,12px);}
 .tsh-score{flex:none; min-width:18px; margin-left:3px; padding:0 4px; border-radius:9px; background:var(--surface-2,#efebdf); color:var(--text); font-size:var(--scfs,12px); font-weight:700; line-height:1.25; text-align:center; font-family:var(--font-num);}
+.tsh-score.walk{font-size:9px; font-weight:400; color:var(--muted);}
+.walkover-tag{font-size:.72rem; color:var(--muted); margin:0 .2rem; white-space:nowrap;}
 .tsh-score.win{background:color-mix(in srgb, var(--win,#2e7d4f) 30%, var(--surface)); color:var(--text);}
 .tsh-slot .tsh-score{margin-right:18px;}
 .tsh-slot[data-numat="right"] .tsh-score{margin-right:0;}
@@ -274,6 +276,8 @@ details[open] > summary:before{content:"▾ ";}
 .tsh-box.win{background:color-mix(in srgb, var(--win,#2e7d4f) 20%, var(--surface)); font-weight:700;}
 .tsh-box.lose{color:var(--muted); background:var(--surface);}
 .tsh-box.bye{color:var(--muted);}
+.tsh-box.tsh-slot.empty{background:linear-gradient(to top right, transparent calc(50% - 1px), var(--text) calc(50% - 1px), var(--text) calc(50% + 1px), transparent calc(50% + 1px)), var(--surface);}
+.tsh-box.tsh-slot.empty .tsh-sno{background:transparent;}
 .tsh-box.off{opacity:.55;}
 .tsh-box.goal{background:color-mix(in srgb, #f0c040 28%, var(--surface)); box-shadow:inset 0 0 0 2px #e0b030;}
 .tsh-box.goal.win{background:color-mix(in srgb, #f0c040 40%, var(--surface));}
@@ -1583,6 +1587,15 @@ function setTableSummaryFor(t, key){
   return usePointsAndSets(t) ? setTableSummary(key) : manualSetTableSummary(key);
 }
 // m(対戦)を渡すと、終了済みの対戦は終了時点のセット数表示(m.fmtSnap)を使うので、後から設定を変えても変わらない
+// 勝者が決まっているのに、負けた側のスコアが入力されていない対戦は「不戦敗」と表示する
+function walkoverTagHTML(m, side){
+  if(!m || !m.winner || m.bye || !m.a || !m.b) return "";
+  var id = (side==="a") ? m.a : m.b;
+  if(id===m.winner) return "";
+  var sc = m.score || {};
+  if(sc[side]!=null) return "";
+  return '<span class="walkover-tag" title="スコアが入力されていないため不戦敗として表示しています">不戦敗</span>';
+}
 function matchFormatFor(playerId, opponentId, useDownSet, t, m){
   if(m && m.winner && m.fmtSnap && m.fmtSnap[playerId]){
     var snapped = m.fmtSnap[playerId][useDownSet ? "d" : "n"];
@@ -5398,7 +5411,7 @@ function displayMatchRowHTML(match, matchNo, t){
     var isWinner = match.winner===id;
     var score = match.score || {a:null,b:null};
     var val = score[sideKey];
-    var scoreHTML = isWinner ? '<span class="score-num num win-mark" style="margin-left:.3rem">(W)</span>' : (val!=null ? '<span class="score-num num" style="margin-left:.3rem">('+val+')</span>' : "");
+    var scoreHTML = isWinner ? '<span class="score-num num win-mark" style="margin-left:.3rem">(W)</span>' : (val!=null ? '<span class="score-num num" style="margin-left:.3rem">('+val+')</span>' : walkoverTagHTML(match, sideKey));
     var rowBadge = classBadgeOrEmpty(t, id);
     return '<span'+(isWinner?' style="font-weight:700"':'')+'>'+esc(playerNameWithAffiliation(t, id))+(rowBadge?(' '+rowBadge):'')+(isWinner?' 🏆':'')+'</span>'+matchFormatHintHTML(id, oppId, false, t, match)+scoreHTML+(usePointsAndSets(t)?matchDeltaHTML(match, id):'');
   }
@@ -5940,7 +5953,7 @@ function renderGridCellModal(){
     var winBtn = '<button class="btn btn-sm'+(isWinner?' btn-felt':'')+'" '+(resolved?'disabled':'')+' data-action="resolve-match" data-scope="prelim" data-mid="'+m.id+'" data-winner="'+id+'" '+extraAttrs+'>'+(isWinner?'🏆 勝者':'この選手の勝ち')+'</button>';
     var scoreHTML = showPS ? (isWinner
       ? '<input type="text" inputmode="numeric" pattern="[0-9]*" class="num score-input-inline win-mark" data-action="update-score" data-scope="prelim" data-which="'+side+'" data-mid="'+m.id+'" '+extraAttrs+' value="W">'
-      : '<input type="number" class="num score-input-inline" min="0" data-action="update-score" data-scope="prelim" data-which="'+side+'" data-mid="'+m.id+'" '+extraAttrs+' value="'+(val==null?"":val)+'" placeholder="-">') : '';
+      : walkoverTagHTML(m, side)+'<input type="number" class="num score-input-inline" min="0" data-action="update-score" data-scope="prelim" data-which="'+side+'" data-mid="'+m.id+'" '+extraAttrs+' value="'+(val==null?"":val)+'" placeholder="-">') : '';
     return '<div class="form-row" style="align-items:center;justify-content:space-between;gap:.5rem;margin-bottom:.5rem">'+
       '<span>'+esc(playerNameWithAffiliation(t, id))+'</span>'+badgeHTML+winBtn+scoreHTML+
     '</div>';
@@ -5963,10 +5976,10 @@ function preFinalsMatchRowHTML(t, m, matchNo, readOnly){
     var score = m.score || {a:null,b:null};
     var val = score[side];
     var scoreHTML = readOnly
-      ? (isWinner ? '<span class="score-num num win-mark" style="margin:0 .2rem">W</span>' : (val!=null ? '<span class="score-num num" style="margin:0 .2rem">'+val+'</span>' : ""))
+      ? (isWinner ? '<span class="score-num num win-mark" style="margin:0 .2rem">W</span>' : (val!=null ? '<span class="score-num num" style="margin:0 .2rem">'+val+'</span>' : walkoverTagHTML(m, side)))
       : (isWinner ?
         '<input type="text" inputmode="numeric" pattern="[0-9]*" class="num score-input-inline win-mark" data-action="update-score" data-scope="preFinals" data-which="'+side+'" data-mid="'+m.id+'" data-tid="'+t.id+'" value="W">' :
-        '<input type="number" class="num score-input-inline" min="0" data-action="update-score" data-scope="preFinals" data-which="'+side+'" data-mid="'+m.id+'" data-tid="'+t.id+'" value="'+(val==null?"":val)+'" placeholder="-">');
+        walkoverTagHTML(m, side)+'<input type="number" class="num score-input-inline" min="0" data-action="update-score" data-scope="preFinals" data-which="'+side+'" data-mid="'+m.id+'" data-tid="'+t.id+'" value="'+(val==null?"":val)+'" placeholder="-">');
     var clickable = !resolved && !readOnly;
     return '<button class="btn btn-sm'+(isWinner?' btn-felt':'')+'" '+
       (clickable?'':'disabled')+' data-action="resolve-prefinals-match" data-mid="'+m.id+'" data-winner="'+id+'" data-tid="'+t.id+'">'+
@@ -6001,7 +6014,7 @@ function matchRow(match, tprefix, extraActionData, matchNo, resolvable, t, block
       var val = score[side];
       scoreHTML = isWinner ?
         '<input type="text" inputmode="numeric" pattern="[0-9]*" class="num score-input-inline win-mark" data-action="update-score" data-scope="block" data-which="'+side+'" data-mid="'+match.id+'" '+actionData+' value="W">' :
-        '<input type="number" class="num score-input-inline" min="0" data-action="update-score" data-scope="block" data-which="'+side+'" data-mid="'+match.id+'" '+actionData+' value="'+(val==null?"":val)+'" placeholder="-">';
+        walkoverTagHTML(match, side)+'<input type="number" class="num score-input-inline" min="0" data-action="update-score" data-scope="block" data-which="'+side+'" data-mid="'+match.id+'" '+actionData+' value="'+(val==null?"":val)+'" placeholder="-">';
     }
     var clickable = !resolved && resolvable;
     return '<button class="btn btn-sm'+(isWinner?' btn-felt':'')+'" '+
@@ -6035,13 +6048,27 @@ function rosterOptionsHTML(t, currentValue, allowBye, eligibleIds, usedElsewhere
                               : ('<option value=""'+(currentValue?"":" selected")+'>(未定)</option>');
   var pool = (eligibleIds && eligibleIds.length) ? state.players.filter(function(p){ return eligibleIds.indexOf(p.id)>=0; }) : state.players.slice();
   var players = pool.sort(function(a,b){ return a.name.localeCompare(b.name,"ja"); });
+  // 大会の開始後は、まだエントリーしていない選手も「途中参加」として枠に追加できる(選ぶと、エントリー済みの選手に加わる)
+  var lateHTML = "";
+  if(eligibleIds && eligibleIds===t.eligiblePlayerIds && t.status!=="assigning" && t.status!=="entryPending"){
+    var usePts = usePointsAndSets(t);
+    var late = state.players.filter(function(p){
+      return eligibleIds.indexOf(p.id)<0 && !(usePts && p.isGuest);
+    }).sort(function(a,b){ return a.name.localeCompare(b.name,"ja"); });
+    if(late.length){
+      lateHTML = '<optgroup label="途中参加(未エントリーの選手を追加)">'+late.map(function(p){
+        var clsLabel = p.isGuest ? (p.manualEntryClass || "-") : classOf(p.points);
+        return '<option value="'+p.id+'">'+esc(playerNameWithAffiliation(t, p.id))+' ('+clsLabel+')</option>';
+      }).join("")+'</optgroup>';
+    }
+  }
   var opts = placeholder + players.map(function(p){
     var isUsed = usedElsewhere && usedElsewhere.indexOf(p.id)>=0;
     var isActiveElsewhere = !isUsed && activeElsewhereSet && activeElsewhereSet[p.id] && p.id!==currentValue;
     var clsLabel = p.isGuest ? (p.manualEntryClass || "-") : classOf(p.points);
     var label = esc(playerNameWithAffiliation(t, p.id))+' ('+clsLabel+')'+(isUsed?' ✓選択済み':'')+(isActiveElsewhere?' (他大会で対戦中)':'');
     return '<option value="'+p.id+'"'+(currentValue===p.id?" selected":"")+((isUsed||isActiveElsewhere)?' style="background:#ddd;color:#777;"':'')+'>'+label+'</option>';
-  }).join("");
+  }).join("") + lateHTML;
   return opts;
 }
 function refreshEligibleFromEntries(t){
@@ -6250,11 +6277,11 @@ function bflowSideHTML(m, playerId, opts, slotNo, side){
     var which = (playerId===m.a) ? "a" : "b";
     var val = score[which];
     if(opts.hideScoreInput || m.preview || m.wbFuture){
-      scoreHTML = isWinner ? '<span class="score-num num win-mark" style="margin:0 .2rem">W</span>' : (val!=null ? '<span class="score-num num" style="margin:0 .2rem">'+val+'</span>' : "");
+      scoreHTML = isWinner ? '<span class="score-num num win-mark" style="margin:0 .2rem">W</span>' : (val!=null ? '<span class="score-num num" style="margin:0 .2rem">'+val+'</span>' : walkoverTagHTML(m, which));
     } else {
       scoreHTML = isWinner ?
         '<input type="text" inputmode="numeric" pattern="[0-9]*" class="num score-input-inline win-mark" data-action="update-score" data-scope="'+opts.scoreScope+'" data-which="'+which+'" data-mid="'+m.id+'" '+opts.extraAttrs+' value="W">' :
-        '<input type="number" class="num score-input-inline" min="0" data-action="update-score" data-scope="'+opts.scoreScope+'" data-which="'+which+'" data-mid="'+m.id+'" '+opts.extraAttrs+' value="'+(val==null?"":val)+'" placeholder="-">';
+        walkoverTagHTML(m, which)+'<input type="number" class="num score-input-inline" min="0" data-action="update-score" data-scope="'+opts.scoreScope+'" data-which="'+which+'" data-mid="'+m.id+'" '+opts.extraAttrs+' value="'+(val==null?"":val)+'" placeholder="-">';
     }
   }
   return '<div class="'+cls+'" '+attrs+'>'+slotNoHTML+'<span class="pname">'+esc(playerNameWithAffiliation(opts.tournament, playerId))+'</span>'+badgeHTML+matchFormatOrPairHTML(playerId, oppId, opts.useDownSet, opts.tournament, !opts.hideScoreInput, m)+scoreHTML+(showPS?('<span class="pts num">'+entryPointsOf(opts.tournament, playerId)+'</span>'+matchDeltaHTML(m, playerId)):'')+'</div>';
@@ -6364,11 +6391,11 @@ function simpleSideHTML(m, playerId, opts, side){
     var which = (playerId===m.a) ? "a" : "b";
     var val = score[which];
     if(opts.hideScoreInput || m.preview || m.wbFuture){
-      scoreHTML = isWinner ? '<span class="score-num num win-mark" style="margin:0 .2rem">W</span>' : (val!=null ? '<span class="score-num num" style="margin:0 .2rem">'+val+'</span>' : "");
+      scoreHTML = isWinner ? '<span class="score-num num win-mark" style="margin:0 .2rem">W</span>' : (val!=null ? '<span class="score-num num" style="margin:0 .2rem">'+val+'</span>' : walkoverTagHTML(m, which));
     } else {
       scoreHTML = isWinner ?
         '<input type="text" inputmode="numeric" pattern="[0-9]*" class="num score-input-inline win-mark" data-action="update-score" data-scope="'+opts.scoreScope+'" data-which="'+which+'" data-mid="'+m.id+'" '+opts.extraAttrs+' value="W">' :
-        '<input type="number" class="num score-input-inline" min="0" data-action="update-score" data-scope="'+opts.scoreScope+'" data-which="'+which+'" data-mid="'+m.id+'" '+opts.extraAttrs+' value="'+(val==null?"":val)+'" placeholder="-">';
+        walkoverTagHTML(m, which)+'<input type="number" class="num score-input-inline" min="0" data-action="update-score" data-scope="'+opts.scoreScope+'" data-which="'+which+'" data-mid="'+m.id+'" '+opts.extraAttrs+' value="'+(val==null?"":val)+'" placeholder="-">';
     }
   }
   return '<div class="'+cls+'" '+attrs+'>'+esc(playerNameWithAffiliation(opts.tournament, playerId))+badgeHTML+matchFormatOrPairHTML(playerId, oppId2, opts.useDownSet, opts.tournament, !opts.hideScoreInput, m)+scoreHTML+(showPS?('<span class="pts num">'+entryPointsOf(opts.tournament, playerId)+'</span>'+matchDeltaHTML(m, playerId)):'')+'</div>';
@@ -6981,6 +7008,8 @@ function renderTplSheet(def, o){
     } else if(!m && occ && it.role==="champ"){ cls += " win"; }
     if(it.role==="champ" && occ) cls += " win";
     if(o.goalOf(it)) cls += " goal";
+    // エントリーのない(選手がいない)枠には斜線を引く。予選の途中から始めた決勝の空き枠は、これから決まる枠なので対象外
+    if(it.role==="slot" && !occ && !(t && isEarlyFinals(t) && def.key && String(def.key).indexOf("finals")===0)) cls += " empty";
     var inner = "";
     if(it.role==="slot") inner += '<span class="tsh-sno">'+it.slot+'</span>';
     if(it.role==="champ" && !occ) inner += '<span class="tsh-lbl">優勝</span>';
@@ -6989,8 +7018,8 @@ function renderTplSheet(def, o){
       // この対戦のスコア(入力済みの数字。勝者でスコア未入力の場合は「W」)を選手名の右に表示
       if(m && it.cons && !m.bye && m.a && m.b){
         var sc = m.score || {a:null, b:null}, sv = sc[it.cons.side], isWin = !!m.winner && m.winner===occ;
-        var stxt = (sv!=null) ? sv : (isWin ? "W" : null);
-        if(stxt!=null) inner += '<span class="tsh-score'+(isWin?' win':'')+'" title="スコア">'+esc(stxt)+'</span>';
+        var stxt = (sv!=null) ? sv : (isWin ? "W" : (m.winner ? "不戦敗" : null));
+        if(stxt!=null) inner += '<span class="tsh-score'+(isWin?' win':'')+(stxt==="不戦敗"?' walk':'')+'" title="スコア">'+esc(stxt)+'</span>';
       }
     }
     else if(it.lsrc!=null) inner += '<span class="tsh-lbl">'+it.lsrc+'-L</span>';
@@ -8683,6 +8712,12 @@ document.addEventListener("change", function(e){
     if(!toura) return;
     var idx=Number(t.getAttribute("data-idx"));
     var slotIdx=Number(t.getAttribute("data-slot"));
+    // 途中参加: まだエントリーしていない選手が選ばれたら、この大会のエントリー済みの選手に加える
+    if(t.value && toura.eligiblePlayerIds && toura.eligiblePlayerIds.indexOf(t.value)<0){
+      toura.entries = toura.entries || {};
+      toura.entries[t.value] = {entered:true, feePaid:false};
+      toura.eligiblePlayerIds.push(t.value);
+    }
     var needsWarning = groupOrBlockHasProgress(toura, idx) || !!toura.finals;
     if(needsWarning && !confirm("この枠の選手を変更すると、既に入力されている対戦結果(場合によっては決勝トーナメントの結果も)が取り消されます。よろしいですか?")){
       render();
