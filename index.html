@@ -3172,10 +3172,13 @@ var TPL_DEFS = (function(){
     }
     return {list:list, trio: trio ? (byeFirst ? "byeFirst" : "byeLast") : null, straightWbRounds: trio ? [0] : []};
   }
+  // 決勝進出人数はExcelの表(16S-4・24S-4・32S-8・48S-8・64S-16・96S-16・128S-16)のとおり固定。8名用(8S-4)も同じ規則で、1回戦の勝者4名が進出する。
+  // 表は決勝進出人数が決まるラウンドまでを描く(それ以降のラウンドは描かない)
+  var SINGLE_ADVANCE = {8:4, 16:4, 24:4, 32:8, 48:8, 64:16, 96:16, 128:16};
   [8,16,24,32,48,64,96,128].forEach(function(size){
-    var sd = singleData(size);
-    specs[size+"S"] = {type:"single", trio:sd.trio, size:size, slotCount:size, wbAdvance:null, lbAdvance:null,
-      title:size+"名 シングルエリミネーション", list:sd.list, straightWbRounds:sd.straightWbRounds};
+    var sd = singleData(size), adv = SINGLE_ADVANCE[size];
+    specs[size+"S"] = {type:"single", trio:sd.trio, size:size, slotCount:size, wbAdvance:adv, lbAdvance:0,
+      title:size+"名 シングルエリミネーション 決勝進出"+adv+"名", list:sd.list, straightWbRounds:sd.straightWbRounds};
   });
   // ---- 1回戦のみダブルエリミネーション(8R1〜128R1) ----
   // 勝者側はシングルエリミネーションの表と同じ。1回戦の敗者だけが敗者側1回戦(後ろの試合から2つずつ)で再挑戦でき、勝てば勝ち残り、負ければ失格。
@@ -3235,8 +3238,8 @@ function tplKeyFor(t, size){
   }
   return v[0].key;
 }
-// ダブルエリミネーションの表は決勝進出人数が表で固定(1回戦のみダブルは敗者側だけ固定、シングルは自由に決められる)
-function tplHasFixedAdvance(key){ return !!(key && TPL_DEFS[key].type==="double"); }
+// シングル・ダブルエリミネーションの表は決勝進出人数が表で固定(1回戦のみダブルは敗者側だけ固定)
+function tplHasFixedAdvance(key){ return !!(key && (TPL_DEFS[key].type==="double" || TPL_DEFS[key].type==="single")); }
 function tplHasFixedLbAdvance(key){ return !!(key && TPL_DEFS[key].type!=="single"); }
 function tplSrcLabel(s){ return s.w!=null ? (s.w+"-W") : (s.l!=null ? (s.l+"-L") : ""); }
 // 出場選手(シード順)を表の枠番号(1始まり)に並べる。24・48・96名用は標準の枠シードから「1回戦の2枠+2回戦から出るシード1枠」の3人1組に組み替える
@@ -3266,6 +3269,7 @@ function makeGroupSlots(t, ids, size){
 function applyTplAdvance(t){
   if(!t || t.format!=="elimPrelim") return;
   var key = tplKeyFor(t, t.bracketSize);
+  if(key && TPL_DEFS[key].type==="single"){ t.advancePerGroup = TPL_DEFS[key].wbAdvance; return; }
   if(!tplHasFixedLbAdvance(key)) return;
   var def = TPL_DEFS[key];
   if(def.type==="round1Double"){
@@ -5342,7 +5346,9 @@ function renderTournamentSetupSection(t){
               setupVariants.map(function(v){ var tot = v.wbAdvance+v.lbAdvance; return '<option value="'+tot+'"'+(v.key===setupTplKey?" selected":"")+'>'+tot+'名(勝者側'+v.wbAdvance+'名・敗者側'+v.lbAdvance+'名)</option>'; }).join("")+
             '</select><p class="hint" style="margin:0">'+esc(TPL_DEFS[setupTplKey].title)+'の表を使用します。</p></div>'
           : tplHasFixedAdvance(setupTplKey) ?
-            '<p class="hint" style="margin:0">'+esc(TPL_DEFS[setupTplKey].title)+'の表を使用します。決勝進出人数は表どおり、勝者側'+TPL_DEFS[setupTplKey].wbAdvance+'名・敗者側'+TPL_DEFS[setupTplKey].lbAdvance+'名(合計'+(TPL_DEFS[setupTplKey].wbAdvance+TPL_DEFS[setupTplKey].lbAdvance)+'名)で固定です。</p>'
+            '<p class="hint" style="margin:0">'+esc(TPL_DEFS[setupTplKey].title)+(TPL_DEFS[setupTplKey].type==="single"
+              ? ('の表を使用します。決勝進出人数は表どおり'+TPL_DEFS[setupTplKey].wbAdvance+'名で固定です(試合番号も表どおりです)。</p>')
+              : ('の表を使用します。決勝進出人数は表どおり、勝者側'+TPL_DEFS[setupTplKey].wbAdvance+'名・敗者側'+TPL_DEFS[setupTplKey].lbAdvance+'名(合計'+(TPL_DEFS[setupTplKey].wbAdvance+TPL_DEFS[setupTplKey].lbAdvance)+'名)で固定です。</p>'))
           : (setupTplKey && TPL_DEFS[setupTplKey].type==="round1Double") ?
             '<div class="field"><label>勝者側からの進出人数</label><input type="number" data-action="advancePerGroupWB-input" data-tid="'+t.id+'" value="'+nt.advancePerGroupWB+'" min="0" style="width:6rem"></div>'+
             '<p class="hint" style="margin:0;align-self:center">'+esc(TPL_DEFS[setupTplKey].title)+'の表を使用します。敗者側からは敗者側1回戦の勝者'+TPL_DEFS[setupTplKey].lbAdvance+'名が進出します(表で固定)。</p>'
@@ -6697,8 +6703,10 @@ function renderElimGroupControls(t, g){
      '<div class="field" style="max-width:26rem"><label>敗者側進出人数(表で固定)</label><span class="hint" style="margin:0">'+esc(TPL_DEFS[g.tpl].title)+':敗者側1回戦の勝者'+t.advancePerGroupLB+'名が進出します。</span></div>') :
     tplHasFixedAdvance(g.tpl) ?
     ('<div class="field" style="max-width:34rem"><label>決勝進出人数(表で固定)</label><span class="hint" style="margin:0">'+
-      esc(TPL_DEFS[g.tpl].title)+':勝者側'+t.advancePerGroupWB+'名・敗者側'+t.advancePerGroupLB+'名(合計'+(t.advancePerGroupWB+t.advancePerGroupLB)+'名)が決勝へ進みます。'+
-      '対戦の番号・勝者/敗者の行き先は表どおりです(「N-L」=N番の敗者、「N-W」=N番の勝者)。</span></div>') :
+      (TPL_DEFS[g.tpl].type==="single"
+        ? (esc(TPL_DEFS[g.tpl].title)+':'+TPL_DEFS[g.tpl].wbAdvance+'名が決勝へ進みます。試合番号は表どおりです。')
+        : (esc(TPL_DEFS[g.tpl].title)+':勝者側'+t.advancePerGroupWB+'名・敗者側'+t.advancePerGroupLB+'名(合計'+(t.advancePerGroupWB+t.advancePerGroupLB)+'名)が決勝へ進みます。'+
+      '対戦の番号・勝者/敗者の行き先は表どおりです(「N-L」=N番の敗者、「N-W」=N番の勝者)。'))+'</span></div>') :
     hasLb ?
     ('<div class="field" style="width:9rem"><label>勝者側進出人数</label><input type="number" class="num" min="0" value="'+t.advancePerGroupWB+'" data-action="update-advance-per-group-wb" data-tid="'+t.id+'" style="width:5rem"></div>'+
     '<div class="field" style="width:9rem"><label>敗者側進出人数</label><input type="number" class="num" min="0" value="'+t.advancePerGroupLB+'" data-action="update-advance-per-group-lb" data-tid="'+t.id+'" style="width:5rem"></div>')
@@ -6989,6 +6997,7 @@ function tshBuild(def){
     return o;
   }
   var F = def.order[def.order.length-1];
+  var roots = def.roots || null;   // 打ち切った表: 最後のラウンドの試合(それぞれの勝者が決勝進出)
   if(kind==="double"){
     var leafN = 0;
     def.order.forEach(function(no){ var m = def.matches[no]; if(m.side==="lb"){ if(m.a.l!=null) leafN++; if(m.b.l!=null) leafN++; } });
@@ -7001,11 +7010,17 @@ function tshBuild(def){
     items.push({k:"cap", x:0, y:-24, w:SR, h:16, text:"WINNER'S BRACKET"});
     items.push({k:"cap", x:SR+C.GAP, y:-24, w:C.BW, h:16, text:"LOSER'S BRACKET"});
   } else if(kind==="side"){
-    var Rn = def.matches[F].round;
+    var Rn = roots ? (def.matches[roots[0]].round + 1) : def.matches[F].round;
     var SR2 = C.SN + C.BW;
     var RLf = region({map:function(d,u){ return [d, u]; }, vert:false, L:C.BW, slotLen:SR2, thick:C.BH, slotPitch:C.BH, leafPitch:C.BH, numAt:"left", u0:0, slotOffset:0});
     var xL = edgeOf(RLf, Rn-1), X0R = 2*xL + C.CG;
     var RRt = region({map:function(d,u){ return [X0R - d, u]; }, vert:false, L:C.BW, slotLen:SR2, thick:C.BH, slotPitch:C.BH, leafPitch:C.BH, numAt:"right", u0:0, slotOffset:def.size/2});
+    if(roots){
+      // 前半の試合は左の山、後半の試合は右の山(中央の決勝戦は描かない)
+      var halfR = Math.floor(roots.length/2);
+      roots.slice(0, halfR).forEach(function(no){ drawMatch(RLf, no); });
+      roots.slice(halfR).forEach(function(no){ drawMatch(RRt, no); });
+    } else {
     var fm = def.matches[F];
     var kl = drawMatch(RLf, fm.a.w), kr = drawMatch(RRt, fm.b.w);
     kl.box.cons = {no:F, side:"a"}; kr.box.cons = {no:F, side:"b"};
@@ -7014,15 +7029,38 @@ function tshBuild(def){
     items.push({k:"num", x:xL+4, y:uF+2, w:C.CG-8, h:14, no:F});
     items.push({k:"ln", x:xL+C.CG/2-1, y:uF-18, w:T, h:19});
     items.push({k:"box", role:"champ", own:F, round:fm.round, goal:false, vert:false, x:xL+C.CG/2-C.BW/2, y:uF-18-2*C.BH, w:C.BW, h:2*C.BH});
+    }
   } else {
     var RV = region({map:function(d,u){ return [u, -d]; }, vert:true, L:C.VL, slotLen:C.VSN + C.VL, thick:C.VT, slotPitch:C.VT+4, leafPitch:C.VT+4, numAt:"top", u0:0, slotOffset:0});
-    var root = drawMatch(RV, F);
-    root.box.role = "champ";
+    if(roots){
+      roots.forEach(function(no){ drawMatch(RV, no); });
+    } else {
+      var root = drawMatch(RV, F);
+      root.box.role = "champ";
+    }
   }
   var minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
   items.forEach(function(it){ minX = Math.min(minX, it.x); minY = Math.min(minY, it.y); maxX = Math.max(maxX, it.x+it.w); maxY = Math.max(maxY, it.y+it.h); });
   items.forEach(function(it){ it.x = Math.round(it.x - minX + C.PAD); it.y = Math.round(it.y - minY + C.PAD); it.w = Math.round(it.w); it.h = Math.round(it.h); });
   return {w:Math.round(maxX-minX+2*C.PAD), h:Math.round(maxY-minY+2*C.PAD), items:items};
+}
+// シングルエリミネーションの表は、決勝進出人数が決まるラウンド(cut)までを描く。最後のラウンドの試合が複数あり(それぞれの勝者が進出)、決勝戦は描かない
+function tplTruncatedDef(def, cut){
+  if(!def || def.type!=="single" || !(cut>=1) || cut>=def.wbRounds.length) return def;
+  if(def.trio && cut<2) return def;
+  var roots = def.wbRounds[cut-1];
+  if(!roots || roots.length<2) return def;
+  var cache = def._trunc = def._trunc || {};
+  if(cache[cut]) return cache[cut];
+  var matches = {}, order = [];
+  def.order.forEach(function(no){ if(def.matches[no].round<=cut){ matches[no] = def.matches[no]; order.push(no); } });
+  var d = {};
+  Object.keys(def).forEach(function(k){ d[k] = def[k]; });
+  d._trunc = null;
+  d.key = def.key+"@"+cut; d.matches = matches; d.order = order; d.roots = roots.slice();
+  d.wbRounds = def.wbRounds.slice(0, cut); d.wbFinal = roots.slice();
+  cache[cut] = d;
+  return d;
 }
 function tshLayoutFor(def){
   if(!tshLayoutCache[def.key]) tshLayoutCache[def.key] = tshBuild(def);
@@ -7123,7 +7161,7 @@ function tshZoomSelectHTML(){
 function tplSheetCardHTML(t, g, readOnly){
   var def = TPL_DEFS[g.tpl], idx = tplIndex(g);
   var reached = groupReached(t, g), cap = cappedRoundsFor(t, g), full = def.type==="double";
-  var sheet = renderTplSheet(def, {
+  var sheet = renderTplSheet(tplTruncatedDef(def, cap), {
     tournament:t, interactive:!readOnly, canResolve:(!readOnly && t.status==="prelim" && !reached),
     getMatch:function(no){ return idx[no]; },
     isActive:function(m){ return full || def.matches[m.no].side==="lb" || m.round<=cap; },
@@ -9008,6 +9046,9 @@ document.addEventListener("submit", function(e){
       if(nt.prelimType==="double" && variantsTS.length>1){
         var chosenTS = variantsTS.filter(function(v){ return v.wbAdvance+v.lbAdvance===nt.tplAdvance; })[0] || variantsTS[0];
         effectiveAdvancePerGroup = chosenTS.wbAdvance + chosenTS.lbAdvance;
+      }
+      if(nt.prelimType==="single" && variantsTS.length && tplHasFixedAdvance(variantsTS[0].key)){
+        effectiveAdvancePerGroup = variantsTS[0].wbAdvance + variantsTS[0].lbAdvance;
       }
       if(hasLoserBracketType(nt.prelimType) && effectiveAdvancePerGroup<1){ alert("決勝進出人数(勝者側+敗者側)は1名以上にしてください。"); return; }
       if(bracketSize < effectiveAdvancePerGroup){ alert("決勝進出人数がフォーマットの人数より多くなっています。"); return; }
