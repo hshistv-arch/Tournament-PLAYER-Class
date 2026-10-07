@@ -7044,9 +7044,10 @@ function tshBuild(def){
   items.forEach(function(it){ it.x = Math.round(it.x - minX + C.PAD); it.y = Math.round(it.y - minY + C.PAD); it.w = Math.round(it.w); it.h = Math.round(it.h); });
   return {w:Math.round(maxX-minX+2*C.PAD), h:Math.round(maxY-minY+2*C.PAD), items:items};
 }
-// シングルエリミネーションの表は、決勝進出人数が決まるラウンド(cut)までを描く。最後のラウンドの試合が複数あり(それぞれの勝者が進出)、決勝戦は描かない
+// シングルエリミネーション・1回戦のみダブルエリミネーションの表は、(勝者側の)決勝進出人数が決まるラウンド(cut)までを描き、それより先の不要な部分は描かない。
+// 最後のラウンドの試合が複数あり(それぞれの勝者が進出)、決勝戦は描かない。1回戦のみダブルの敗者側1回戦はそのまま残る
 function tplTruncatedDef(def, cut){
-  if(!def || def.type!=="single" || !(cut>=1) || cut>=def.wbRounds.length) return def;
+  if(!def || (def.type!=="single" && def.type!=="round1Double") || !(cut>=1) || cut>=def.wbRounds.length) return def;
   if(def.trio && cut<2) return def;
   var roots = def.wbRounds[cut-1];
   if(!roots || roots.length<2) return def;
