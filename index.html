@@ -2253,9 +2253,11 @@ var NAV_SUGGESTION_LIMIT = 8;
 function hasPartialScore(m){
   return !!(m.started || (m.score && (m.score.a!=null || m.score.b!=null)));
 }
-// 対戦相手が重複しない(誰も2試合に同時に出場しない)範囲で、優先順に候補から複数試合を選ぶ
-function pickNonOverlapping(candidates, limit){
+// 対戦相手が重複しない(誰も2試合に同時に出場しない)範囲で、優先順に候補から複数試合を選ぶ。
+// busy: 試合中(開始済み・スコア入力中で未確定)の対戦。その出場者(メンバー)は「次に開始できる対戦」の候補から除く
+function pickNonOverlapping(candidates, limit, busy){
   var used = {};
+  (busy||[]).forEach(function(b){ if(b.aId) used[b.aId] = true; if(b.bId) used[b.bId] = true; });
   var picked = [];
   for(var i=0;i<candidates.length && picked.length<limit;i++){
     var c = candidates[i];
@@ -2310,7 +2312,7 @@ function computeElimProgress(t, priority){
     inProgressAll = inProgressAll.concat(c.wbInProgress, c.lbInProgress);
   });
   var ordered = priority==="lb" ? lbNotStartedAll.concat(wbNotStartedAll) : wbNotStartedAll.concat(lbNotStartedAll);
-  return {total:total, done:done, nextList: pickNonOverlapping(ordered, NAV_SUGGESTION_LIMIT), inProgress: inProgressAll};
+  return {total:total, done:done, nextList: pickNonOverlapping(ordered, NAV_SUGGESTION_LIMIT, inProgressAll), inProgress: inProgressAll};
 }
 function computeBlockProgress(t){
   var total=0, done=0;
@@ -2323,7 +2325,7 @@ function computeBlockProgress(t){
       if(hasPartialScore(m)) inProgressAll.push(info); else notStartedAll.push(info);
     });
   });
-  return {total:total, done:done, nextList: pickNonOverlapping(notStartedAll, NAV_SUGGESTION_LIMIT), inProgress: inProgressAll};
+  return {total:total, done:done, nextList: pickNonOverlapping(notStartedAll, NAV_SUGGESTION_LIMIT, inProgressAll), inProgress: inProgressAll};
 }
 function computePreFinalsProgress(t){
   var total = t.preFinals.matches.length, done=0;
@@ -2333,7 +2335,7 @@ function computePreFinalsProgress(t){
     var info = {scope:"preFinals", mid:m.id, aId:m.a, bId:m.b, aName:playerName(m.a), bName:playerName(m.b)};
     if(hasPartialScore(m)) inProgressAll.push(info); else notStartedAll.push(info);
   });
-  return {total:total, done:done, nextList: pickNonOverlapping(notStartedAll, NAV_SUGGESTION_LIMIT), inProgress: inProgressAll};
+  return {total:total, done:done, nextList: pickNonOverlapping(notStartedAll, NAV_SUGGESTION_LIMIT, inProgressAll), inProgress: inProgressAll};
 }
 function computeFinalsProgress(t){
   var total=0, done=0;
@@ -2348,7 +2350,7 @@ function computeFinalsProgress(t){
       }
     });
   });
-  return {total:total, done:done, nextList: pickNonOverlapping(notStartedAll, NAV_SUGGESTION_LIMIT), inProgress: inProgressAll};
+  return {total:total, done:done, nextList: pickNonOverlapping(notStartedAll, NAV_SUGGESTION_LIMIT, inProgressAll), inProgress: inProgressAll};
 }
 // 予選の途中から先行編成した決勝の対戦も、進捗ナビの「次に開始できる対戦」などに含める
 function computeTournamentProgress(t){
@@ -2356,7 +2358,7 @@ function computeTournamentProgress(t){
   if(p && t.status==="prelim" && isEarlyFinals(t)){
     var pf = computeFinalsProgress(t);
     p.total += pf.total; p.done += pf.done;
-    p.nextList = pickNonOverlapping(pf.nextList.concat(p.nextList), NAV_SUGGESTION_LIMIT);   // 先行編成した決勝の対戦(数が少ない)を先に並べる
+    p.nextList = pickNonOverlapping(pf.nextList.concat(p.nextList), NAV_SUGGESTION_LIMIT, p.inProgress.concat(pf.inProgress));   // 先行編成した決勝の対戦(数が少ない)を先に並べる
     p.inProgress = p.inProgress.concat(pf.inProgress);
   }
   return p;
