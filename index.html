@@ -316,7 +316,15 @@ button.tsh-no:hover{background:var(--surface-2,#efebdf); text-decoration:underli
 .h2h-card .bflow-round{padding-top:0;}
 #qr-print-root{display:none;}
 @media print{ body.qr-print-only .app-shell, body.qr-print-only .display-updated, body.qr-print-only .display-close-btn{display:none !important;} body.qr-print-only #qr-print-root{display:block; padding:2rem;} }
-@media print{ .tsh-scroll{overflow:visible; border:0;} .tsh-zoom{zoom:.55 !important;} }
+@media print{ .tsh-scroll{overflow:visible; border:0;} body:not(.display-mode-active) .tsh-zoom{zoom:.55 !important;} }
+/* 大会結果共有画面のPDF(印刷): A4横向き。トーナメント表の線・枠・色は背景として描かれているため、背景も必ず印刷する(印刷設定の「背景のグラフィック」がオフでも線が消えない) */
+@page displaypdf{ size:A4 landscape; margin:8mm; }
+@media print{
+  body.display-mode-active .main{page:displaypdf;}
+  body.display-mode-active, body.display-mode-active *{-webkit-print-color-adjust:exact; print-color-adjust:exact;}
+  body.display-mode-active .card, body.display-mode-active .tsh-scroll{break-inside:avoid;}
+  body.display-mode-active .tsh-scroll{overflow:visible !important; max-width:none !important;}
+}
 .h2h-overlay{position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:80; display:flex; align-items:center; justify-content:center; padding:1rem;}
 .h2h-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); max-width:520px; width:100%; max-height:82vh; overflow-y:auto; padding:1.1rem 1.2rem;}
 .h2h-head{display:flex; justify-content:space-between; align-items:center; gap:.6rem; margin-bottom:.4rem;}
@@ -6930,6 +6938,31 @@ function applyTshFixedZoomText(){
   });
 }
 window.addEventListener("resize", function(){ applyTshFit(); applyTshFixedZoomText(); });
+// 大会結果共有画面のPDF保存(印刷): トーナメント表を、A4横向きの1ページの幅・高さに収まる倍率にする(表が大きいときも枠からはみ出さない)。
+// 文字は倍率で小さくせず、名前・所属・クラス・スコアなどの細部も省かずに印刷する。印刷が終わったら画面用の倍率に戻す
+if(DISPLAY_MODE){
+  var PRINT_PAGE_W = 1040, PRINT_PAGE_H = 600, PRINT_MIN_SCALE = 0.3;
+  var printSavedSheets = null;
+  window.addEventListener("beforeprint", function(){
+    printSavedSheets = [];
+    Array.prototype.forEach.call(document.querySelectorAll(".tsh-zoom"), function(z){
+      var inner = z.querySelector(".tsh");
+      if(!inner) return;
+      var w = parseFloat(inner.style.width), h = parseFloat(inner.style.height);
+      if(!(w>0) || !(h>0)) return;
+      printSavedSheets.push({z:z, style:z.getAttribute("style"), cls:z.className});
+      var scale = Math.max(PRINT_MIN_SCALE, Math.min(1, PRINT_PAGE_W/w, PRINT_PAGE_H/h));
+      tshApplyTextScale(z, 1);
+      z.classList.remove("tsh-compact");
+      z.style.zoom = scale.toFixed(3);
+    });
+  });
+  window.addEventListener("afterprint", function(){
+    (printSavedSheets||[]).forEach(function(x){ x.z.setAttribute("style", x.style); x.z.className = x.cls; });
+    printSavedSheets = null;
+    applyTshFit();
+  });
+}
 var tshLayoutCache = {};
 var tplModal = null;        // 試合の詳細(スコア入力など)ポップアップ {tid, gi, side, mid}
 var tplSlotModal = null;    // 表の選手枠から開く「選手を変更」ポップアップ {tid, kind:"group"|"finals", idx, slot}
