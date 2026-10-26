@@ -419,6 +419,8 @@ button.tsh-no:hover{background:var(--surface-2,#efebdf); text-decoration:underli
 .print-table th{background:#eee;}
 @media print{
   .sidenav, .no-print{display:none !important;}
+  body.display-mode-active .btn, body.display-mode-active .display-close-btn, body.display-mode-active .display-updated{display:none !important;}
+  body.display-mode-active .main{padding:0; max-width:none;}
   .main{padding:0; margin:0;}
   .print-summary h1{margin-top:0;}
   .print-table{font-size:11pt;}
@@ -5713,6 +5715,7 @@ function renderDisplayScreen(){
       var STATUS_LABEL = {entryPending:"エントリー受付中", assigning:"組み合わせ待ち", prelim:"予選中", preFinals:"予備決勝戦中", finals:"決勝トーナメント中", completed:"終了"};
       body = '<div class="page-head"><div><h1>'+esc(t.name)+'</h1><p class="sub">'+tournamentFormatLabel(t)+' ・ 開催日: '+eventDateOf(t)+' ・ <span class="pill '+t.status+'">'+(STATUS_LABEL[t.status]||t.status)+'</span></p>'+
         '<button class="btn btn-sm btn-ghost" type="button" data-action="copy-url" data-url="'+esc(displayUrlFor(t.id))+'" style="margin-top:.5rem">URLをコピー</button> '+
+        '<button class="btn btn-sm btn-ghost no-print" type="button" data-action="display-save-pdf" style="margin-top:.5rem" title="印刷画面が開きます。送信先(プリンター)で「PDFに保存」を選んでください">📄 PDFに保存</button> '+
         displayAutoScrollButtonHTML()+' '+
         displayEstimateHTML(t)+' '+
         displayQrPanelHTML(t)+
@@ -7915,6 +7918,14 @@ document.addEventListener("click", function(e){
   else if(action==="entry-sort"){ route.entrySort = t.getAttribute("data-sort"); render(); }
   else if(action==="export-roster-csv"){ exportRosterCSV(); }
   else if(action==="print-page"){ window.print(); }
+  else if(action==="display-save-pdf"){
+    // 大会結果共有画面の内容を、ブラウザの印刷機能で「PDFに保存」する(ファイル名は「大会名 大会結果」になる)
+    var tDispPdf = findTournament(DISPLAY_TID), oldTitlePdf = document.title;
+    if(tDispPdf) document.title = tDispPdf.name+" 大会結果";
+    var restoreTitlePdf = function(){ document.title = oldTitlePdf; window.removeEventListener("afterprint", restoreTitlePdf); };
+    window.addEventListener("afterprint", restoreTitlePdf);
+    window.print();
+  }
   else if(action==="print-scope-radio"){ route.printScope = t.value==="finalsOnly" ? "finalsOnly" : "all"; render(); }
   else if(action==="close-display-window"){
     window.close();
