@@ -6938,28 +6938,39 @@ function applyTshFixedZoomText(){
   });
 }
 window.addEventListener("resize", function(){ applyTshFit(); applyTshFixedZoomText(); });
-// 大会結果共有画面のPDF保存(印刷): トーナメント表を、A4横向きの1ページの幅・高さに収まる倍率にする(表が大きいときも枠からはみ出さない)。
-// 文字は倍率で小さくせず、名前・所属・クラス・スコアなどの細部も省かずに印刷する。印刷が終わったら画面用の倍率に戻す
+// 大会結果共有画面のPDF保存(印刷): PDFを画面で見たとき、文字が小さすぎず・重ならない大きさになるようにする。
+// トーナメント表は縮小せず(画面と同じ文字の大きさ・名前/所属/クラス/スコアなどの細部もそのまま)、用紙のサイズのほうを内容に合わせて自動調整する
+// (A4横向きより小さければA4横向き。表や一覧が大きければ、そのぶん大きな1ページにする)。印刷が終わったら画面用の倍率・設定に戻す
 if(DISPLAY_MODE){
-  var PRINT_PAGE_W = 1040, PRINT_PAGE_H = 600, PRINT_MIN_SCALE = 0.3;
-  var printSavedSheets = null;
+  var printSavedSheets = null, printPageStyle = null;
   window.addEventListener("beforeprint", function(){
     printSavedSheets = [];
     Array.prototype.forEach.call(document.querySelectorAll(".tsh-zoom"), function(z){
-      var inner = z.querySelector(".tsh");
-      if(!inner) return;
-      var w = parseFloat(inner.style.width), h = parseFloat(inner.style.height);
-      if(!(w>0) || !(h>0)) return;
       printSavedSheets.push({z:z, style:z.getAttribute("style"), cls:z.className});
-      var scale = Math.max(PRINT_MIN_SCALE, Math.min(1, PRINT_PAGE_W/w, PRINT_PAGE_H/h));
       tshApplyTextScale(z, 1);
       z.classList.remove("tsh-compact");
-      z.style.zoom = scale.toFixed(3);
+      z.style.zoom = "1";
     });
+    var main = document.querySelector(".main");
+    var margin = 31;   // 余白8mm ≒ 31px
+    var contentW = main ? Math.max(main.scrollWidth, main.clientWidth) : 0;
+    Array.prototype.forEach.call(document.querySelectorAll(".tsh-scroll"), function(box){
+      var inner = box.querySelector(".tsh");
+      if(inner) contentW = Math.max(contentW, (parseFloat(inner.style.width)||0) + 40);
+    });
+    var cardH = 0;
+    Array.prototype.forEach.call(document.querySelectorAll(".main .card"), function(card){ cardH = Math.max(cardH, card.scrollHeight); });
+    var pageW = Math.max(1123, Math.ceil(contentW) + margin*2);   // 1123x794px = A4横向き
+    var pageH = Math.max(794, Math.ceil(cardH) + margin*2 + 40);
+    printPageStyle = document.createElement("style");
+    printPageStyle.textContent = "@page displaypdf{ size:"+pageW+"px "+pageH+"px; margin:8mm; }";
+    document.head.appendChild(printPageStyle);
   });
   window.addEventListener("afterprint", function(){
     (printSavedSheets||[]).forEach(function(x){ x.z.setAttribute("style", x.style); x.z.className = x.cls; });
     printSavedSheets = null;
+    if(printPageStyle && printPageStyle.parentNode) printPageStyle.parentNode.removeChild(printPageStyle);
+    printPageStyle = null;
     applyTshFit();
   });
 }
