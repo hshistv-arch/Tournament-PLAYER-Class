@@ -1306,12 +1306,18 @@ function syncFromServer(cb){
     }
     specBlocked = false;
     if(serverState && serverState.players){
+      var serverBefore = JSON.stringify(serverState);
       state = applyRosterUpdate(migrateFinalsEager(migrateSetTableD(migrateAddBeClass(migrateBestBorC(serverState)))));
       state.entries = state.entries || {};
       state.currentTournamentId = state.currentTournamentId || null;
+      state.specVersion = APP_SPEC_VERSION;
       if(!cb && !isComposingText && !userInteracting) render();
+      // 取得しただけのデータはサーバーへ書き戻さない(クラウドの書き込み回数の節約と、取得の合間の他端末の保存を古いデータで上書きしないため)。
+      // 古い形式のデータを新しい形式へ変換したときだけ、閲覧専用の画面以外から1度だけ保存する
+      if(JSON.stringify(state) !== serverBefore && !DISPLAY_MODE && !STREAM_MODE) saveState(); else saveLocalOnly();
+    } else {
+      saveState();   // クラウドにまだデータが無いときは、この端末のデータを最初の1回として保存する
     }
-    saveState();
     if(cb) cb();
   }).catch(function(e){
     console.warn("initial sync fetch failed", e);
@@ -1815,7 +1821,7 @@ var DISPLAY_TID = (function(){
   var m = location.search.match(/[?&]id=([^&]+)/);
   return m ? decodeURIComponent(m[1]) : null;
 })();
-var DISPLAY_POLL_MS = 6000;
+var DISPLAY_POLL_MS = 10000;
 
 // ---------- stream mode (single-match OBS-friendly scoreboard) ----------
 var STREAM_MODE = /(^|[?&])stream=1(&|$)/.test(location.search);
@@ -1830,7 +1836,7 @@ var STREAM_IDX_RAW = streamParam("idx");
 var STREAM_IDX = STREAM_IDX_RAW!=null ? Number(STREAM_IDX_RAW) : null;
 var STREAM_SIDE = streamParam("side");
 var STREAM_TRANSPARENT = /(^|[?&])bg=transparent(&|$)/.test(location.search);
-var STREAM_POLL_MS = 4000;
+var STREAM_POLL_MS = 10000;
 
 // ---------- draw mode (mobile-friendly lottery-number screen) ----------
 var DRAW_MODE = /(^|[?&])draw=1(&|$)/.test(location.search);
@@ -1838,7 +1844,7 @@ var DRAW_TID = streamParam("tid");
 var DRAW_EVENT_MODE = /(^|[?&])event=1(&|$)/.test(location.search);
 var DRAW_FINALS_MODE = /(^|[?&])finals=1(&|$)/.test(location.search);
 var DRAW_PREFINALS_MODE = /(^|[?&])prefinals=1(&|$)/.test(location.search);
-var DRAW_POLL_MS = 4000;
+var DRAW_POLL_MS = 10000;
 // ---------- guide mode (使い方ガイドをポップアップウインドウで開く) ----------
 var GUIDE_MODE = /(^|[?&])guide=1(&|$)/.test(location.search);
 // IME変換中に定期同期の再描画が入力欄を作り直してしまうと、変換中の文字が消えてしまうため、
@@ -9131,9 +9137,14 @@ if(DRAW_MODE){ document.body.classList.add("display-mode-active"); }
 if(GUIDE_MODE){ document.body.classList.add("guide-mode-active"); }
 render();
 syncFromServer();
-if(DISPLAY_MODE){ setInterval(syncFromServer, DISPLAY_POLL_MS); startDisplayAutoScroll(); }
-if(STREAM_MODE){ setInterval(syncFromServer, STREAM_POLL_MS); }
-if(DRAW_MODE){ setInterval(syncFromServer, DRAW_POLL_MS); }
+// 自動更新は、画面が見えているときだけ行う(裏のタブ・画面オフのスマホは取得せず、クラウドの読み取り回数を節約する)。見えるようになったらすぐ1回取得する
+function pollSyncIfVisible(){ if(!document.hidden) syncFromServer(); }
+if(DISPLAY_MODE || STREAM_MODE || DRAW_MODE){
+  document.addEventListener("visibilitychange", function(){ if(!document.hidden) syncFromServer(); });
+}
+if(DISPLAY_MODE){ setInterval(pollSyncIfVisible, DISPLAY_POLL_MS); startDisplayAutoScroll(); }
+if(STREAM_MODE){ setInterval(pollSyncIfVisible, STREAM_POLL_MS); }
+if(DRAW_MODE){ setInterval(pollSyncIfVisible, DRAW_POLL_MS); }
 
 })();
 </script>
