@@ -13,8 +13,10 @@ Vercel用のファイル(`api/`・`package.json`)はそのまま残してある�
 ## いつでも Vercel に戻せるコピー
 移行前(2026-10-31)の状態を、次の3か所に残しています。
 
-1. **Git のタグ** `vercel-final-2026-10-31`(GitHub 上)
-   - 戻すとき: `git checkout vercel-final-2026-10-31` で移行前のコードを取り出せます。
+1. **Git のタグ**(GitHub 上)
+   - `vercel-last-main-2026-10-31`: 移行直前の `main`(他の変更 #4・#5 を含む最新)。**戻すときはこちら**。
+   - `vercel-final-2026-10-31`: その少し前(2026-10-31 に最初に作ったコピー)。
+   - 戻すとき: `git checkout vercel-last-main-2026-10-31` で移行前のコードを取り出せます。
      そのコードを新しいブランチにして Vercel に向けるか、`main` に反映すれば Vercel の画面・APIが移行前の内容になります。
 2. **フォルダの複製** `C:\Users\Haruo\PLAYER-Class desktop_vercel_backup_2026-10-31`
    - 移行前のファイル一式(`.git` を含む)です。
