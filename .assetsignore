@@ -1,0 +1,14 @@
+.git
+.gitignore
+.assetsignore
+.vercel
+.env*
+.wrangler
+node_modules
+api
+worker
+scripts
+package.json
+package-lock.json
+wrangler.jsonc
+README.md

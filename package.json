@@ -4,7 +4,9 @@
   "description": "ビリヤード大会のクラスポイントを管理するツールです。勝敗ポイント表（クラスの組み合わせごとに勝者が得る点・敗者が失う点を定めた表）に基づいて、試合結果からクラスポイントを自動計算・更新します。",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "cf:dev": "wrangler dev",
+    "cf:deploy": "wrangler deploy"
   },
   "repository": {
     "type": "git",
