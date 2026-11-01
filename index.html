@@ -5664,7 +5664,8 @@ function renderDisplayFinals(t){
       t.preFinals.matches.map(function(m, mi){ return preFinalsMatchRowHTML(t, m, mi+1, true); }).join("")+
     '</div>';
   }
-  if(!t.finals) return "";
+  // 予選中は、決勝トーナメントの組み合わせ表(進出が決まった選手だけが入った暫定の表)を表示する
+  if(!t.finals) return t.status==="prelim" ? renderFinalsPlaceholder(t, true) : "";
   return '<div class="card"><h3>決勝トーナメント</h3>'+tplFinalsSheetHTML(t, t.finals, true)+'</div>';
 }
 function fireworksHTML(){
@@ -7647,7 +7648,7 @@ function buildProjectedFinalsBracket(slots){
   var totalRounds = Math.max(1, Math.round(Math.log2(slots.length)));
   return {totalRounds:totalRounds, rounds:[round1], eliminatedRound:{}, entrants:slots.filter(function(x){ return x; })};
 }
-function renderFinalsPlaceholder(t){
+function renderFinalsPlaceholder(t, displayOnly){
   var count, bracket, noteExtra = "";
   if(t.format==="blockPrelim"){
     count = Math.max(2, (t.blocks||[]).length * (t.advancePerBlock||1));
@@ -7674,7 +7675,7 @@ function renderFinalsPlaceholder(t){
   }
   return '<div class="card"><h3>決勝トーナメント</h3>'+
     '<p class="hint">予選が確定すると、ここに実際の決勝トーナメントの組み合わせが表示されます(現在の設定では'+count+'名が進出予定)。'+(noteExtra?(' '+noteExtra):'')+'</p>'+
-    (t.status==="prelim" ? '<p class="hint" style="margin:.2rem 0 .5rem"><button class="btn btn-sm btn-primary" type="button" data-action="start-early-finals" data-tid="'+t.id+'">決勝トーナメントを開始する</button> 予選の途中でも、進出が確定した選手を決勝の枠に入れて、決勝の試合を開始・結果入力できます(予選が全て終わると、残りの進出者が空き枠へ自動で入ります)。</p>' : '')+
+    (t.status==="prelim" && !displayOnly ? '<p class="hint" style="margin:.2rem 0 .5rem"><button class="btn btn-sm btn-primary" type="button" data-action="start-early-finals" data-tid="'+t.id+'">決勝トーナメントを開始する</button> 予選の途中でも、進出が確定した選手を決勝の枠に入れて、決勝の試合を開始・結果入力できます(予選が全て終わると、残りの進出者が空き枠へ自動で入ります)。</p>' : '')+
     tplFinalsSheetHTML(t, bracket, true)+
   '</div>';
 }
