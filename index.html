@@ -344,21 +344,22 @@ button.tsh-no:hover{background:var(--surface-2,#efebdf); text-decoration:underli
 .rr-grid-wrap{overflow-x:auto; margin-bottom:.7rem;}
 /* ②リーグ戦: 1つのリーグ(ブロック)を1画面で見渡せるよう、総当たり表と対戦の一覧を横に並べ、対戦はラウンドごとに段組みで詰めて表示する */
 /* リーグ(ブロック)が複数あるときの「リーグ表の一覧」: すべてのリーグの総当たり表を、1画面に並べて見られるようにする */
-.block-overview{display:grid; grid-template-columns:repeat(auto-fit,minmax(310px,1fr)); gap:.7rem; align-items:start;}
-.block-overview-item{border:1px solid var(--border); border-radius:var(--radius,10px); background:var(--surface); padding:.5rem .6rem .4rem; min-width:0;}
-.block-overview-item h4{margin:0 0 .3rem; font-size:.88rem;}
-.block-overview .rr-grid-wrap{margin-bottom:0;}
-.block-overview .rr-grid{font-size:.7rem; width:100%;}
-.block-overview .rr-grid th, .block-overview .rr-grid td{padding:.15rem .25rem; min-width:0;}
-.block-overview .rr-grid td{min-width:1.3rem;}
-.block-overview .rr-grid-wrap{overflow-x:visible;}
-.block-overview .rr-grid th.rr-rowhead{max-width:6.2rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.block-overview{display:grid; grid-template-columns:repeat(auto-fit,minmax(400px,1fr)); gap:.9rem; align-items:start;}
+@media (min-width: 1500px){ .block-overview{grid-template-columns:repeat(auto-fit,minmax(440px,1fr));} }
+.block-overview-item{border:1px solid var(--border); border-radius:var(--radius,10px); background:var(--surface); padding:.7rem .8rem .6rem; min-width:0;}
+.block-overview-item h4{margin:0 0 .5rem; font-size:1.05rem;}
+.block-overview .rr-grid-wrap{margin-bottom:0; overflow-x:auto;}
+.block-overview .rr-grid{font-size:.92rem; width:100%;}
+.block-overview .rr-grid th, .block-overview .rr-grid td{padding:.38rem .4rem; min-width:0;}
+.block-overview .rr-grid td{min-width:2.1rem; height:2rem;}
+.block-overview .rr-grid th.rr-rowhead{max-width:8.5rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.95rem;}
+.block-overview .rr-win{font-size:1.05rem;}
 .block-overview .rr-grid th.rr-rowhead .pill{display:none;}
 .block-body{display:grid; grid-template-columns:minmax(0,1fr); gap:.5rem 1rem; align-items:start;}
 @media (min-width: 1500px){ .block-body{grid-template-columns:minmax(0,max-content) minmax(0,1fr);} }
 .block-body .rr-grid-wrap{margin-bottom:0; max-width:100%;}
-.block-body .rr-grid{font-size:.76rem;}
-.block-body .rr-grid th, .block-body .rr-grid td{padding:.2rem .3rem;}
+.block-body .rr-grid{font-size:.9rem;}
+.block-body .rr-grid th, .block-body .rr-grid td{padding:.35rem .45rem;}
 .block-matches{display:grid; grid-template-columns:repeat(auto-fill,minmax(290px,1fr)); gap:.35rem .6rem; align-content:start;}
 .block-round{border:1px solid var(--border); border-radius:8px; padding:.2rem .4rem .05rem; background:var(--surface);}
 .block-round-head{margin:.05rem 0 .1rem; font-weight:600; font-size:.74rem;}
@@ -508,6 +509,10 @@ body.display-mode-active .bflow-side, body.display-mode-active .simple-side{font
 body.display-mode-active .match-format{font-size:.85rem;}
 body.display-mode-active .bflow-round{width:400px;}
 body.display-mode-active .match-row{font-size:1.1rem; padding:.7rem .3rem;}
+body.display-mode-active .block-overview .rr-grid{font-size:1.05rem;}
+body.display-mode-active .block-overview .rr-grid th.rr-rowhead{font-size:1.05rem; max-width:10rem;}
+body.display-mode-active .block-overview .rr-grid td{height:2.3rem; min-width:2.4rem;}
+body.display-mode-active .block-overview-item h4{font-size:1.2rem;}
 body.display-mode-active .match-side{min-width:220px;}
 body.display-mode-active .display-updated{position:fixed; bottom:.8rem; right:1.2rem; font-size:.8rem; color:var(--muted); background:var(--surface); border:1px solid var(--border); border-radius:999px; padding:.3rem .8rem; box-shadow:var(--shadow);}
 body.display-mode-active .display-picker-list{display:flex; flex-direction:column; gap:.5rem;}
