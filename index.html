@@ -7514,15 +7514,12 @@ function renderFinalsPlaceholder(t){
   var count, bracket, noteExtra = "";
   if(t.format==="blockPrelim"){
     count = Math.max(2, (t.blocks||[]).length * (t.advancePerBlock||1));
-    // 現在の勝敗数(未確定でも)に基づき、各ブロックの上位進出予定者で決勝トーナメントを暫定的に組む
-    var projected = [];
-    (t.blocks||[]).forEach(function(block){
-      var standings = blockStandings(t, block);
-      standings.slice(0, t.advancePerBlock||1).forEach(function(s){ projected.push(s.id); });
-    });
-    if(projected.length){
-      bracket = buildBracket(projected, t.entries);
-      noteExtra = "現在の勝敗数に基づく暫定的な組み合わせです。予選の対戦結果が進むと自動的に更新され、全ブロックの予選が終わると正式に決定します。";
+    // 決勝進出が決定した選手の名前だけを入れる(リーグの全試合が終わり、進出者が決まったブロックから順に入る)。試合が終わっていないリーグの選手は、途中の順位でも入れない
+    var confirmedIds = confirmedFinalistIds(t);
+    if(confirmedIds.length){
+      var sizeB = 1; while(sizeB<count) sizeB*=2;
+      bracket = buildProjectedFinalsBracket(computeDefaultBracketSlots(confirmedIds, sizeB, t.entries));
+      noteExtra = "リーグの全試合が終わり、決勝進出が決まったブロックの選手だけを配置しています。残りの枠は、各ブロックの進出者が決まり次第入ります。";
     }
   } else {
     count = Math.max(2, (t.groups||[]).length * (t.advancePerGroup||1));
