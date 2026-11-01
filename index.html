@@ -342,6 +342,37 @@ button.tsh-no:hover{background:var(--surface-2,#efebdf); text-decoration:underli
 .guide-step{background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius); padding:.9rem 1.1rem; width:100%; box-sizing:border-box;}
 .guide-step h3{margin:0 0 .3rem; font-size:1rem;}
 .rr-grid-wrap{overflow-x:auto; margin-bottom:.7rem;}
+/* ②リーグ戦: 1つのリーグ(ブロック)を1画面で見渡せるよう、総当たり表と対戦の一覧を横に並べ、対戦はラウンドごとに段組みで詰めて表示する */
+/* リーグ(ブロック)が複数あるときの「リーグ表の一覧」: すべてのリーグの総当たり表を、1画面に並べて見られるようにする */
+.block-overview{display:grid; grid-template-columns:repeat(auto-fit,minmax(310px,1fr)); gap:.7rem; align-items:start;}
+.block-overview-item{border:1px solid var(--border); border-radius:var(--radius,10px); background:var(--surface); padding:.5rem .6rem .4rem; min-width:0;}
+.block-overview-item h4{margin:0 0 .3rem; font-size:.88rem;}
+.block-overview .rr-grid-wrap{margin-bottom:0;}
+.block-overview .rr-grid{font-size:.7rem; width:100%;}
+.block-overview .rr-grid th, .block-overview .rr-grid td{padding:.15rem .25rem; min-width:0;}
+.block-overview .rr-grid td{min-width:1.3rem;}
+.block-overview .rr-grid-wrap{overflow-x:visible;}
+.block-overview .rr-grid th.rr-rowhead{max-width:6.2rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.block-overview .rr-grid th.rr-rowhead .pill{display:none;}
+.block-body{display:grid; grid-template-columns:minmax(0,1fr); gap:.5rem 1rem; align-items:start;}
+@media (min-width: 1500px){ .block-body{grid-template-columns:minmax(0,max-content) minmax(0,1fr);} }
+.block-body .rr-grid-wrap{margin-bottom:0; max-width:100%;}
+.block-body .rr-grid{font-size:.76rem;}
+.block-body .rr-grid th, .block-body .rr-grid td{padding:.2rem .3rem;}
+.block-matches{display:grid; grid-template-columns:repeat(auto-fill,minmax(290px,1fr)); gap:.35rem .6rem; align-content:start;}
+.block-round{border:1px solid var(--border); border-radius:8px; padding:.2rem .4rem .05rem; background:var(--surface);}
+.block-round-head{margin:.05rem 0 .1rem; font-weight:600; font-size:.74rem;}
+/* 1試合を2行に収める: 1行目=番号と対戦する2人、2行目=開始・対戦成績・対戦表のボタン */
+.block-card .match-row{padding:.2rem 0; gap:.15rem .3rem; font-size:.8rem; align-items:center;}
+.block-card .match-row:last-child{border-bottom:0;}
+.block-card .match-side{min-width:0; flex:1 1 0; gap:.2rem; flex-wrap:wrap;}
+.block-card .match-side .btn{padding:.12rem .35rem; font-size:.76rem;}
+.block-card .match-side .score-input-inline{width:2.4rem;}
+.block-card .match-vs{font-size:.7rem;}
+.block-card .match-result{margin-left:0; flex:1 1 100%; display:flex; gap:.25rem; flex-wrap:wrap; padding-left:1.4rem;}
+.block-card .match-result .btn{padding:.1rem .35rem; font-size:.7rem;}
+.block-card .block-note{margin:.1rem 0 .3rem; font-size:.72rem;}
+
 .rr-grid{border-collapse:collapse; font-size:.82rem; white-space:nowrap;}
 .rr-grid th, .rr-grid td{border:1px solid var(--border); padding:.3rem .45rem; text-align:center;}
 .rr-grid th{background:var(--surface-2);}
@@ -5462,16 +5493,11 @@ function displayMatchRowHTML(match, matchNo, t){
   '</div>';
 }
 function renderDisplayBlock(t, block){
-  var perRound = Math.max(1, Math.floor(block.playerIds.length/2));
-  var matches = block.matches.map(function(m,mi){
-    var roundHeader = (mi % perRound === 0)
-      ? ('<p class="hint" style="margin:'+(mi===0?'0':'1rem')+' 0 .3rem;font-weight:600">第'+(Math.floor(mi/perRound)+1)+'ラウンド</p>')
-      : '';
-    return roundHeader + displayMatchRowHTML(m, blockMatchLabel(block, mi), t);
-  }).join("");
-  return '<div class="card"><h3>ブロック '+(block.index+1)+'</h3>'+
-    renderBlockGrid(t, block, {editable:false})+
-    '<div style="margin-top:.6rem">'+matches+'</div></div>';
+  var matches = blockRoundsHTML(block, function(m, mi){
+    return displayMatchRowHTML(m, blockMatchLabel(block, mi), t);
+  }, function(ri){ return '第'+(ri+1)+'ラウンド'; });
+  return '<div class="card block-card"><h3>ブロック '+(block.index+1)+'</h3>'+
+    '<div class="block-body">'+((t.blocks||[]).length>=2 ? '' : renderBlockGrid(t, block, {editable:false}))+matches+'</div></div>';
 }
 function renderDisplayGroup(t, g, timeColorMap){
   if(g.tpl) return '<div class="card"><h3>グループ'+(g.index+1)+' ・ '+esc(TPL_DEFS[g.tpl].title)+'</h3>'+tplSheetCardHTML(t, g, true)+'</div>';
@@ -5749,6 +5775,7 @@ function renderDisplayScreen(){
       '</div></div>';
       var displayTimeColorMap = buildTimeSlotColorMap(t);
       if(t.format==="blockPrelim"){
+        body += renderBlocksOverview(t, false);
         body += (t.blocks||[]).map(function(b){ return renderDisplayBlock(t, b, displayTimeColorMap); }).join("");
       } else {
         body += (t.groups||[]).map(function(g){ return renderDisplayGroup(t, g, displayTimeColorMap); }).join("");
@@ -6624,6 +6651,7 @@ function renderBlockPrelimTournament(t){
     '<button class="btn btn-sm btn-ghost" data-action="refresh-entries-from-server">🔄 更新</button>'+
     '<button class="btn btn-sm" data-action="nav" data-screen="history">一覧へ戻る</button></div></div>';
   var out = header + renderProgressNav(t) + renderMatchTimesSection(t) + (tournamentSettingsHidden(t) ? "" : (formatSwitchHTML(t) + renderEntryEditSection(t) + renderAiReseedCard(t)));
+  out += renderBlocksOverview(t, t.status==="prelim");
   out += t.blocks.map(function(block){ return renderOneBlock(t, block); }).join("");
   if(t.status==="assigning"){
     out += '<div class="card"><p class="hint">各枠の選手を選び終えたら、下のボタンで大会を開始してください。</p>'+
@@ -6771,12 +6799,13 @@ function renderBlockGrid(t, block, opts){
   standings.forEach(function(s, i){ rankOf[s.id] = i+1; });
   var lossesOf = {};
   ids.forEach(function(id){ lossesOf[id] = block.losses ? (block.losses[id]||0) : 0; });
-  var headerCells = ids.map(function(id, i){ return '<th class="num">No.'+(i+1)+'</th>'; }).join("");
+  var compact = !!opts.noSelect;   // リーグ表の一覧(複数ブロックを並べる表示)では、番号だけの短い見出しにして幅を詰める
+  var headerCells = ids.map(function(id, i){ return '<th class="num">'+(compact ? '' : 'No.')+(i+1)+'</th>'; }).join("");
   var rows = ids.map(function(rowId, ri){
     var elim = block.eliminated && block.eliminated[rowId];
-    var rowHeadInner = 'No.'+(ri+1)+' '+esc(playerNameWithAffiliation(t, rowId))+
+    var rowHeadInner = (compact ? '' : 'No.')+(ri+1)+' '+esc(compact ? playerName(rowId) : playerNameWithAffiliation(t, rowId))+
       (elim?' <span class="pill" style="color:var(--loss);border-color:var(--loss)">予選敗退</span>':'');
-    if(editable){
+    if(editable && !opts.noSelect && !tournamentSettingsHidden(t)){
       var slotIdx = block.slots.indexOf(rowId);
       rowHeadInner += '<select data-action="assign-slot" data-kind="block" data-idx="'+block.index+'" data-slot="'+slotIdx+'" data-tid="'+t.id+'">'+
         rosterOptionsHTML(t, rowId, false, t.eligiblePlayerIds, usedElsewhere(slotIdx), activeElsewhereSet)+'</select>';
@@ -6810,20 +6839,35 @@ function renderBlockGrid(t, block, opts){
     '<tbody>'+rows+'</tbody>'+
   '</table></div>';
 }
-function renderOneBlock(t, block){
+// リーグ(ブロック)の対戦を、ラウンドごとのかたまりにして並べる(rowFn: 対戦1件の行のHTMLを返す関数)
+function blockRoundsHTML(block, rowFn, headFn){
   var perRound = Math.max(1, Math.floor(block.playerIds.length/2));
-  var matches = block.matches.map(function(m,mi){
-    var roundHeader = (mi % perRound === 0)
-      ? ('<p class="hint" style="margin:'+(mi===0?'0':'1rem')+' 0 .3rem;font-weight:600">第'+(Math.floor(mi/perRound)+1)+'ラウンド(同時進行可能)</p>')
-      : '';
-    return roundHeader + matchRow(m, "prelim", 'data-tid="'+t.id+'" data-block="'+block.index+'"', blockMatchLabel(block, mi), t.status==="prelim", t, block.index);
-  }).join("");
-  return '<div class="card"><h3>ブロック '+(block.index+1)+'</h3>'+
+  var rounds = [];
+  block.matches.forEach(function(m, mi){
+    var ri = Math.floor(mi/perRound);
+    (rounds[ri] = rounds[ri] || []).push(rowFn(m, mi));
+  });
+  return '<div class="block-matches">'+rounds.map(function(rows, ri){
+    return '<div class="block-round"><p class="block-round-head hint">'+headFn(ri)+'</p>'+rows.join("")+'</div>';
+  }).join("")+'</div>';
+}
+// 複数のリーグ(ブロック)の総当たり表を並べた一覧(リーグが1つだけのときは出さない)。editable=trueなら、表のマスをクリックして結果を入力できる
+function renderBlocksOverview(t, editable){
+  var blocks = t.blocks || [];
+  if(blocks.length<2) return "";
+  return '<div class="block-overview">'+blocks.map(function(block){
+    return '<div class="block-overview-item"><h4>ブロック '+(block.index+1)+'</h4>'+renderBlockGrid(t, block, {editable:editable, noSelect:true})+'</div>';
+  }).join("")+'</div>';
+}
+function renderOneBlock(t, block){
+  var matches = blockRoundsHTML(block, function(m, mi){
+    return matchRow(m, "prelim", 'data-tid="'+t.id+'" data-block="'+block.index+'"', blockMatchLabel(block, mi), t.status==="prelim", t, block.index);
+  }, function(ri){ return '第'+(ri+1)+'ラウンド(同時進行可)'; });
+  return '<div class="card block-card"><h3>ブロック '+(block.index+1)+'</h3>'+
     (tournamentSettingsHidden(t) ? "" : (renderGroupControls(t, "block", block.index, block.targetSize, "各ブロックの決勝進出人数", t.advancePerBlock, "update-advance-per-block")+
     renderEditSlots(t, "block", block.index, block.slots, false)))+
-    renderBlockGrid(t, block, {editable:true})+
-    '<p class="hint" style="margin-top:.6rem">対戦の順番は、同じ選手が連続で対戦せずに済むよう提案されています。同じラウンド内の対戦は別の台で同時に進行できます。</p>'+
-    '<div style="margin-top:.4rem">'+matches+'</div></div>';
+    '<p class="hint block-note">対戦の順番は、同じ選手が連続で対戦せずに済むよう提案されています。同じラウンド内の対戦は別の台で同時に進行できます。</p>'+
+    '<div class="block-body">'+((t.blocks||[]).length>=2 ? '' : renderBlockGrid(t, block, {editable:true}))+matches+'</div></div>';
 }
 
 // ---------- ① elimination prelim + finals screen ----------
