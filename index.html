@@ -342,6 +342,11 @@ button.tsh-no:hover{background:var(--surface-2,#efebdf); text-decoration:underli
 .guide-step{background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius); padding:.9rem 1.1rem; width:100%; box-sizing:border-box;}
 .guide-step h3{margin:0 0 .3rem; font-size:1rem;}
 .rr-grid-wrap{overflow-x:auto; margin-bottom:.7rem;}
+.hc-table th, .hc-table td{text-align:center; padding:.25rem .3rem;}
+.hc-table td.hc-cell label{display:inline-flex; align-items:center; gap:.15rem; font-size:.74rem; cursor:pointer;}
+.hc-table td.hc-cell input.num{width:3.4rem; text-align:center;}
+.hc-table td.hc-on{background:color-mix(in srgb, var(--accent,#c9a227) 22%, var(--surface));}
+.hc-table .hc-corner{font-size:.72rem; white-space:nowrap;}
 /* ②リーグ戦: 1つのリーグ(ブロック)を1画面で見渡せるよう、総当たり表と対戦の一覧を横に並べ、対戦はラウンドごとに段組みで詰めて表示する */
 /* リーグ(ブロック)が複数あるときの「リーグ表の一覧」: すべてのリーグの総当たり表を、1画面に並べて見られるようにする */
 .block-overview{display:grid; grid-template-columns:repeat(auto-fit,minmax(400px,1fr)); gap:.9rem; align-items:start;}
@@ -1173,6 +1178,7 @@ function migrateAddBeClass(parsed){
     s.setTableCDefaultsV2 = true;
   }
   if(s.minPoints===undefined) s.minPoints = MIN_POINTS_DEFAULT;
+  ensureHandicapMatrix(s);
   return parsed;
 }
 // これまで「セット数C」だった「セット数を定めない」大会は、名称変更に合わせて「セット数D」へ一度だけ移行する
@@ -1522,11 +1528,14 @@ function classSubRank(code){
   return c2==="A" ? 1 : c2==="B" ? 2 : c2==="C" ? 3 : null;
 }
 var SA_EXTRA_REDUCE_CLASSES = ["AC","BC","Be"];
+// セカンダリハンデの既定のルール(マトリクスの初期値を作るために使う。実際の判定は「設定」のマトリクス=handicapOf を使う)
+//  ・同じ系統(A・B・C)の中で1つ差: クラスが低い方にBr(ブレイク)権。2つ差: クラスが低い方にBr権+クラスが高い方の持ち時間5分短縮
+//  ・SA: SA以外との対戦では常に持ち時間5分短縮(相手がAC・BC・Beなら10分短縮)、相手にBr権。SA同士は短縮なし
 function secondaryHandicap(classA, classB){
   var result = {breakFor:null, reduceA:0, reduceB:0};
   var aIsSA = classA==="SA", bIsSA = classB==="SA";
   if(aIsSA || bIsSA){
-    if(aIsSA && bIsSA){ result.reduceA = 5; result.reduceB = 5; return result; }
+    if(aIsSA && bIsSA) return result;
     if(aIsSA){
       result.reduceA = SA_EXTRA_REDUCE_CLASSES.indexOf(classB)>=0 ? 10 : 5;
       result.breakFor = "b";
@@ -1546,6 +1555,42 @@ function secondaryHandicap(classA, classB){
     if(weaker==="a") result.reduceB = 5; else result.reduceA = 5;
   }
   return result;
+}
+// ---------- セカンダリハンデのマトリクス(自分のクラス×相手のクラス) ----------
+// br[自分][相手]=true: 自分にBr(ブレイク)権 / minutes[自分][相手]=n: 自分の持ち時間をn分短縮。「設定」→「セット数」タブで編集できる
+function defaultHandicapMatrix(){
+  var hm = {enabled:true, br:{}, minutes:{}};
+  CLASSES.forEach(function(a){
+    hm.br[a] = {}; hm.minutes[a] = {};
+    CLASSES.forEach(function(b){
+      var r = secondaryHandicap(a, b);
+      hm.br[a][b] = (r.breakFor==="a");
+      hm.minutes[a][b] = r.reduceA;
+    });
+  });
+  return hm;
+}
+function ensureHandicapMatrix(st){
+  var def = defaultHandicapMatrix();
+  if(!st.handicapMatrix){ st.handicapMatrix = def; return; }
+  var hm = st.handicapMatrix;
+  if(hm.enabled===undefined) hm.enabled = true;
+  hm.br = hm.br || {}; hm.minutes = hm.minutes || {};
+  CLASSES.forEach(function(a){
+    hm.br[a] = hm.br[a] || {}; hm.minutes[a] = hm.minutes[a] || {};
+    CLASSES.forEach(function(b){
+      if(hm.br[a][b]===undefined) hm.br[a][b] = def.br[a][b];
+      if(hm.minutes[a][b]===undefined) hm.minutes[a][b] = def.minutes[a][b];
+    });
+  });
+}
+// 自分(pClass)が相手(oClass)と対戦するときの、Br権の有無と持ち時間の短縮(分)
+function handicapOf(pClass, oClass){
+  var hm = state.settings && state.settings.handicapMatrix;
+  if(!hm){ var r = secondaryHandicap(pClass, oClass); return {hasBreak:r.breakFor==="a", reduce:r.reduceA}; }
+  if(hm.enabled===false) return {hasBreak:false, reduce:0};
+  var row = hm.br && hm.br[pClass], mrow = hm.minutes && hm.minutes[pClass];
+  return {hasBreak: !!(row && row[oClass]), reduce: Math.max(0, Number(mrow && mrow[oClass])||0)};
 }
 function setTableOf(t){
   var v = t && t.setCountTable;
@@ -1700,9 +1745,9 @@ function matchFormatFor(playerId, opponentId, useDownSet, t, m){
   }
   if(previousChampionOf(t) === playerId) sets += 1;
   var minutes = MINUTES_BY_SETS[sets] != null ? MINUTES_BY_SETS[sets] : 30;
-  var hc = secondaryHandicap(pClass, oClass);
-  minutes -= hc.reduceA;
-  return {sets:sets, minutes:Math.max(0,minutes), hasBreak: hc.breakFor==="a"};
+  var hc = handicapOf(pClass, oClass);
+  minutes -= hc.reduce;
+  return {sets:sets, minutes:Math.max(0,minutes), hasBreak: hc.hasBreak};
 }
 function matchFormatHintHTML(playerId, opponentId, useDownSet, t, m){
   if(!playerId || !opponentId) return "";
@@ -5032,12 +5077,44 @@ function renderSetCountTableCard(key){
     '<div style="margin-top:.8rem"><button class="btn btn-sm" data-action="reset-set-counts" data-table="'+key+'">セット数'+key+'をデフォルトに戻す</button></div>'+
   '</div>';
 }
+function renderHandicapMatrixCard(){
+  var hm = state.settings.handicapMatrix;
+  var head = '<th class="hc-corner">自分 ＼ 相手</th>'+CLASSES.map(function(c){ return '<th>'+badge(c)+'</th>'; }).join("");
+  function table(kind){
+    var rows = CLASSES.map(function(a){
+      return '<tr><th class="hc-rowhead">'+badge(a)+'</th>'+CLASSES.map(function(b){
+        if(a===b) return '<td class="rr-diag"></td>';
+        if(kind==="br"){
+          var on = !!hm.br[a][b];
+          return '<td class="hc-cell'+(on?' hc-on':'')+'"><label><input type="checkbox" data-action="hc-br" data-row="'+a+'" data-col="'+b+'"'+(on?' checked':'')+'><span>Br</span></label></td>';
+        }
+        var v = Number(hm.minutes[a][b])||0;
+        return '<td class="hc-cell'+(v>0?' hc-on':'')+'"><input type="number" class="num" min="0" step="5" value="'+v+'" data-action="hc-min" data-row="'+a+'" data-col="'+b+'"></td>';
+      }).join("")+'</tr>';
+    }).join("");
+    return '<div class="table-wrap"><table class="data hc-table"><thead><tr>'+head+'</tr></thead><tbody>'+rows+'</tbody></table></div>';
+  }
+  return '<div class="card">'+
+    '<h3>セカンダリハンデのマトリクス(G-SPeCポイントに影響する試合)</h3>'+
+    '<label class="hint" style="display:flex;align-items:center;gap:.4rem;cursor:pointer;margin:.2rem 0 .5rem"><input type="checkbox" data-action="hc-enabled"'+(hm.enabled!==false?' checked':'')+'> セカンダリハンデを適用する(オプションルール)</label>'+
+    '<p class="hint">行=<b>自分のクラス</b>、列=<b>相手のクラス</b>です。そのマスの内容が、自分の側に適用されます。対戦カードには、Br権があれば「Br」、持ち時間は短縮後の分数で表示されます。変更しても、すでに終了した試合の表示は変わりません。</p>'+
+    '<ul class="hint" style="margin:.2rem 0 .6rem;padding-left:1.2rem">'+
+      '<li>同じ系統(A・B・C)で1つ差(例: AA対AB): クラスが低い方(AB)にBr権。</li>'+
+      '<li>2つ差(例: AA対AC): クラスが低い方(AC)にBr権、クラスが高い方(AA)は持ち時間5分短縮。</li>'+
+      '<li>SA: SA以外との対戦では常に5分短縮(相手がAC・BC・Beなら10分短縮)、相手にBr権。SA同士は短縮なし。</li>'+
+    '</ul>'+
+    '<h4 style="margin:.6rem 0 .3rem">Br(ブレイク)権</h4>'+table("br")+
+    '<h4 style="margin:.9rem 0 .3rem">持ち時間の短縮(分)</h4>'+table("min")+
+    '<div style="margin-top:.8rem"><button class="btn btn-sm" data-action="hc-reset">マトリクスをデフォルトに戻す</button></div>'+
+  '</div>';
+}
 function renderSettingsSetCounts(){
   return '<div class="card">'+
     '<h3>クラスごとのセット数(レース本数)</h3>'+
     '<p class="hint">対戦カードに表示される、各選手の必要セット数です。「セット数A」「セット数B」の2種類をここで編集できます。このほか「セット数C」は、大会ごとにクラス別のセット数と対戦クラス別の特別ルールを自由に設定できます(大会作成時または大会画面で設定)。どれを使うかは大会作成時に大会ごとに選択します(デフォルトはセット数A。大会画面からいつでも切り替えられます)。持ち時間はセット数に応じて自動計算されます(2セット=15分、3セット=20分、4セット=25分、5セット=30分、6セット=35分。前回優勝者は+1セット)。「ワンセットダウン」は、ダブルエリミネーションの敗者復活ブロックで使うセット数です(大会作成時にこちらを使うか選択でき、デフォルトで採用されます)。</p>'+
-    '<p class="hint">※SA vs SA 以外の対戦では、SA側の持ち時間が5分短縮されます(セカンダリハンデ。相手がAC/BC/Beの場合はさらに5分短縮され、合計10分短縮)。SA同士の対戦では、両者とも持ち時間が5分短縮されます。</p>'+
+    '<p class="hint">※セカンダリハンデ(Br権・持ち時間の短縮)は、下の「セカンダリハンデのマトリクス」で管理します。</p>'+
   '</div>'+
+  renderHandicapMatrixCard()+
   renderSetCountTableCard("A")+
   renderSetCountTableCard("B")+
   renderSettingsManualClassSetCounts();
@@ -6800,8 +6877,10 @@ function renderBlockGrid(t, block, opts){
     return block.matches.find(function(m){ return (m.a===a && m.b===b) || (m.a===b && m.b===a); });
   }
   var standings = blockStandings(t, block);
+  // 順位は、そのリーグの勝敗がすべて決定してから付ける(途中は「-」)
+  var leagueDecided = !!(block.matches && block.matches.length && block.matches.every(function(m){ return !!m.winner; }));
   var rankOf = {};
-  standings.forEach(function(s, i){ rankOf[s.id] = i+1; });
+  standings.forEach(function(s, i){ rankOf[s.id] = leagueDecided ? (i+1) : "-"; });
   var lossesOf = {};
   ids.forEach(function(id){ lossesOf[id] = block.losses ? (block.losses[id]||0) : 0; });
   var compact = !!opts.noSelect;   // リーグ表の一覧(複数ブロックを並べる表示)では、番号だけの短い見出しにして幅を詰める
@@ -8241,6 +8320,13 @@ document.addEventListener("click", function(e){
     settingsOpenByTid[tidTS2] = !settingsOpenByTid[tidTS2];
     render();
   }
+  else if(action==="hc-reset"){
+    if(confirm("セカンダリハンデのマトリクスを、デフォルトに戻しますか?")){
+      var wasEnabled = state.settings.handicapMatrix ? state.settings.handicapMatrix.enabled!==false : true;
+      state.settings.handicapMatrix = defaultHandicapMatrix(); state.settings.handicapMatrix.enabled = wasEnabled;
+      saveState(); render();
+    }
+  }
   else if(action==="cs-rule-add" || action==="cs-rule-del"){
     var csH3 = customSetsHolderOf(t); if(!csH3) return;
     var cs3 = ensureCustomSets(csH3);
@@ -8839,6 +8925,17 @@ document.addEventListener("change", function(e){
       dETM.setHours(Number(hmETM[0])||0, Number(hmETM[1])||0, 0, 0);
       mETM[keyETM] = dETM.getTime();
     }
+    saveState(); render();
+  }
+  else if(action==="hc-enabled"){
+    ensureHandicapMatrix(state.settings); state.settings.handicapMatrix.enabled = !!t.checked; saveState(); render();
+  }
+  else if(action==="hc-br" || action==="hc-min"){
+    ensureHandicapMatrix(state.settings);
+    var hmE = state.settings.handicapMatrix, rowE = t.getAttribute("data-row"), colE = t.getAttribute("data-col");
+    if(!hmE.br[rowE] || !hmE.minutes[rowE]) return;
+    if(action==="hc-br") hmE.br[rowE][colE] = !!t.checked;
+    else hmE.minutes[rowE][colE] = Math.max(0, Math.round(Number(t.value)||0));
     saveState(); render();
   }
   else if(action==="cs-set" || action==="cs-down"){
