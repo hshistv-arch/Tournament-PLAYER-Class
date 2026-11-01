@@ -982,25 +982,25 @@ var WIN_MATRIX_DEFAULT = {
   AC:{SA:2,AA:1,AB:1,AC:1,BA:1,BB:1,BC:1,CA:0,CB:0,CC:0,Be:0},
   BA:{SA:2,AA:1,AB:1,AC:1,BA:1,BB:1,BC:1,CA:1,CB:0,CC:0,Be:0},
   BB:{SA:2,AA:2,AB:1,AC:1,BA:1,BB:1,BC:1,CA:1,CB:1,CC:0,Be:0},
-  BC:{SA:3,AA:2,AB:2,AC:1,BA:1,BB:1,BC:1,CA:1,CB:1,CC:1,Be:1},
-  CA:{SA:3,AA:2,AB:2,AC:2,BA:2,BB:1,BC:1,CA:1,CB:1,CC:1,Be:1},
-  CB:{SA:3,AA:3,AB:2,AC:2,BA:2,BB:2,BC:2,CA:1,CB:1,CC:1,Be:1},
-  CC:{SA:3,AA:3,AB:3,AC:2,BA:2,BB:3,BC:2,CA:1,CB:1,CC:1,Be:1},
-  Be:{SA:3,AA:3,AB:3,AC:2,BA:2,BB:3,BC:2,CA:1,CB:1,CC:1,Be:1}
+  BC:{SA:2,AA:2,AB:2,AC:1,BA:2,BB:1,BC:1,CA:1,CB:1,CC:1,Be:0},
+  CA:{SA:3,AA:2,AB:2,AC:2,BA:2,BB:1,BC:1,CA:1,CB:1,CC:1,Be:0},
+  CB:{SA:3,AA:3,AB:2,AC:2,BA:2,BB:2,BC:1,CA:1,CB:1,CC:1,Be:0},
+  CC:{SA:3,AA:3,AB:3,AC:2,BA:3,BB:2,BC:2,CA:1,CB:1,CC:1,Be:0},
+  Be:{SA:3,AA:3,AB:3,AC:3,BA:3,BB:2,BC:2,CA:2,CB:1,CC:1,Be:1}
 };
 
 var LOSE_MATRIX_DEFAULT = {
-  SA:{SA:-1,AA:-1,AB:-2,AC:-3,BA:-2,BB:-2,BC:-3,CA:-2,CB:-2,CC:-3,Be:-3},
+  SA:{SA:-1,AA:-1,AB:-2,AC:-3,BA:-2,BB:-2,BC:-3,CA:-2,CB:-2,CC:-3,Be:-2},
   AA:{SA:-1,AA:-1,AB:-1,AC:-2,BA:-1,BB:-2,BC:-2,CA:-1,CB:-2,CC:-2,Be:-2},
-  AB:{SA:0,AA:-1,AB:-1,AC:-1,BA:-1,BB:-1,BC:-2,CA:-1,CB:-1,CC:-2,Be:-2},
-  AC:{SA:0,AA:-1,AB:-1,AC:-1,BA:-1,BB:-1,BC:-2,CA:-1,CB:-1,CC:-2,Be:-2},
-  BA:{SA:0,AA:0,AB:-1,AC:-1,BA:-1,BB:-1,BC:-2,CA:-1,CB:-2,CC:-2,Be:-2},
-  BB:{SA:0,AA:0,AB:-1,AC:-1,BA:-1,BB:-1,BC:-2,CA:-1,CB:-1,CC:-2,Be:-2},
-  BC:{SA:0,AA:0,AB:0,AC:-1,BA:-1,BB:-1,BC:-1,CA:-1,CB:-1,CC:-2,Be:-2},
-  CA:{SA:0,AA:0,AB:0,AC:0,BA:-1,BB:-1,BC:-1,CA:-1,CB:-1,CC:-2,Be:-2},
-  CB:{SA:0,AA:0,AB:0,AC:0,BA:0,BB:0,BC:-1,CA:-1,CB:-1,CC:-1,Be:-1},
+  AB:{SA:0,AA:-1,AB:-1,AC:-2,BA:-1,BB:-1,BC:-2,CA:-1,CB:-1,CC:-2,Be:-2},
+  AC:{SA:0,AA:-1,AB:-1,AC:-1,BA:-1,BB:-1,BC:-2,CA:-1,CB:-1,CC:-2,Be:-1},
+  BA:{SA:0,AA:-1,AB:-1,AC:-1,BA:-1,BB:-1,BC:-2,CA:-1,CB:-2,CC:-2,Be:-2},
+  BB:{SA:0,AA:0,AB:-1,AC:-1,BA:-1,BB:-1,BC:-2,CA:-1,CB:-1,CC:-2,Be:-1},
+  BC:{SA:0,AA:0,AB:0,AC:0,BA:-1,BB:-1,BC:-1,CA:-1,CB:-1,CC:-2,Be:-2},
+  CA:{SA:0,AA:0,AB:0,AC:-1,BA:-1,BB:-1,BC:-1,CA:-1,CB:-1,CC:-2,Be:-1},
+  CB:{SA:0,AA:0,AB:0,AC:0,BA:0,BB:0,BC:-1,CA:-1,CB:-1,CC:-2,Be:-1},
   CC:{SA:0,AA:0,AB:0,AC:0,BA:0,BB:0,BC:-1,CA:-1,CB:-1,CC:-1,Be:-1},
-  Be:{SA:0,AA:0,AB:0,AC:0,BA:0,BB:0,BC:-1,CA:-1,CB:-1,CC:-1,Be:-1}
+  Be:{SA:0,AA:0,AB:0,AC:0,BA:0,BB:0,BC:0,CA:0,CB:0,CC:-1,Be:-1}
 };
 
 var BONUS_DEFAULT = {
@@ -1585,14 +1585,47 @@ function secondaryHandicapV1(classA, classB){
 // ---------- セカンダリハンデのマトリクス(自分のクラス×相手のクラス) ----------
 // br[自分][相手]=true: 自分にBr(ブレイク)権 / minutes[自分][相手]=n: 自分の持ち時間をn分短縮。「設定」→「セット数」タブで編集できる
 var HANDICAP_RULES_VERSION = 2;
+// 現状の最新のマトリクス(行=自分のクラス、列=相手のクラス)。「デフォルトに戻す」・新規の初期値はこれを使う
+var HANDICAP_BR_DEFAULT = {
+  SA:{SA:0,AA:0,AB:0,AC:0,BA:0,BB:0,BC:0,CA:0,CB:0,CC:0,Be:0},
+  AA:{SA:0,AA:0,AB:0,AC:0,BA:0,BB:0,BC:0,CA:0,CB:0,CC:0,Be:0},
+  AB:{SA:1,AA:1,AB:0,AC:0,BA:1,BB:0,BC:0,CA:1,CB:0,CC:0,Be:0},
+  AC:{SA:1,AA:1,AB:1,AC:0,BA:1,BB:1,BC:0,CA:1,CB:1,CC:0,Be:0},
+  BA:{SA:1,AA:0,AB:0,AC:0,BA:0,BB:0,BC:0,CA:0,CB:0,CC:0,Be:0},
+  BB:{SA:1,AA:1,AB:0,AC:0,BA:1,BB:0,BC:0,CA:1,CB:0,CC:0,Be:0},
+  BC:{SA:1,AA:1,AB:1,AC:0,BA:1,BB:1,BC:0,CA:1,CB:1,CC:0,Be:0},
+  CA:{SA:1,AA:0,AB:0,AC:0,BA:0,BB:0,BC:0,CA:0,CB:0,CC:0,Be:0},
+  CB:{SA:1,AA:1,AB:0,AC:0,BA:1,BB:0,BC:0,CA:1,CB:0,CC:0,Be:0},
+  CC:{SA:1,AA:1,AB:1,AC:0,BA:1,BB:1,BC:0,CA:1,CB:1,CC:0,Be:0},
+  Be:{SA:1,AA:1,AB:1,AC:1,BA:1,BB:1,BC:1,CA:1,CB:1,CC:1,Be:0}
+};
+var HANDICAP_MIN_DEFAULT = {
+  SA:{SA:0,AA:5,AB:5,AC:10,BA:5,BB:5,BC:10,CA:5,CB:5,CC:5,Be:10},
+  AA:{SA:0,AA:0,AB:0,AC:5,BA:0,BB:0,BC:5,CA:0,CB:0,CC:5,Be:0},
+  AB:{SA:0,AA:0,AB:0,AC:0,BA:0,BB:0,BC:0,CA:0,CB:0,CC:0,Be:0},
+  AC:{SA:0,AA:0,AB:0,AC:0,BA:0,BB:0,BC:0,CA:0,CB:0,CC:0,Be:0},
+  BA:{SA:0,AA:0,AB:0,AC:5,BA:0,BB:0,BC:10,CA:0,CB:0,CC:5,Be:0},
+  BB:{SA:0,AA:0,AB:0,AC:0,BA:0,BB:0,BC:0,CA:0,CB:0,CC:0,Be:0},
+  BC:{SA:0,AA:0,AB:0,AC:0,BA:0,BB:0,BC:0,CA:0,CB:0,CC:0,Be:0},
+  CA:{SA:0,AA:0,AB:0,AC:0,BA:0,BB:0,BC:0,CA:0,CB:0,CC:5,Be:0},
+  CB:{SA:0,AA:0,AB:0,AC:0,BA:0,BB:0,BC:0,CA:0,CB:0,CC:0,Be:0},
+  CC:{SA:0,AA:0,AB:0,AC:0,BA:0,BB:0,BC:0,CA:0,CB:0,CC:0,Be:0},
+  Be:{SA:10,AA:5,AB:0,AC:0,BA:5,BB:0,BC:0,CA:5,CB:0,CC:0,Be:0}
+};
+// fn(旧ルールの関数)を渡すと、そのルールから作った表を返す(旧初期値との比較用)
 function defaultHandicapMatrix(fn){
   var hm = {enabled:true, rulesV:HANDICAP_RULES_VERSION, br:{}, minutes:{}};
   CLASSES.forEach(function(a){
     hm.br[a] = {}; hm.minutes[a] = {};
     CLASSES.forEach(function(b){
-      var r = (fn || secondaryHandicap)(a, b);
-      hm.br[a][b] = (r.breakFor==="a");
-      hm.minutes[a][b] = r.reduceA;
+      if(fn){
+        var r = fn(a, b);
+        hm.br[a][b] = (r.breakFor==="a");
+        hm.minutes[a][b] = r.reduceA;
+      } else {
+        hm.br[a][b] = !!HANDICAP_BR_DEFAULT[a][b];
+        hm.minutes[a][b] = HANDICAP_MIN_DEFAULT[a][b];
+      }
     });
   });
   return hm;
