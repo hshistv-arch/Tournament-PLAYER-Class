@@ -104,7 +104,7 @@ button{font-family:inherit;}
 /* 大会開始後は、大会画面上部のタイトルとボタンをスクロールに追従させる */
 body.t-head-sticky .t-head{position:sticky; top:0; z-index:35; background:var(--bg); padding:.5rem 0; margin-top:-.5rem; border-bottom:1px solid var(--border);}
 .page-head p.sub{color:var(--muted); margin:.15rem 0 0; font-size:.88rem;}
-.tournament-name-input{font:inherit; font-size:1.5rem; font-weight:700; color:var(--text); border:1px solid transparent; background:transparent; padding:.1rem .3rem; margin:0 0 0 -.3rem; border-radius:6px; max-width:100%; width:22rem;}
+.tournament-name-input{font:inherit; font-size:1.5rem; font-weight:700; color:var(--text); border:1px solid transparent; background:transparent; padding:.1rem .3rem; margin:0 0 0 -.3rem; border-radius:6px; max-width:100%; width:22rem; field-sizing:content; min-width:min(22rem,100%);}
 .tournament-name-input:hover{border-color:var(--border);}
 .tournament-name-input:focus{border-color:var(--border); background:var(--surface); outline:none;}
 .card{
@@ -4652,6 +4652,21 @@ function restoreTshScroll(snap){
   var els = document.querySelectorAll(".tsh-scroll");
   snap.forEach(function(s, i){ var el = els[i]; if(el){ el.scrollLeft = s.l; el.scrollTop = s.t; } });
 }
+// 大会名の入力欄を、名前の文字数がすべて見える幅に広げる(画面幅を超える場合は欄が2行に折り返さないので、画面幅まで)
+function fitNameInputs(){
+  var inputs = document.querySelectorAll(".tournament-name-input");
+  if(!inputs.length) return;
+  var cv = fitNameInputs.cv || (fitNameInputs.cv = document.createElement("canvas")), ctx = cv.getContext && cv.getContext("2d");
+  Array.prototype.forEach.call(inputs, function(el){
+    var w = 0;
+    if(ctx){
+      var cs = getComputedStyle(el);
+      ctx.font = cs.fontWeight+" "+cs.fontSize+" "+cs.fontFamily;
+      w = ctx.measureText(el.value).width + parseFloat(cs.paddingLeft||0) + parseFloat(cs.paddingRight||0) + 6;
+    } else w = el.value.length * 24;
+    el.style.width = Math.max(w, 352)+"px";
+  });
+}
 function render(){
   if(DISPLAY_MODE){
     var dispScrollX = window.scrollX, dispScrollY = window.scrollY, dispTsh = captureTshScroll();
@@ -4704,6 +4719,7 @@ function render(){
   else if(route.screen==="tournament") html = renderTournamentScreen(route.id);
   else html = renderRoster();
   main.innerHTML = html;
+  fitNameInputs();
   document.getElementById("h2h-modal-root").innerHTML = h2hModal ? renderH2HModal() : (estModal ? renderEstimateModal() : (tplSlotModal ? renderTplSlotModal() : (tplModal ? renderTplMatchModal() : (gridCellModal ? renderGridCellModal() : ""))));
   function applyInnerScrolls(){
     innerScrollers.forEach(function(s){
@@ -8578,6 +8594,7 @@ var QR_EVENT_FORM_FIELDS = {"qr-event-name-input":"name", "qr-event-kana-input":
 document.addEventListener("input", function(e){
   var t = e.target;
   var action = t.getAttribute && t.getAttribute("data-action");
+  if(action==="update-tournament-name"){ fitNameInputs(); return; }
   if(action==="entry-search-input"){
     if(e.isComposing) return;
     route.entrySearch = t.value;
