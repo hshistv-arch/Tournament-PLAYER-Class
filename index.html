@@ -1529,9 +1529,35 @@ function classSubRank(code){
 }
 var SA_EXTRA_REDUCE_CLASSES = ["AC","BC","Be"];
 // セカンダリハンデの既定のルール(マトリクスの初期値を作るために使う。実際の判定は「設定」のマトリクス=handicapOf を使う)
-//  ・同じ系統(A・B・C)の中で1つ差: クラスが低い方にBr(ブレイク)権。2つ差: クラスが低い方にBr権+クラスが高い方の持ち時間5分短縮
+//  ・クラスの2文字目(セカンダリ)の順序は A→B→C。系統(A・B・C)は問わず、2文字目で比べる
+//    1つ差(例: AA対AB・AA対BB・BB対BC): 2文字目が低い方(AB・BB・BC)にBr(ブレイク)権
+//    2つ差(例: AA対AC・AA対BC): 低い方にBr権+高い方の持ち時間5分短縮。2文字目が同じ(例: AA対BA)なら何もなし。Beは「BB」と同じ扱い
 //  ・SA: SA以外との対戦では常に持ち時間5分短縮(相手がAC・BC・Beなら10分短縮)、相手にBr権。SA同士は短縮なし
 function secondaryHandicap(classA, classB){
+  var result = {breakFor:null, reduceA:0, reduceB:0};
+  var aIsSA = classA==="SA", bIsSA = classB==="SA";
+  if(aIsSA || bIsSA){
+    if(aIsSA && bIsSA) return result;
+    if(aIsSA){
+      result.reduceA = SA_EXTRA_REDUCE_CLASSES.indexOf(classB)>=0 ? 10 : 5;
+      result.breakFor = "b";
+    } else {
+      result.reduceB = SA_EXTRA_REDUCE_CLASSES.indexOf(classA)>=0 ? 10 : 5;
+      result.breakFor = "a";
+    }
+    return result;
+  }
+  var rA = classSubRank(classA), rB = classSubRank(classB);
+  if(rA==null || rB==null || rA===rB) return result;
+  var weaker = rA>rB ? "a" : "b";
+  result.breakFor = weaker;
+  if(Math.abs(rA-rB)>=2){
+    if(weaker==="a") result.reduceB = 5; else result.reduceA = 5;
+  }
+  return result;
+}
+// 旧ルール(同じ系統の中だけで比べる)。以前の初期値のままのマトリクスを、新しい初期値へ更新するかの判定にだけ使う
+function secondaryHandicapV1(classA, classB){
   var result = {breakFor:null, reduceA:0, reduceB:0};
   var aIsSA = classA==="SA", bIsSA = classB==="SA";
   if(aIsSA || bIsSA){
@@ -1558,12 +1584,13 @@ function secondaryHandicap(classA, classB){
 }
 // ---------- セカンダリハンデのマトリクス(自分のクラス×相手のクラス) ----------
 // br[自分][相手]=true: 自分にBr(ブレイク)権 / minutes[自分][相手]=n: 自分の持ち時間をn分短縮。「設定」→「セット数」タブで編集できる
-function defaultHandicapMatrix(){
-  var hm = {enabled:true, br:{}, minutes:{}};
+var HANDICAP_RULES_VERSION = 2;
+function defaultHandicapMatrix(fn){
+  var hm = {enabled:true, rulesV:HANDICAP_RULES_VERSION, br:{}, minutes:{}};
   CLASSES.forEach(function(a){
     hm.br[a] = {}; hm.minutes[a] = {};
     CLASSES.forEach(function(b){
-      var r = secondaryHandicap(a, b);
+      var r = (fn || secondaryHandicap)(a, b);
       hm.br[a][b] = (r.breakFor==="a");
       hm.minutes[a][b] = r.reduceA;
     });
@@ -1576,6 +1603,15 @@ function ensureHandicapMatrix(st){
   var hm = st.handicapMatrix;
   if(hm.enabled===undefined) hm.enabled = true;
   hm.br = hm.br || {}; hm.minutes = hm.minutes || {};
+  // ルール更新(v2: 系統を問わず2文字目で比べる)。以前の初期値のまま(編集されていない)なら新しい初期値へ更新し、編集済みならそのまま残す
+  if((hm.rulesV||1) < HANDICAP_RULES_VERSION){
+    var old = defaultHandicapMatrix(secondaryHandicapV1), untouched = true;
+    CLASSES.forEach(function(a){ CLASSES.forEach(function(b){
+      if(hm.br[a] && hm.minutes[a] && (!!hm.br[a][b]!==!!old.br[a][b] || (Number(hm.minutes[a][b])||0)!==old.minutes[a][b])) untouched = false;
+    }); });
+    if(untouched){ hm.br = def.br; hm.minutes = def.minutes; }
+    hm.rulesV = HANDICAP_RULES_VERSION;
+  }
   CLASSES.forEach(function(a){
     hm.br[a] = hm.br[a] || {}; hm.minutes[a] = hm.minutes[a] || {};
     CLASSES.forEach(function(b){
@@ -5099,8 +5135,9 @@ function renderHandicapMatrixCard(){
     '<label class="hint" style="display:flex;align-items:center;gap:.4rem;cursor:pointer;margin:.2rem 0 .5rem"><input type="checkbox" data-action="hc-enabled"'+(hm.enabled!==false?' checked':'')+'> セカンダリハンデを適用する(オプションルール)</label>'+
     '<p class="hint">行=<b>自分のクラス</b>、列=<b>相手のクラス</b>です。そのマスの内容が、自分の側に適用されます。対戦カードには、Br権があれば「Br」、持ち時間は短縮後の分数で表示されます。変更しても、すでに終了した試合の表示は変わりません。</p>'+
     '<ul class="hint" style="margin:.2rem 0 .6rem;padding-left:1.2rem">'+
-      '<li>同じ系統(A・B・C)で1つ差(例: AA対AB): クラスが低い方(AB)にBr権。</li>'+
-      '<li>2つ差(例: AA対AC): クラスが低い方(AC)にBr権、クラスが高い方(AA)は持ち時間5分短縮。</li>'+
+      '<li>クラスの2文字目(セカンダリ)は A→B→C の順。系統(A・B・C)は問わず、2文字目で比べます。</li>'+
+      '<li>1つ差(例: AA対AB・AA対BB・BB対BC): 2文字目が低い方(AB・BB・BC)にBr権。</li>'+
+      '<li>2つ差(例: AA対AC・AA対BC): 低い方にBr権、高い方は持ち時間5分短縮。2文字目が同じ(例: AA対BA)なら何もなし。BeはBBと同じ扱い。</li>'+
       '<li>SA: SA以外との対戦では常に5分短縮(相手がAC・BC・Beなら10分短縮)、相手にBr権。SA同士は短縮なし。</li>'+
     '</ul>'+
     '<h4 style="margin:.6rem 0 .3rem">Br(ブレイク)権</h4>'+table("br")+
