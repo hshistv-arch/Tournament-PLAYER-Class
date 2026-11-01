@@ -1828,7 +1828,13 @@ var DISPLAY_TID = (function(){
   var m = location.search.match(/[?&]id=([^&]+)/);
   return m ? decodeURIComponent(m[1]) : null;
 })();
-var DISPLAY_POLL_MS = 10000;
+var DISPLAY_POLL_MS = 20000;   // 大会結果共有画面の自動更新の間隔(20秒)
+// 大会結果共有画面は、大会が終了(試合終了)したら自動更新を止める(終了の結果を取得・表示したあとは、クラウドへ問い合わせない)
+function displayUpdatesFinished(){
+  if(!DISPLAY_MODE || !DISPLAY_TID) return false;
+  var t = findTournament(DISPLAY_TID);
+  return !!(t && t.status==="completed");
+}
 
 // ---------- stream mode (single-match OBS-friendly scoreboard) ----------
 var STREAM_MODE = /(^|[?&])stream=1(&|$)/.test(location.search);
@@ -5714,7 +5720,7 @@ function displayAutoScrollButtonHTML(){
   return '<button class="btn btn-sm'+(on?' btn-felt':' btn-ghost')+' no-print" type="button" data-action="toggle-display-autoscroll" style="margin-top:.5rem" title="ページ全体を60秒かけて上から下へ自動でスクロールします">'+(on?'⏸ 自動スクロール中(停止)':'▶ 自動スクロールを開始')+'</button>';
 }
 function renderDisplayScreen(){
-  var updatedHTML = '<div class="display-updated">🔄 自動更新 '+displayTimeStamp()+'</div>';
+  var updatedHTML = '<div class="display-updated">'+(displayUpdatesFinished() ? ('✅ 大会終了(自動更新は終了しました) '+displayTimeStamp()) : ('🔄 自動更新(20秒ごと) '+displayTimeStamp()))+'</div>';
   var closeHTML = '<button type="button" class="display-close-btn" data-action="close-display-window">✕ 閉じる</button>';
   var body;
   if(!DISPLAY_TID){
@@ -9148,11 +9154,18 @@ if(GUIDE_MODE){ document.body.classList.add("guide-mode-active"); }
 render();
 syncFromServer();
 // 自動更新は、画面が見えているときだけ行う(裏のタブ・画面オフのスマホは取得せず、クラウドの読み取り回数を節約する)。見えるようになったらすぐ1回取得する
-function pollSyncIfVisible(){ if(!document.hidden) syncFromServer(); }
-if(DISPLAY_MODE || STREAM_MODE || DRAW_MODE){
-  document.addEventListener("visibilitychange", function(){ if(!document.hidden) syncFromServer(); });
+var displayPollTimer = null;
+function pollSyncIfVisible(){
+  if(DISPLAY_MODE && displayUpdatesFinished()){
+    if(displayPollTimer){ clearInterval(displayPollTimer); displayPollTimer = null; }
+    return;
+  }
+  if(!document.hidden) syncFromServer();
 }
-if(DISPLAY_MODE){ setInterval(pollSyncIfVisible, DISPLAY_POLL_MS); startDisplayAutoScroll(); }
+if(DISPLAY_MODE || STREAM_MODE || DRAW_MODE){
+  document.addEventListener("visibilitychange", function(){ if(!document.hidden && !(DISPLAY_MODE && displayUpdatesFinished())) syncFromServer(); });
+}
+if(DISPLAY_MODE){ displayPollTimer = setInterval(pollSyncIfVisible, DISPLAY_POLL_MS); startDisplayAutoScroll(); }
 if(STREAM_MODE){ setInterval(pollSyncIfVisible, STREAM_POLL_MS); }
 if(DRAW_MODE){ setInterval(pollSyncIfVisible, DRAW_POLL_MS); }
 
