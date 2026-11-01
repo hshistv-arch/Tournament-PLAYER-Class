@@ -1023,7 +1023,7 @@ var BONUS_LABELS = {
   championBelowB:"優勝(Bクラス以下)",
   bestBInFinals:"決勝進出者中ベストBクラス",
   bestCInFinals:"決勝進出者中ベストCクラス",
-  beatPrevChampion:"前回優勝者に勝利",
+  beatPrevChampion:"前回マンスリー優勝者に勝利",
   prelimDoubleLossPenalty:"予選2敗による敗退"
 };
 var BONUS_ORDER = ["finalsAdvance","runnerUp","runnerUpBelowB","champion","championBelowB","bestBInFinals","bestCInFinals","beatPrevChampion","prelimDoubleLossPenalty"];
@@ -4871,6 +4871,7 @@ function renderRoster(){
     '<div class="stat"><div class="label">登録選手数</div><div class="value num">'+total+'</div></div>'+
     '<div class="stat"><div class="label">平均ポイント</div><div class="value num">'+avg+'</div></div>'+
   '</div>'+
+  renderSettingsChampion()+
   '<div class="card">'+
     '<h3>メンバーを追加</h3>'+
     '<form data-form="add-player" class="form-row">'+
@@ -5075,14 +5076,13 @@ function renderSettings(){
   else if(tab==="matrix") body = renderSettingsMatrix();
   else if(tab==="bonus") body = renderSettingsBonus();
   else if(tab==="setcounts") body = renderSettingsSetCounts();
-  else if(tab==="champion") body = renderSettingsChampion();
   else if(tab==="data") body = renderSettingsData();
   else if(tab==="guide") body = renderSettingsGuideEdit();
   return ''+
   '<div class="page-head"><div><h1>設定</h1><p class="sub">クラス区分・勝敗ポイント表・ボーナス条件を変更できます</p></div></div>'+
   '<div class="tabs">'+
     tabBtn("bounds","クラス区分")+tabBtn("matrix","勝敗ポイント表")+tabBtn("bonus","ボーナス設定")+
-    tabBtn("setcounts","セット数")+tabBtn("champion","前回優勝者")+tabBtn("data","データ管理")+tabBtn("guide","使い方ガイド")+
+    tabBtn("setcounts","セット数")+tabBtn("data","データ管理")+tabBtn("guide","使い方ガイド")+
   '</div>'+
   body;
 }
@@ -5126,7 +5126,7 @@ function customSetsEditorHTML(holder, usePoints, scope, tid){
   }).join("");
   return '<div class="custom-sets-editor" style="margin-top:.6rem;padding:.8rem;border:1px dashed var(--border);border-radius:10px">'+
     '<h4 style="margin:0 0 .3rem">セット数C(この大会だけの自由設定)</h4>'+
-    '<p class="hint" style="margin:0 0 .5rem">クラスごとのセット数を自由に設定できます(空欄のクラスは対戦カードにセット数を表示しません)。「敗者復活ブロック時」は、ダブルエリミネーションの敗者側でワンセットダウンを使うとき、セット数を変えたいクラスにだけ入力します。持ち時間はセット数から自動計算されます(前回優勝者は+1セット)。</p>'+
+    '<p class="hint" style="margin:0 0 .5rem">クラスごとのセット数を自由に設定できます(空欄のクラスは対戦カードにセット数を表示しません)。「敗者復活ブロック時」は、ダブルエリミネーションの敗者側でワンセットダウンを使うとき、セット数を変えたいクラスにだけ入力します。持ち時間はセット数から自動計算されます(前回マンスリー優勝者は+1セット)。</p>'+
     '<div class="table-wrap"><table class="data"><thead><tr><th>クラス</th><th>セット数</th><th>持ち時間</th><th>敗者復活ブロック時</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
     '<h4 style="margin:.9rem 0 .2rem">対戦クラス別の特別ルール</h4>'+
     '<p class="hint" style="margin:0">例: 「P・SA と対戦する BC・Be は −1 セット」(1セットダウン)。同じクラスに複数のルールが当てはまるときは、増減が合計されます。</p>'+
@@ -5197,7 +5197,7 @@ function renderHandicapMatrixCard(){
 function renderSettingsSetCounts(){
   return '<div class="card">'+
     '<h3>クラスごとのセット数(レース本数)</h3>'+
-    '<p class="hint">対戦カードに表示される、各選手の必要セット数です。「セット数A」「セット数B」の2種類をここで編集できます。このほか「セット数C」は、大会ごとにクラス別のセット数と対戦クラス別の特別ルールを自由に設定できます(大会作成時または大会画面で設定)。どれを使うかは大会作成時に大会ごとに選択します(デフォルトはセット数A。大会画面からいつでも切り替えられます)。持ち時間はセット数に応じて自動計算されます(2セット=15分、3セット=20分、4セット=25分、5セット=30分、6セット=35分。前回優勝者は+1セット)。「ワンセットダウン」は、ダブルエリミネーションの敗者復活ブロックで使うセット数です(大会作成時にこちらを使うか選択でき、デフォルトで採用されます)。</p>'+
+    '<p class="hint">対戦カードに表示される、各選手の必要セット数です。「セット数A」「セット数B」の2種類をここで編集できます。このほか「セット数C」は、大会ごとにクラス別のセット数と対戦クラス別の特別ルールを自由に設定できます(大会作成時または大会画面で設定)。どれを使うかは大会作成時に大会ごとに選択します(デフォルトはセット数A。大会画面からいつでも切り替えられます)。持ち時間はセット数に応じて自動計算されます(2セット=15分、3セット=20分、4セット=25分、5セット=30分、6セット=35分。前回マンスリー優勝者は+1セット)。「ワンセットダウン」は、ダブルエリミネーションの敗者復活ブロックで使うセット数です(大会作成時にこちらを使うか選択でき、デフォルトで採用されます)。</p>'+
     '<p class="hint">※セカンダリハンデ(Br権・持ち時間の短縮)は、下の「セカンダリハンデのマトリクス」で管理します。</p>'+
   '</div>'+
   renderHandicapMatrixCard()+
@@ -5226,7 +5226,7 @@ function renderManualSetCountTableCard(key){
 function renderSettingsManualClassSetCounts(){
   return '<div class="card">'+
     '<h3>クラスごとのセット数(ポイント・セット数を使用しない大会用)</h3>'+
-    '<p class="hint">「ポイント・セット数を使用する」を外した大会で、選手に手入力したクラス(P/LP/SA/A/B/C/Be)ごとの必要セット数です。「セット数A」「セット数B」の2種類をここで編集できます。このほか「セット数C」(大会ごとにクラス別のセット数と特別ルールを自由に設定)と「セット数D」(決まったセット数を定めない)があり、使う種類は大会ごとに選択します(大会作成画面または大会画面上部の「基本セット数」)。持ち時間はセット数に応じて自動計算されます(前回優勝者は+1セット)。クラス未入力の選手にはセット数・持ち時間は表示されません。PクラスとSAクラスの対戦では、P側のセット数が1セット少ない「1セットダウン」扱いになります。</p>'+
+    '<p class="hint">「ポイント・セット数を使用する」を外した大会で、選手に手入力したクラス(P/LP/SA/A/B/C/Be)ごとの必要セット数です。「セット数A」「セット数B」の2種類をここで編集できます。このほか「セット数C」(大会ごとにクラス別のセット数と特別ルールを自由に設定)と「セット数D」(決まったセット数を定めない)があり、使う種類は大会ごとに選択します(大会作成画面または大会画面上部の「基本セット数」)。持ち時間はセット数に応じて自動計算されます(前回マンスリー優勝者は+1セット)。クラス未入力の選手にはセット数・持ち時間は表示されません。PクラスとSAクラスの対戦では、P側のセット数が1セット少ない「1セットダウン」扱いになります。</p>'+
   '</div>'+
   renderManualSetCountTableCard("A")+
   renderManualSetCountTableCard("B");
@@ -5292,8 +5292,8 @@ function renderSettingsChampion(){
   var options = state.players.slice().sort(function(a,b){return a.name.localeCompare(b.name,"ja");}).map(function(p){
     return '<option value="'+p.id+'"'+(state.previousChampionId===p.id?" selected":"")+'>'+esc(p.name)+'</option>';
   }).join("");
-  return '<div class="card"><h3>前回優勝者</h3>'+
-    '<p class="hint">「前回優勝者に勝利」ボーナスの対象者です。大会を完了すると自動的に更新されます。</p>'+
+  return '<div class="card"><h3>前回マンスリー優勝者</h3>'+
+    '<p class="hint">「前回マンスリー優勝者に勝利」ボーナスの対象者です。大会を完了すると自動的に更新されます。</p>'+
     '<div class="form-row">'+
       '<div class="field"><label>選手</label><select data-action="update-prev-champion"><option value="">未設定</option>'+options+'</select></div>'+
     '</div>'+
