@@ -6,11 +6,65 @@
 //   POST /api/backups                       現在のデータをバックアップとして複製保存(古いものから30件を超えた分を削除)
 //   POST /api/backups?action=restore&name=  バックアップの内容で現在のデータを置き換える
 //   DELETE /api/backups?name=               バックアップを1件削除
+//
+// 書き換えの保護: バックアップの作成・復元・削除(POST・DELETE /api/backups)は、合言葉が必要。
+//   合言葉はリクエストヘッダ X-Admin-Pass で送り、Worker のシークレット ADMIN_PASS_HASH(scripts/make-pass-hash.mjs で作る
+//   ハッシュ。合言葉そのものは保存しない)と照合する。連続して間違えると一定時間ロックする(5回で15分)。
+//   ADMIN_PASS_HASH が未登録の間は、従来どおり合言葉なしで動く(登録すると保護が有効になる)。
+//   GET /api/state と画面(表示ページ ?display=1 を含む)は公開のまま。
 
 const STATE_KEY = "club-state.json";
 const BACKUP_PREFIX = "backups/";
 const MAX_BACKUPS = 30;
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" };
+
+const MAX_FAILS = 5;
+const LOCK_SECONDS = 15 * 60;
+
+function hexToBytes(hex) {
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);
+  return out;
+}
+function bytesToHex(bytes) {
+  return Array.from(new Uint8Array(bytes)).map(function (b) { return b.toString(16).padStart(2, "0"); }).join("");
+}
+// 保存形式: pbkdf2$<回数>$<saltのhex>$<ハッシュのhex>
+async function verifyPass(pass, stored) {
+  const parts = String(stored || "").trim().split("$");
+  if (parts.length !== 4 || parts[0] !== "pbkdf2") return false;
+  const iter = parseInt(parts[1], 10);
+  if (!(iter > 0 && iter <= 100000)) return false;
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: hexToBytes(parts[2]), iterations: iter }, key, 256);
+  const got = new Uint8Array(bits), want = hexToBytes(parts[3]);
+  if (got.length !== want.length) return false;
+  let diff = 0;
+  for (let i = 0; i < got.length; i++) diff |= got[i] ^ want[i];
+  return diff === 0;
+}
+// 合言葉のチェック。通れば null、通らなければエラーの応答を返す
+async function requireAdmin(request, env) {
+  if (!env.ADMIN_PASS_HASH) return null;   // 合言葉が未登録の間は保護なし
+  const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+  const failKey = "auth-fail/" + ip;
+  const rec = JSON.parse((await env.CLUB_KV.get(failKey)) || "null") || { count: 0, lockedUntil: 0 };
+  const now = Date.now();
+  if (rec.lockedUntil > now) {
+    return json({ error: "合言葉の入力に続けて失敗したため、しばらく操作できません。約" + Math.ceil((rec.lockedUntil - now) / 60000) + "分後にやり直してください。" }, 429);
+  }
+  const pass = request.headers.get("X-Admin-Pass") || "";
+  if (pass && (await verifyPass(pass, env.ADMIN_PASS_HASH))) {
+    if (rec.count) await env.CLUB_KV.delete(failKey);
+    return null;
+  }
+  if (pass) {   // 合言葉を送ってきて間違えた場合だけ数える(未入力の最初の問い合わせは数えない)
+    const next = { count: rec.count + 1, lockedUntil: 0 };
+    if (next.count >= MAX_FAILS) { next.lockedUntil = now + LOCK_SECONDS * 1000; next.count = 0; }
+    await env.CLUB_KV.put(failKey, JSON.stringify(next), { expirationTtl: LOCK_SECONDS + 60 });
+  }
+  return json({ error: pass ? "合言葉が違います。" : "この操作には合言葉が必要です。" }, 401);
+}
 
 function json(body, status) {
   return new Response(JSON.stringify(body), { status: status || 200, headers: JSON_HEADERS });
@@ -50,6 +104,10 @@ async function handleBackups(request, env, url) {
   const kv = env.CLUB_KV;
   if (request.method === "GET") {
     return json({ backups: await listBackups(kv) });
+  }
+  if (request.method === "POST" || request.method === "DELETE") {
+    const denied = await requireAdmin(request, env);
+    if (denied) return denied;
   }
   if (request.method === "POST") {
     const action = url.searchParams.get("action");

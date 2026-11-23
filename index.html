@@ -3985,11 +3985,13 @@ function addPlayer(name, points, kana){
   saveState(); render();
   return id;
 }
-function addGuestPlayer(name, kana, manualClass, affiliation){
+function addGuestPlayer(name, kana, manualClass, affiliation, memberId){
   name=(name||"").trim();
   if(!name) return null;
   var id = "p_" + Date.now() + "_" + Math.floor(Math.random()*1000);
-  state.players.push({id:id, name:name, points:0, kana:(kana||"").trim(), isGuest:true, manualEntryClass:manualClass||null, affiliation:(affiliation||"").trim()});
+  var rec = {id:id, name:name, points:0, kana:(kana||"").trim(), isGuest:true, manualEntryClass:manualClass||null, affiliation:(affiliation||"").trim()};
+  if(memberId) rec.memberId = memberId;   // 申込システムの会員ID(選手のid=p1,p2…とは別のプロパティ。会員IDを持たないゲストはこの項目なし)
+  state.players.push(rec);
   saveState(); render();
   return id;
 }
@@ -4550,6 +4552,10 @@ function decodeCsvBuffer(buffer){
 function normalizeNameForMatch(name){
   return (name||"").replace(/[\s　]+/g, "");
 }
+// 会員ID(申込システムの会員番号)の照合用に整える: 前後の空白を除き、全角英数字を半角にする
+function normalizeMemberId(v){
+  return String(v||"").normalize("NFKC").replace(/[s　]+/g, "");
+}
 function importGuestEntriesFromCSV(t, text){
   var lines = text.replace(/^﻿/, "").split(/\r\n|\n|\r/).filter(function(l){ return l.trim()!==""; });
   if(!lines.length){ alert("CSVにデータがありません。"); return; }
@@ -4563,12 +4569,21 @@ function importGuestEntriesFromCSV(t, text){
     var affiliation = (cols[2]||"").trim();
     var clsRaw = (cols[3]||"").trim().toUpperCase();
     var cls = MANUAL_CLASS_OPTIONS.indexOf(clsRaw)>=0 ? clsRaw : "Be";
-    var existing = state.players.find(function(p){ return normalizeNameForMatch(p.name)===normalizeNameForMatch(name); });
+    var memberId = normalizeMemberId(cols[4]);
+    // 突き合わせ: ①会員IDが一致する選手 → ②氏名が一致する選手(会員IDが異なる選手は別人として除く) → ③新規のイベント大会出場選手
+    var existing = memberId ? state.players.find(function(p){ return p.memberId && normalizeMemberId(p.memberId)===memberId; }) : null;
+    if(!existing){
+      existing = state.players.find(function(p){
+        if(normalizeNameForMatch(p.name)!==normalizeNameForMatch(name)) return false;
+        return !(memberId && p.memberId && normalizeMemberId(p.memberId)!==memberId);
+      });
+      if(existing && memberId && !existing.memberId) existing.memberId = memberId;   // 氏名で見つかった選手に、会員IDを記録する(次回からIDで照合できる)
+    }
     var id;
     if(existing){
       id = existing.id; matched++;
     } else {
-      id = addGuestPlayer(name, kana, cls, affiliation);
+      id = addGuestPlayer(name, kana, cls, affiliation, memberId);
       added++;
     }
     t.entries[id] = {entered:true, feePaid:false};
@@ -5027,7 +5042,7 @@ function renderTournamentEntrySection(t){
     (entryMode==="noPoints" ? (
       '<div style="margin-top:.9rem;padding-top:.9rem;border-top:1px solid var(--border)">'+
         '<label class="btn btn-sm btn-ghost" style="cursor:pointer">CSVファイルを取り込む<input type="file" accept=".csv,text/csv" style="display:none" data-action="import-guest-entries-csv" data-tid="'+t.id+'"></label>'+
-        '<p class="hint" style="margin-top:.4rem">「氏名,読みカナ,所属,クラス」の列を持つCSVファイルから、まとめてエントリーに追加できます(選手ロースターに未登録の氏名はイベント大会出場選手として登録されます。既存選手は氏名で照合してエントリー済みにします(半角・全角スペースの違いは無視されます)。クラスはP/LP/SA/A/B/C/Beのいずれかで指定してください(省略・不正な値はBeになります)。参加費受領のチェックは含まれないため別途行ってください)。</p>'+
+        '<p class="hint" style="margin-top:.4rem">「氏名,読みカナ,所属,クラス,会員ID」の列を持つCSVファイルから、まとめてエントリーに追加できます(会員IDの列は省略できます。選手ロースターに未登録の方はイベント大会出場選手として登録されます。既存選手は、会員IDがあればまず会員IDで、なければ氏名で照合してエントリー済みにします(氏名の照合では半角・全角スペースの違いは無視され、会員IDが異なる同姓同名の方は別人として登録されます)。クラスはP/LP/SA/A/B/C/Beのいずれかで指定してください(省略・不正な値はBeになります)。参加費受領のチェックは含まれないため別途行ってください)。</p>'+
       '</div>'
     ) : '')+
   '</div>'+
@@ -5313,6 +5328,28 @@ function formatBytes(n){
   if(n<1024*1024) return (n/1024).toFixed(1)+"KB";
   return (n/1024/1024).toFixed(1)+"MB";
 }
+// バックアップの作成・復元・削除は、サーバー側の合言葉(Worker の ADMIN_PASS_HASH)で保護されている。
+// 合言葉を求められたら入力してもらい、このタブを開いている間だけ覚えて、操作に添えて送る(合言葉が違えば入力し直し)
+var ADMIN_PASS_KEY = "billiards_admin_pass";
+function adminPassGet(){ try{ return sessionStorage.getItem(ADMIN_PASS_KEY)||""; }catch(e){ return ""; } }
+function adminPassSet(v){ try{ if(v) sessionStorage.setItem(ADMIN_PASS_KEY, v); else sessionStorage.removeItem(ADMIN_PASS_KEY); }catch(e){} }
+function adminFetch(url, opts, retried){
+  opts = opts || {};
+  var headers = Object.assign({}, opts.headers || {});
+  var pass = adminPassGet();
+  if(pass) headers["X-Admin-Pass"] = pass;
+  return fetch(url, Object.assign({}, opts, {headers:headers})).then(function(r){
+    if(r.status===401 && !retried){
+      adminPassSet("");
+      var input = window.prompt("この操作には合言葉が必要です。合言葉を入力してください。");
+      if(!input) return r;
+      adminPassSet(input);
+      return adminFetch(url, opts, true);
+    }
+    if(r.status===401) adminPassSet("");
+    return r;
+  });
+}
 function loadCloudBackups(){
   if(cloudBackupsLoading) return;
   cloudBackupsLoading = true;
@@ -5333,8 +5370,8 @@ function loadCloudBackups(){
 function createCloudBackup(){
   if(cloudBackupBusy) return;
   cloudBackupBusy = true; cloudBackupsError = null; render();
-  fetch("/api/backups", {method:"POST"}).then(function(r){
-    if(!r.ok) return r.json().then(function(j){ throw new Error((j&&j.error)||("HTTP "+r.status)); });
+  adminFetch("/api/backups", {method:"POST"}).then(function(r){
+    if(!r.ok) return r.json().catch(function(){ return null; }).then(function(j){ throw new Error((j&&j.error)||("HTTP "+r.status)); });
     return r.json();
   }).then(function(){
     cloudBackupBusy = false;
@@ -5349,8 +5386,8 @@ function createCloudBackup(){
 function restoreCloudBackup(name){
   if(cloudBackupBusy) return;
   cloudBackupBusy = true; cloudBackupsError = null; render();
-  fetch("/api/backups?action=restore&name="+encodeURIComponent(name), {method:"POST"}).then(function(r){
-    if(!r.ok) return r.json().then(function(j){ throw new Error((j&&j.error)||("HTTP "+r.status)); });
+  adminFetch("/api/backups?action=restore&name="+encodeURIComponent(name), {method:"POST"}).then(function(r){
+    if(!r.ok) return r.json().catch(function(){ return null; }).then(function(j){ throw new Error((j&&j.error)||("HTTP "+r.status)); });
     return r.json();
   }).then(function(){
     cloudBackupBusy = false;
@@ -5364,8 +5401,8 @@ function restoreCloudBackup(name){
 function deleteCloudBackup(name){
   if(cloudBackupBusy) return;
   cloudBackupBusy = true; cloudBackupsError = null; render();
-  fetch("/api/backups?name="+encodeURIComponent(name), {method:"DELETE"}).then(function(r){
-    if(!r.ok) return r.json().then(function(j){ throw new Error((j&&j.error)||("HTTP "+r.status)); });
+  adminFetch("/api/backups?name="+encodeURIComponent(name), {method:"DELETE"}).then(function(r){
+    if(!r.ok) return r.json().catch(function(){ return null; }).then(function(j){ throw new Error((j&&j.error)||("HTTP "+r.status)); });
     return r.json();
   }).then(function(){
     cloudBackupBusy = false;
