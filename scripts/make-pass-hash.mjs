@@ -3,6 +3,7 @@
 // 合言葉は画面に表示されず、ファイルにも保存されません。出力された1行(pbkdf2$…)だけを、次のコマンドで登録します。
 //   npx wrangler secret put ADMIN_PASS_HASH
 import { pbkdf2Sync, randomBytes } from "node:crypto";
+import { spawnSync } from "node:child_process";
 
 const ITERATIONS = 100000;   // Workers の PBKDF2 は 100000 回が上限
 
@@ -40,4 +41,9 @@ if (a !== b) { console.error("2回の入力が一致しません。"); process.e
 const salt = randomBytes(16);
 const hash = pbkdf2Sync(a, salt, ITERATIONS, 32, "sha256");
 console.log("\n次の1行が登録する値です:\n");
-console.log(["pbkdf2", ITERATIONS, salt.toString("hex"), hash.toString("hex")].join("$"));
+const line = ["pbkdf2", ITERATIONS, salt.toString("hex"), hash.toString("hex")].join("$");
+console.log(line);
+if (process.platform === "win32") {   // Windows では、そのままクリップボードにもコピーする(貼り付けるだけで登録できる)
+  const r = spawnSync("clip", { input: line });
+  if (r.status === 0) console.log("\n(上の1行は、クリップボードにコピー済みです。そのまま貼り付けできます)");
+}
